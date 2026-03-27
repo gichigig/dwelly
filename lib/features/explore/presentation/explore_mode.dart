@@ -1,0 +1,2 @@
+enum ExploreMode { rentals, lostId }
+

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dwelly</string>
+    <!-- Asset statements for passkeys/FIDO2 - links to the RP domain -->
+    <string name="asset_statements" translatable="false">[{\"include\": \"https://api.billygichigidev.me/.well-known/assetlinks.json\"}]</string>
+</resources>

@@ -1,0 +1,74 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: realestate-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: realestate-db
+    environment:
+      POSTGRES_DB: realestatedb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/src/main/resources/db/postgis_init.sql:/docker-entrypoint-initdb.d/postgis_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: realestate-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: realestatedb
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_REDIS_ENABLED: true
+      # R2 vars are loaded from .env file via env_file above
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+
+  ocr:
+    build:
+      context: ./realadmin/ocr_service
+      dockerfile: Dockerfile
+    container_name: realestate-ocr
+    ports:
+      - "8090:8090"
+
+volumes:
+  postgres_data:
+  uploads_data:
+  redis_data:
