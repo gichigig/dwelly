@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import '../models/chat.dart';
 import '../errors/app_error.dart';
 import 'api_service.dart';
@@ -107,6 +107,11 @@ class ChatService {
     return statusCode == 401;
   }
 
+  static bool _isAdminUser() {
+    final role = AuthService.currentUser?.role.toUpperCase() ?? '';
+    return role == 'ADMIN' || role == 'SUPER_ADMIN';
+  }
+
   static Future<void> _handleAuthError(int statusCode) async {
     if (_isAuthError(statusCode)) {
       await AuthService.logout();
@@ -144,9 +149,11 @@ class ChatService {
         if (listingType != null && listingType.isNotEmpty)
           'listingType': listingType,
       };
+      final isAdmin = _isAdminUser();
+      final path = isAdmin ? '/conversations/all' : '/conversations';
       final response = await ApiService.timedGet(
         Uri.parse(
-          '${ApiService.baseUrl}/conversations',
+          '${ApiService.baseUrl}$path',
         ).replace(queryParameters: queryParams.isEmpty ? null : queryParams),
         headers: {
           'Accept': 'application/json',
@@ -231,9 +238,11 @@ class ChatService {
         if (listingType != null && listingType.isNotEmpty)
           'listingType': listingType,
       };
+      final isAdmin = _isAdminUser();
+      final path = isAdmin ? '/conversations/all/paged' : '/conversations/paged';
       final response = await ApiService.timedGet(
         Uri.parse(
-          '${ApiService.baseUrl}/conversations/paged',
+          '${ApiService.baseUrl}$path',
         ).replace(queryParameters: queryParams),
         headers: {
           'Accept': 'application/json',
@@ -271,6 +280,31 @@ class ChatService {
 
       // Fallback when paginated endpoint is unavailable.
       if (response.statusCode == 404 || response.statusCode == 405) {
+        if (isAdmin) {
+          final all = await getConversations(
+            forceRefresh: forceRefresh || page > 0,
+            listingType: listingType,
+          );
+          final start = page * size;
+          if (start >= all.length) {
+            return PaginatedConversations(
+              conversations: const [],
+              hasMore: false,
+              page: page,
+              size: size,
+              totalConversations: all.length,
+            );
+          }
+
+          final end = (start + size).clamp(0, all.length);
+          return PaginatedConversations(
+            conversations: all.sublist(start, end),
+            hasMore: end < all.length,
+            page: page,
+            size: size,
+            totalConversations: all.length,
+          );
+        }
         final all = await getConversations(
           forceRefresh: forceRefresh || page > 0,
           listingType: listingType,

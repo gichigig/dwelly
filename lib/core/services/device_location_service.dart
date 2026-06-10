@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 
 /// Result from device location detection
@@ -147,12 +148,14 @@ class DeviceLocationService {
 
   /// Check if location service is enabled on the device
   static Future<bool> isLocationServiceEnabled() async {
-    return await Geolocator.isLocationServiceEnabled();
+    return await Geolocator.isLocationServiceEnabled()
+        .timeout(const Duration(seconds: 2), onTimeout: () => false);
   }
 
   /// Check current permission status (does NOT conflate service-off with denied)
   static Future<LocationPermission> checkPermission() async {
-    return await Geolocator.checkPermission();
+    return await Geolocator.checkPermission()
+        .timeout(const Duration(seconds: 2), onTimeout: () => LocationPermission.denied);
   }
 
   /// Request location permission.
@@ -192,7 +195,8 @@ class DeviceLocationService {
   static Future<DeviceLocationResult> getCurrentLocation() async {
     try {
       // First check if location service is enabled
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled()
+          .timeout(const Duration(seconds: 2), onTimeout: () => false);
       if (!serviceEnabled) {
         print('[Location] Location service is disabled — opening settings');
         await Geolocator.openLocationSettings();
@@ -206,7 +210,8 @@ class DeviceLocationService {
       }
 
       // Check permission
-      var permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission()
+          .timeout(const Duration(seconds: 2), onTimeout: () => LocationPermission.denied);
       print('[Location] Current permission: $permission');
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -233,7 +238,8 @@ class DeviceLocationService {
       // Step 1: Try last known position (instant, no GPS needed)
       try {
         print('[Location] Trying getLastKnownPosition...');
-        position = await Geolocator.getLastKnownPosition();
+        position = await Geolocator.getLastKnownPosition()
+            .timeout(const Duration(seconds: 2));
         if (position != null) {
           print(
             '[Location] Got last known position: ${position.latitude}, ${position.longitude}',
@@ -254,9 +260,9 @@ class DeviceLocationService {
           position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.low,
-              timeLimit: Duration(seconds: 15),
+              timeLimit: Duration(seconds: 5),
             ),
-          );
+          ).timeout(const Duration(seconds: 5));
           print(
             '[Location] Got low-accuracy position: ${position.latitude}, ${position.longitude}',
           );
@@ -268,9 +274,9 @@ class DeviceLocationService {
             position = await Geolocator.getCurrentPosition(
               locationSettings: const LocationSettings(
                 accuracy: LocationAccuracy.medium,
-                timeLimit: Duration(seconds: 30),
+                timeLimit: Duration(seconds: 5),
               ),
-            );
+            ).timeout(const Duration(seconds: 5));
             print(
               '[Location] Got medium-accuracy position: ${position.latitude}, ${position.longitude}',
             );
@@ -601,6 +607,20 @@ class DeviceLocationService {
         'county': nearestOverallCounty,
         'areaName': nearestOverallName,
         'source': 'FALLBACK_APPROX',
+        'distanceMeters': minOverallDistance * 1000,
+      };
+    }
+
+    // In debug mode, if we are testing on an emulator and the location is wildly far away 
+    // (like the default San Francisco location on iOS), let's default to Nairobi CBD 
+    // so the app remains fully functional for testing.
+    if (kDebugMode) {
+      return {
+        'ward': 'Nairobi Central',
+        'constituency': 'Starehe',
+        'county': 'Nairobi',
+        'areaName': 'CBD',
+        'source': 'FALLBACK_DEBUG',
         'distanceMeters': minOverallDistance * 1000,
       };
     }

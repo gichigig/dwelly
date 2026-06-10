@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/models/advertisement.dart';
 import '../../core/services/ad_service.dart';
+import '../../core/services/google_ad_service.dart';
 import '../../core/widgets/app_launch_ad_screen.dart';
 
 class _SplashAdPayload {
@@ -22,7 +23,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const Duration _minimumSplashDuration = Duration(milliseconds: 900);
+  static const Duration _minimumSplashDuration = Duration(seconds: 5);
   static const Duration _maxAdWait = Duration(milliseconds: 1200);
 
   bool _showSplash = true;
@@ -138,133 +139,157 @@ class _SplashScreenState extends State<SplashScreen>
         child: AnimatedBuilder(
           animation: _animationController,
           builder: (context, child) {
-            return Opacity(
-              opacity: _fadeAnimation.value,
-              child: Transform.scale(
-                scale: _scaleAnimation.value,
-                child: child,
-              ),
-            );
-          },
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo
-              Container(
-                width: 180,
-                height: 180,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0EA5E9).withOpacity(0.2),
-                      blurRadius: 30,
-                      offset: const Offset(0, 10),
+            return Column(
+              children: [
+                // Top 3/4: Ad
+              Expanded(
+                flex: 3,
+                child: SafeArea(
+                  child: Center(
+                    child: Opacity(
+                      opacity: _fadeAnimation.value,
+                      child: Transform.scale(
+                        scale: _scaleAnimation.value,
+                        child: const GoogleAdMediumRectangleWidget(),
+                      ),
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      // Fallback if image not found - show the D logo programmatically
-                      return _buildFallbackLogo();
-                    },
                   ),
                 ),
               ),
-
-              const SizedBox(height: 24),
-
-              // App Name
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    Color(0xFF0EA5E9), // Teal
-                    Color(0xFF1E40AF), // Blue
-                  ],
-                ).createShader(bounds),
-                child: const Text(
-                  'Dwelly',
-                  style: TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Tagline
-              Text(
-                'Real Estate App',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.5,
-                ),
-              ),
-
-              const SizedBox(height: 60),
-
-              // By Bluvberry
-              AnimatedBuilder(
-                animation: _animationController,
-                builder: (context, child) {
-                  final byBluvberryOpacity = Tween<double>(begin: 0.0, end: 1.0)
-                      .animate(
-                        CurvedAnimation(
-                          parent: _animationController,
-                          curve: const Interval(
-                            0.5,
-                            1.0,
-                            curve: Curves.easeOut,
+              
+              // Bottom 1/4: Logo and Name
+              Expanded(
+                flex: 1,
+                child: Opacity(
+                  opacity: _fadeAnimation.value,
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Small Logo
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.2),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.asset(
+                                  'assets/images/logo.png',
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.white,
+                                      child: CustomPaint(painter: DwellyLogoPainter()),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            // App Name
+                            ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFF0EA5E9), // Teal
+                                  Color(0xFF1E40AF), // Blue
+                                ],
+                              ).createShader(bounds),
+                              child: const Text(
+                                'Dwelly',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Tagline
+                        Text(
+                          'Real Estate App',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                      );
-                  return Opacity(
-                    opacity: byBluvberryOpacity.value,
-                    child: child,
-                  );
-                },
-                child: Column(
-                  children: [
-                    Text(
-                      'by',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[500],
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [
-                          Color(0xFF6366F1), // Indigo
-                          Color(0xFF8B5CF6), // Purple
-                        ],
-                      ).createShader(bounds),
-                      child: const Text(
-                        'bluvberry',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          letterSpacing: 1.5,
+                        const SizedBox(height: 16),
+                        // By Bluvberry
+                        AnimatedBuilder(
+                          animation: _animationController,
+                          builder: (context, child) {
+                            final byBluvberryOpacity = Tween<double>(begin: 0.0, end: 1.0)
+                                .animate(
+                                  CurvedAnimation(
+                                    parent: _animationController,
+                                    curve: const Interval(
+                                      0.5,
+                                      1.0,
+                                      curve: Curves.easeOut,
+                                    ),
+                                  ),
+                                );
+                            return Opacity(
+                              opacity: byBluvberryOpacity.value,
+                              child: child,
+                            );
+                          },
+                          child: Column(
+                            children: [
+                              Text(
+                                'by',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[500],
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              ShaderMask(
+                                shaderCallback: (bounds) => const LinearGradient(
+                                  colors: [
+                                    Color(0xFF6366F1), // Indigo
+                                    Color(0xFF8B5CF6), // Purple
+                                  ],
+                                ).createShader(bounds),
+                                child: const Text(
+                                  'bluvberry',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
-          ),
+          );
+        },
         ),
       ),
     );

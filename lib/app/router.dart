@@ -6,6 +6,7 @@ import '../features/notifications/presentation/notifications_page.dart';
 import '../features/rentals/presentation/rental_details_page.dart';
 import '../features/listings/presentation/rental_alerts_page.dart';
 import '../features/lost_id/presentation/lost_id_details_page.dart';
+import '../features/helpers/presentation/client_jobs_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -32,6 +33,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: 'lost-id/:id',
             builder: (context, state) =>
                 LostIdDetailsPage(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: 'client-jobs',
+            builder: (context, state) => const ClientJobsPage(),
           ),
         ],
       ),

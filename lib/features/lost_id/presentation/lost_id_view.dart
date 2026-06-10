@@ -99,6 +99,8 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
   }
   
   void _showIdOptionsDialog() {
+    const nationalIdType = 'NATIONAL_ID';
+    const schoolIdType = 'SCHOOL_ID';
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -132,7 +134,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   backgroundColor: Colors.green.shade100,
                   child: Icon(Icons.camera_alt, color: Colors.green.shade700),
                 ),
-                title: const Text('I found someone\'s ID'),
+                title: const Text('I found a National ID'),
                 subtitle: const Text('Scan & register a found ID'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
@@ -140,7 +142,30 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const FoundIdScanPage(),
+                      builder: (context) => const FoundIdScanPage(
+                        initialIdType: nationalIdType,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 72),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green.shade100,
+                  child: Icon(Icons.school, color: Colors.green.shade700),
+                ),
+                title: const Text('I found a School ID'),
+                subtitle: const Text('Scan & register a found ID'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FoundIdScanPage(
+                        initialIdType: schoolIdType,
+                      ),
                     ),
                   );
                 },
@@ -151,7 +176,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   backgroundColor: Colors.orange.shade100,
                   child: Icon(Icons.search, color: Colors.orange.shade700),
                 ),
-                title: const Text('I lost my ID'),
+                title: const Text('I lost a National ID'),
                 subtitle: const Text('Search if someone found it'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
@@ -159,7 +184,30 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const SearchLostIdPage(),
+                      builder: (context) => const SearchLostIdPage(
+                        initialIdType: nationalIdType,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 72),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.orange.shade100,
+                  child: Icon(Icons.school, color: Colors.orange.shade700),
+                ),
+                title: const Text('I lost a School ID'),
+                subtitle: const Text('Search if someone found it'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SearchLostIdPage(
+                        initialIdType: schoolIdType,
+                      ),
                     ),
                   );
                 },

@@ -1,56 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:realestate/core/services/api_service.dart';
 
 /// Service for scanning Kenyan IDs and interacting with the Found ID API
 class IdScannerService {
   /// Scan an image and extract Kenyan ID information
   static Future<IdScanResult> scanIdFromImage(File imageFile) async {
-    final textRecognizer = TextRecognizer();
-    
-    try {
-      final inputImage = InputImage.fromFile(imageFile);
-      final recognizedText = await textRecognizer.processImage(inputImage);
-      
-      final text = recognizedText.text;
-      final lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
-      
-      // Extract ID fields
-      final idNumber = _extractIdNumber(text, lines);
-      final names = _extractFullNames(text, lines);
-      final dateOfBirth = _extractDateOfBirth(text, lines);
-      
-      final errors = <String>[];
-      
-      if (idNumber == null) {
-        errors.add('Could not detect ID number. Please ensure the ID number is clearly visible.');
-      }
-      if (names['fullName'] == null) {
-        errors.add('Could not detect name. Please ensure the name is clearly visible.');
-      }
-      if (dateOfBirth == null) {
-        errors.add('Could not detect date of birth. Please ensure the date is clearly visible.');
-      }
-
-      final hasAnyCoreField =
-          idNumber != null || names['fullName'] != null || dateOfBirth != null;
-      
-      return IdScanResult(
-        success: hasAnyCoreField,
-        idNumber: idNumber,
-        fullName: names['fullName'],
-        firstName: names['firstName'],
-        middleName: names['middleName'],
-        lastName: names['lastName'],
-        dateOfBirth: dateOfBirth,
-        fullText: text,
-        errors: errors,
-      );
-    } finally {
-      textRecognizer.close();
-    }
+    return IdScanResult(
+      success: false,
+      fullText: '',
+      errors: [
+        'Text recognition is disabled in this build. Use a physical device to scan IDs.',
+      ],
+    );
   }
   
   /// Extract ID number (7-8 digits)
@@ -311,6 +274,8 @@ class IdScannerService {
   static Future<RegisterFoundIdResponse> registerFoundId({
     required String idNumber,
     required String fullName,
+    String? idType,
+    String? schoolName,
     String? dateOfBirth,
     required String finderPhone,
     String? finderWhatsApp,
@@ -324,6 +289,8 @@ class IdScannerService {
         body: jsonEncode({
           'idNumber': idNumber,
           'fullName': fullName,
+          'idType': idType,
+          'schoolName': schoolName,
           'dateOfBirth': (dateOfBirth != null && dateOfBirth.isNotEmpty)
               ? dateOfBirth
               : null,
@@ -361,6 +328,8 @@ class IdScannerService {
   static Future<SearchLostIdResponse> searchLostId({
     required String fullName,
     required String idNumber,
+    String? idType,
+    String? schoolName,
   }) async {
     try {
       final response = await http.post(
@@ -369,6 +338,8 @@ class IdScannerService {
         body: jsonEncode({
           'fullName': fullName,
           'idNumber': idNumber,
+          'idType': idType,
+          'schoolName': schoolName,
         }),
       );
       

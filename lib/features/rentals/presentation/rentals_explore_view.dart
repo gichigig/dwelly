@@ -1,16 +1,22 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/device_rental_cache_service.dart';
 import '../../../core/services/device_location_service.dart';
 import '../../../core/services/rental_service.dart' hide RentalFilters;
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/models/rental.dart';
 import '../data/rentals_repo.dart';
 import '../domain/rental_filters.dart';
+import '../domain/rental_listing.dart';
 import 'widgets/floating_filter_bubble.dart';
 import 'widgets/location_filter_sheet.dart';
+import 'widgets/rentals_map_view.dart';
 import '../../../core/data/kenya_locations.dart';
 
 class RentalsExploreView extends ConsumerStatefulWidget {
@@ -27,14 +33,24 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
   bool _filterApplied = false;
   String? _resolvedLocation;
   List<String> _nearbyAreas = [];
+  List<Rental> _rentals = [];
+  bool _loadingRentals = true;
+  bool _usingCachedRentals = false;
+  bool _isGeneralSearch = false;
+  bool _hasTriggeredInitialLoad = false;
+  String? _lastCacheSignature;
 
   // Device location state
   bool _loadingDeviceLocation = true;
   bool _locationPermissionDenied = false;
   DeviceLocationResult? _deviceLocation;
   bool _usingDeviceLocation = false;
-  bool _showingGeneralResults =
-      false; // True when showing general results due to no local results
+  
+  // AR Cone search state (Premium feature)
+  bool _useConeSearch = false;
+  double? _currentHeading;
+  StreamSubscription<CompassEvent>? _compassSubscription;
+  Timer? _headingDebounce;
 
   // FYP (For You Page) preferences
   bool _usingFypPreferences = false;
@@ -55,6 +71,9 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
   // Inline filter state (visible on explore tab)
   bool _showPriceSlider = false;
   RangeValues _priceRange = const RangeValues(0, 100000);
+
+  // Map view state
+  bool _showMapView = false;
 
   static const List<String> _placeholderTexts = [
     'Search "Ruaka"',
@@ -133,6 +152,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
 
     // Otherwise use device location
     await _initDeviceLocation();
+    _triggerInitialLoad();
   }
 
   void _applyFypPreferences(List<String> wards, List<String> nicknames) {
@@ -154,6 +174,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
       _searchCtrl.text = displayText;
       _resolvedLocation = displayText;
     });
+    _queueRefresh();
   }
 
   Future<void> _initDeviceLocation() async {
@@ -277,6 +298,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
       _searchCtrl.text = locationText;
       _resolvedLocation = locationText;
     });
+    _queueRefresh();
   }
 
   Future<void> _requestLocationPermission() async {
@@ -307,6 +329,8 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
     _scrollController.dispose();
     _typewriterTimer?.cancel();
     _backendSearchDebounce?.cancel();
+    _headingDebounce?.cancel();
+    _compassSubscription?.cancel();
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     super.dispose();
@@ -535,6 +559,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
           );
       }
     });
+    unawaited(_refreshRentals());
   }
 
   void _onSearchSubmitted(String query) {
@@ -553,6 +578,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
           _usingDeviceLocation = false;
           _resolvedLocation = query;
         });
+        unawaited(_refreshRentals());
       }
     }
   }
@@ -624,6 +650,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
           _resolvedLocation = result.query;
         }
       });
+      unawaited(_refreshRentals());
     }
   }
 
@@ -653,6 +680,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
         _usingDeviceLocation = false;
       }
     });
+    unawaited(_refreshRentals());
   }
 
   void _useCurrentLocation() async {
@@ -714,6 +742,12 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
           minPrice: _filters.minPrice?.toDouble(),
           maxPrice: _filters.maxPrice?.toDouble(),
           propertyType: _filters.unitType?.backendName,
+          latitude: _usingDeviceLocation ? _deviceLocation?.latitude : null,
+          longitude: _usingDeviceLocation ? _deviceLocation?.longitude : null,
+          sortByDistance: _usingDeviceLocation,
+          useCone: _useConeSearch,
+          heading: _useConeSearch ? _currentHeading : null,
+          fov: _useConeSearch ? 90.0 : null, // 90 degree forward cone
           page: 0,
           size: 20,
         );
@@ -756,7 +790,122 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
       print('Error searching rentals: $e');
       // Fallback to local repo search
       final localResults = await repo.search(_filters);
-      return {'rentals': localResults, 'isGeneral': false};
+      final rentals = localResults.map(_mapListingToRental).toList();
+      return {'rentals': rentals, 'isGeneral': false};
+    }
+  }
+
+  Rental _mapListingToRental(RentalListing listing) {
+    return Rental(
+      id: int.tryParse(listing.id),
+      title: listing.title,
+      description: listing.description,
+      price: listing.rentKsh.toDouble(),
+      address: listing.location,
+      ward: listing.area,
+      county: listing.county,
+      bedrooms: 0,
+      bathrooms: 0,
+      squareFeet: 0,
+      propertyType: listing.unitType.backendName,
+      amenities: listing.amenities,
+      imageUrls: listing.photos,
+      petsAllowed: false,
+      parkingAvailable: false,
+      status: listing.isActive ? 'ACTIVE' : 'INACTIVE',
+      ownerPhone: listing.contactPhone,
+      ownerId: int.tryParse(listing.ownerId),
+      createdAt: listing.createdAt,
+      saveCount: 0,
+    );
+  }
+
+  void _triggerInitialLoad() {
+    if (_hasTriggeredInitialLoad) {
+      return;
+    }
+    _hasTriggeredInitialLoad = true;
+    unawaited(_refreshRentals());
+  }
+
+  void _queueRefresh() {
+    if (_hasTriggeredInitialLoad) {
+      unawaited(_refreshRentals());
+      return;
+    }
+    _triggerInitialLoad();
+  }
+
+  Future<void> _refreshRentals({bool useDeviceCache = true}) async {
+    final repo = ref.read(rentalsRepoProvider);
+    final signature = DeviceRentalCacheService.signatureForFilters(_filters);
+    _lastCacheSignature = signature;
+
+    if (useDeviceCache) {
+      final cached = await DeviceRentalCacheService.getCachedList(signature);
+      if (cached != null && mounted) {
+        setState(() {
+          _rentals = cached.rentals;
+          _isGeneralSearch = cached.isGeneral;
+          _loadingRentals = false;
+          _usingCachedRentals = true;
+        });
+      }
+    }
+
+    if (!mounted || signature != _lastCacheSignature) {
+      return;
+    }
+
+    if (_rentals.isEmpty) {
+      setState(() {
+        _loadingRentals = true;
+      });
+    }
+
+    try {
+      final result = await _searchWithFallback(repo);
+      if (!mounted || signature != _lastCacheSignature) {
+        return;
+      }
+      final rentals = (result['rentals'] as List<dynamic>).cast<Rental>();
+      final isGeneral = result['isGeneral'] as bool;
+      setState(() {
+        _rentals = rentals;
+        _isGeneralSearch = isGeneral;
+        _loadingRentals = false;
+        _usingCachedRentals = false;
+      });
+      await DeviceRentalCacheService.setCachedList(
+        signature,
+        rentals,
+        isGeneral: isGeneral,
+      );
+      unawaited(_prefetchTopDetailsAndMedia(rentals));
+    } catch (_) {
+      if (!mounted || signature != _lastCacheSignature) {
+        return;
+      }
+      setState(() {
+        _loadingRentals = false;
+      });
+    }
+  }
+
+  Future<void> _prefetchTopDetailsAndMedia(List<Rental> rentals) async {
+    final topRentals = rentals.where((r) => r.id != null).take(5).toList();
+    for (final rental in topRentals) {
+      final detail = await RentalService.getById(rental.id!);
+      if (!mounted) {
+        return;
+      }
+      if (detail == null) {
+        continue;
+      }
+      final urls = detail.imageUrls.take(2);
+      for (final url in urls) {
+        await precacheImage(CachedNetworkImageProvider(url), context);
+      }
     }
   }
 
@@ -836,6 +985,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
                         _filters.unitType != null ||
                         _filters.minPrice != null;
                   });
+                  unawaited(_refreshRentals());
                 },
               ),
             );
@@ -887,6 +1037,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
                           _filters.hasLocationFilter ||
                           _filters.unitType != null;
                     });
+                    unawaited(_refreshRentals());
                   },
                   child: Text(
                     'Clear',
@@ -916,6 +1067,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
                 );
                 _filterApplied = true;
               });
+              unawaited(_refreshRentals());
             },
           ),
           Row(
@@ -997,9 +1149,21 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
     }
   }
 
+  String _getCompassDirection(double? heading) {
+    if (heading == null) return 'Unknown';
+    if (heading >= 337.5 || heading < 22.5) return 'N';
+    if (heading >= 22.5 && heading < 67.5) return 'NE';
+    if (heading >= 67.5 && heading < 112.5) return 'E';
+    if (heading >= 112.5 && heading < 157.5) return 'SE';
+    if (heading >= 157.5 && heading < 202.5) return 'S';
+    if (heading >= 202.5 && heading < 247.5) return 'SW';
+    if (heading >= 247.5 && heading < 292.5) return 'W';
+    if (heading >= 292.5 && heading < 337.5) return 'NW';
+    return 'Unknown';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final repo = ref.watch(rentalsRepoProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -1117,6 +1281,37 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
                             ),
                     ),
                   ),
+                  // Map toggle button
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _showMapView
+                          ? colorScheme.primaryContainer
+                          : colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        final user = AuthService.currentUser;
+                        if (user == null || !user.isPremiumActive) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Interactive Map is a Premium feature. Upgrade to unlock!')),
+                          );
+                          return;
+                        }
+                        setState(() {
+                          _showMapView = !_showMapView;
+                        });
+                      },
+                      tooltip: 'Toggle map view',
+                      icon: Icon(
+                        _showMapView ? Icons.map : Icons.map_outlined,
+                        color: _showMapView
+                            ? colorScheme.onPrimaryContainer
+                            : colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
                 ],
               ),
 
@@ -1182,6 +1377,75 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
                     ],
                   ),
                 ),
+              // AR Cone Search Premium Toggle
+              if (_usingDeviceLocation) ...[
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () {
+                    final user = AuthService.currentUser;
+                    if (user == null || !user.isPremiumActive) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Cone Search is a Premium feature. Upgrade to unlock!')),
+                      );
+                      return;
+                    }
+                    setState(() {
+                      _useConeSearch = !_useConeSearch;
+                      if (_useConeSearch) {
+                        _compassSubscription = FlutterCompass.events?.listen((event) {
+                          final heading = event.heading;
+                          if (heading != null) {
+                            // Only update if difference is more than 5 degrees to avoid jitter
+                            if (_currentHeading == null || (heading - _currentHeading!).abs() > 5) {
+                              _currentHeading = heading;
+                              _headingDebounce?.cancel();
+                              _headingDebounce = Timer(const Duration(milliseconds: 800), () {
+                                if (mounted) unawaited(_refreshRentals());
+                              });
+                            }
+                          }
+                        });
+                      } else {
+                        _compassSubscription?.cancel();
+                        _compassSubscription = null;
+                        _currentHeading = null;
+                        unawaited(_refreshRentals());
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _useConeSearch ? colorScheme.primaryContainer : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _useConeSearch ? colorScheme.primary : colorScheme.outline.withOpacity(0.5),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.explore,
+                          size: 16,
+                          color: _useConeSearch ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _useConeSearch ? 'AR Cone Active (Facing ${_getCompassDirection(_currentHeading)})' : 'Enable AR Cone Search (Premium)',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: _useConeSearch ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                              fontWeight: _useConeSearch ? FontWeight.w600 : null,
+                            ),
+                          ),
+                        ),
+                        if (!_useConeSearch)
+                          const Icon(Icons.star, size: 14, color: Colors.amber),
+                      ],
+                    ),
+                  ),
+                ),
               ] else if (!_loadingDeviceLocation &&
                   !_filterApplied &&
                   !_locationPermissionDenied) ...[
@@ -1241,76 +1505,82 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
               const SizedBox(height: 4),
 
               Expanded(
-                child: FutureBuilder(
-                  future: _searchWithFallback(repo),
-                  builder: (context, snap) {
-                    if (!snap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final result = snap.data!;
-                    final list = result['rentals'] as List<dynamic>;
-                    final isGeneralSearch = result['isGeneral'] as bool;
-
-                    if (list.isEmpty) {
-                      return EmptyState(
+                child: _loadingRentals && _rentals.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : _rentals.isEmpty
+                    ? EmptyState(
                         icon: Icons.home_work_outlined,
-                        title: _filterApplied
-                            ? 'No rentals found'
-                            : 'No rentals yet',
+                        title:
+                            _filterApplied ? 'No rentals found' : 'No rentals yet',
                         subtitle: _filterApplied
                             ? 'Try searching a different area or ward.'
                             : 'Post the first listing in your area.',
-                      );
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Show notice when showing general results
-                        if (isGeneralSearch && _usingDeviceLocation)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.tertiaryContainer.withOpacity(
-                                0.5,
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Show notice when showing general results
+                          if (_isGeneralSearch && _usingDeviceLocation)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
                               ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  size: 16,
-                                  color: colorScheme.onTertiaryContainer,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'No rentals in your area yet. Showing general listings.',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onTertiaryContainer,
+                              decoration: BoxDecoration(
+                                color: colorScheme.tertiaryContainer
+                                    .withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 16,
+                                    color: colorScheme.onTertiaryContainer,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'No rentals in your area yet. Showing general listings.',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: colorScheme.onTertiaryContainer,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
 
-                        Expanded(
-                          child: ListView.builder(
-                            controller: _scrollController,
-                            itemCount: list.length,
-                            itemBuilder: (_, i) => _buildRentalCard(list[i]),
+                          Expanded(
+                            child: _showMapView
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: RentalsMapView(
+                                    rentals: _rentals,
+                                    userLocation: _deviceLocation,
+                                    onRentalSelected: (rental) {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        builder: (context) => Padding(
+                                          padding: const EdgeInsets.all(16.0),
+                                          child: _buildRentalCard(rental),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                )
+                              : ListView.builder(
+                                  controller: _scrollController,
+                                  itemCount: _rentals.length,
+                                  itemBuilder: (_, i) =>
+                                      _buildRentalCard(_rentals[i]),
+                                ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -1335,7 +1605,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
     );
   }
 
-  Widget _buildRentalCard(dynamic rental) {
+  Widget _buildRentalCard(Rental rental) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -1400,7 +1670,7 @@ class _RentalsExploreViewState extends ConsumerState<RentalsExploreView> {
                       ),
                     const SizedBox(height: 4),
                     Text(
-                      'KES ${rental.price?.toStringAsFixed(0) ?? 'N/A'}',
+                      'KES ${rental.price.toStringAsFixed(0)}',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.bold,

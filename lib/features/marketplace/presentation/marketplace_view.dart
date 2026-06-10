@@ -1617,7 +1617,7 @@ class _MarketplaceViewState extends State<MarketplaceView>
     switch (filter) {
       case 'Under 2K':
         _searchController.text = 'under 2000';
-        await _onSearchChanged('under 2000');
+        _onSearchChanged('under 2000');
         break;
       case 'Luxury':
         setState(() {
@@ -1751,7 +1751,7 @@ class _MarketplaceViewState extends State<MarketplaceView>
             height: 104,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              children: const [
+              children: [
                 _SeedFeatureTile(icon: Icons.play_circle_fill_rounded, title: 'Video previews', subtitle: 'Swipe reels-style clips'),
                 _SeedFeatureTile(icon: Icons.style, title: 'Smart bundles', subtitle: 'Complete the look in one tap'),
                 _SeedFeatureTile(icon: Icons.casino, title: 'Spin & Win', subtitle: 'Daily rewards and XP points'),
@@ -2237,4 +2237,56 @@ class _MarketplaceGridEntry {
   const _MarketplaceGridEntry.ad(Advertisement ad) : this._(ad: ad);
 
   bool get isAd => ad != null;
+}
+
+class _SeedFeatureTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _SeedFeatureTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 24, color: colorScheme.primary),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

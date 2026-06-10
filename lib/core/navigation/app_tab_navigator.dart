@@ -15,6 +15,8 @@ class AppTabNavigator {
 
   static void openAccount() => openTab(3);
 
+  static void openInbox() => openTab(2);
+
   static void clearRequest() {
     _requestedTab.value = null;
   }

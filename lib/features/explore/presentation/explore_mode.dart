@@ -1,2 +1,2 @@
-enum ExploreMode { rentals, lostId }
+enum ExploreMode { rentals, lostId, helpers }
 

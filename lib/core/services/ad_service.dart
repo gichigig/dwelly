@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/advertisement.dart';
 import 'api_service.dart';
+import 'premium_service.dart';
 
 /// Display configuration for ads
 class AdDisplayConfig {
@@ -159,8 +160,20 @@ class AdService {
   AdDisplayConfig? _cachedConfig;
   Duration _lastAdRequestLatency = Duration.zero;
   int _consecutiveAdTimeouts = 0;
+  
+  // In-Memory cache to avoid repeated SharedPreferences decoding
+  final Map<String, List<Advertisement>> _memoryAdsCache = {};
+  final Map<String, DateTime> _memoryAdsCacheTimestamp = {};
+  final Map<String, Advertisement> _memoryTargetedAdCache = {};
+  final Map<String, DateTime> _memoryTargetedAdTimestamp = {};
+  final Map<String, AdBreakPayload> _memoryBreakCache = {};
+  final Map<String, DateTime> _memoryBreakTimestamp = {};
 
   AdService._(this._prefs);
+
+  bool _adsDisabledForPremium() {
+    return PremiumService.isPremiumActive();
+  }
 
   /// Get singleton instance
   static Future<AdService> getInstance() async {
@@ -176,6 +189,7 @@ class AdService {
     AdPlacement placement, {
     bool forceRefresh = false,
   }) async {
+    if (_adsDisabledForPremium()) return [];
     final cacheKey = '$_cacheKeyPrefix${placement.name}';
     final timestampKey = '${cacheKey}_timestamp';
 
@@ -209,6 +223,8 @@ class AdService {
 
         // Cache the results
         await _cacheAds(cacheKey, timestampKey, ads);
+        _memoryAdsCache[cacheKey] = ads;
+        _memoryAdsCacheTimestamp[timestampKey] = DateTime.now();
         _markAdNetworkSuccess();
 
         return ads;
@@ -341,6 +357,7 @@ class AdService {
     String? constituency,
     String? mediaHint,
   }) async {
+    if (_adsDisabledForPremium()) return null;
     final resolvedMediaHint = mediaHint ?? _resolveMediaHint();
     final cacheKey = _targetedCacheKey(
       placement: placement,
@@ -384,6 +401,9 @@ class AdService {
     String? constituency,
     String? mediaHint,
   }) async {
+    if (_adsDisabledForPremium()) {
+      return {for (final placement in placements) placement: null};
+    }
     final resolvedMediaHint = mediaHint ?? _resolveMediaHint();
     final placementsCsv = placements.map((p) => p.name).join(',');
     final queryParams = <String, String>{
@@ -452,6 +472,7 @@ class AdService {
     String? constituency,
     String? mediaHint,
   }) async {
+    if (_adsDisabledForPremium()) return null;
     final resolvedMediaHint = mediaHint ?? _resolveMediaHint();
     final cacheKey = _breakCacheKey(
       placement: placement,
@@ -531,6 +552,7 @@ class AdService {
 
   /// Check if app launch ad should be shown (respects cooldown)
   Future<bool> shouldShowLaunchAd() async {
+    if (_adsDisabledForPremium()) return false;
     final config = await getDisplayConfig();
     if (!config.launchAdEnabled) return false;
 
@@ -566,6 +588,7 @@ class AdService {
   }
 
   Future<bool> shouldShowResumeAd() async {
+    if (_adsDisabledForPremium()) return false;
     final config = await getDisplayConfig();
     if (!config.launchAdResumeEnabled || !config.launchAdBreakEnabled) {
       return false;
@@ -619,12 +642,14 @@ class AdService {
 
   /// Get positions in rental feed where ads should appear
   Future<List<int>> getRentalFeedAdPositions() async {
+    if (_adsDisabledForPremium()) return [];
     final config = await getDisplayConfig();
     return config.feedPositions;
   }
 
   /// Check if filter ad should be shown
   Future<bool> isFilterAdEnabled() async {
+    if (_adsDisabledForPremium()) return false;
     final config = await getDisplayConfig();
     return config.filterAdEnabled;
   }
@@ -758,14 +783,25 @@ class AdService {
     String timestampKey,
     Advertisement ad,
   ) async {
+    final now = DateTime.now();
+    _memoryTargetedAdCache[cacheKey] = ad;
+    _memoryTargetedAdTimestamp[timestampKey] = now;
+    
     await _prefs.setString(cacheKey, jsonEncode(ad.toJson()));
-    await _prefs.setInt(timestampKey, DateTime.now().millisecondsSinceEpoch);
+    await _prefs.setInt(timestampKey, now.millisecondsSinceEpoch);
   }
 
   Future<Advertisement?> _getCachedTargetedAd(
     String cacheKey,
     String timestampKey,
   ) async {
+    if (_memoryTargetedAdCache.containsKey(cacheKey) && _memoryTargetedAdTimestamp.containsKey(timestampKey)) {
+      final memTimestamp = _memoryTargetedAdTimestamp[timestampKey]!;
+      if (DateTime.now().difference(memTimestamp) <= _targetedFreshExpiry) {
+        return _memoryTargetedAdCache[cacheKey];
+      }
+    }
+
     final timestamp = _prefs.getInt(timestampKey);
     if (timestamp == null) return null;
     final cachedTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -775,13 +811,23 @@ class AdService {
     final cached = _prefs.getString(cacheKey);
     if (cached == null || cached.isEmpty) return null;
     try {
-      return Advertisement.fromJson(jsonDecode(cached));
+      final ad = Advertisement.fromJson(jsonDecode(cached));
+      _memoryTargetedAdCache[cacheKey] = ad;
+      _memoryTargetedAdTimestamp[timestampKey] = cachedTime;
+      return ad;
     } catch (_) {
       return null;
     }
   }
 
   Advertisement? _getStaleTargetedAd(String cacheKey, String timestampKey) {
+    if (_memoryTargetedAdCache.containsKey(cacheKey) && _memoryTargetedAdTimestamp.containsKey(timestampKey)) {
+      final memTimestamp = _memoryTargetedAdTimestamp[timestampKey]!;
+      if (DateTime.now().difference(memTimestamp) <= _targetedStaleAllowed) {
+        return _memoryTargetedAdCache[cacheKey];
+      }
+    }
+
     final timestamp = _prefs.getInt(timestampKey);
     if (timestamp == null) return null;
     final cachedTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -791,7 +837,10 @@ class AdService {
     final cached = _prefs.getString(cacheKey);
     if (cached == null || cached.isEmpty) return null;
     try {
-      return Advertisement.fromJson(jsonDecode(cached));
+      final ad = Advertisement.fromJson(jsonDecode(cached));
+      _memoryTargetedAdCache[cacheKey] = ad;
+      _memoryTargetedAdTimestamp[timestampKey] = cachedTime;
+      return ad;
     } catch (_) {
       return null;
     }
@@ -918,43 +967,75 @@ class AdService {
   // Cache helpers
 
   Future<List<Advertisement>?> _getCachedAds(
-    String cacheKey,
-    String timestampKey,
-  ) async {
-    final timestamp = _prefs.getInt(timestampKey);
-    if (timestamp == null) return null;
+      String cacheKey, String timestampKey) async {
+    // Check in-memory cache first
+    if (_memoryAdsCache.containsKey(cacheKey) && _memoryAdsCacheTimestamp.containsKey(timestampKey)) {
+      final memTimestamp = _memoryAdsCacheTimestamp[timestampKey]!;
+      if (DateTime.now().difference(memTimestamp) <= _cacheExpiry) {
+        return _memoryAdsCache[cacheKey];
+      }
+    }
 
-    final cachedTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    if (DateTime.now().difference(cachedTime) > _cacheExpiry) return null;
+    final timestampStr = _prefs.getString(timestampKey);
+    if (timestampStr == null) return null;
 
-    final cached = _prefs.getString(cacheKey);
-    if (cached == null) return null;
+    final timestamp = DateTime.tryParse(timestampStr);
+    if (timestamp == null ||
+        DateTime.now().difference(timestamp) > _cacheExpiry) {
+      return null;
+    }
+
+    final adsJson = _prefs.getStringList(cacheKey);
+    if (adsJson == null) return null;
 
     try {
-      final list = jsonDecode(cached) as List;
-      return list.map((json) => Advertisement.fromJson(json)).toList();
-    } catch (e) {
+      final ads = adsJson
+          .map((json) => Advertisement.fromJson(jsonDecode(json)))
+          .toList();
+      
+      // Update memory cache
+      _memoryAdsCache[cacheKey] = ads;
+      _memoryAdsCacheTimestamp[timestampKey] = timestamp;
+      
+      return ads;
+    } catch (_) {
       return null;
     }
   }
 
   Future<List<Advertisement>?> _getStaleCache(
-    String cacheKey,
-    String timestampKey,
-  ) async {
-    final timestamp = _prefs.getInt(timestampKey);
-    if (timestamp == null) return null;
+      String cacheKey, String timestampKey) async {
+    // Check in-memory cache for stale data as well
+    if (_memoryAdsCache.containsKey(cacheKey) && _memoryAdsCacheTimestamp.containsKey(timestampKey)) {
+      final memTimestamp = _memoryAdsCacheTimestamp[timestampKey]!;
+      if (DateTime.now().difference(memTimestamp) <= _staleAllowed) {
+        return _memoryAdsCache[cacheKey];
+      }
+    }
 
-    final cachedTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    if (DateTime.now().difference(cachedTime) > _staleAllowed) return null;
+    final timestampStr = _prefs.getString(timestampKey);
+    if (timestampStr == null) return null;
 
-    final cached = _prefs.getString(cacheKey);
-    if (cached == null) return null;
+    final timestamp = DateTime.tryParse(timestampStr);
+    if (timestamp == null ||
+        DateTime.now().difference(timestamp) > _staleAllowed) {
+      return null;
+    }
+
+    final adsJson = _prefs.getStringList(cacheKey);
+    if (adsJson == null) return null;
 
     try {
-      final list = jsonDecode(cached) as List;
-      return list.map((json) => Advertisement.fromJson(json)).toList();
-    } catch (e) {
+      final ads = adsJson
+          .map((json) => Advertisement.fromJson(jsonDecode(json)))
+          .toList();
+          
+      // Update memory cache
+      _memoryAdsCache[cacheKey] = ads;
+      _memoryAdsCacheTimestamp[timestampKey] = timestamp;
+      
+      return ads;
+    } catch (_) {
       return null;
     }
   }

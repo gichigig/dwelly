@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../explore/presentation/explore_hub_page.dart';
 
 class AppShell extends StatefulWidget {
@@ -58,6 +59,25 @@ class _PlaceholderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (title == 'Account') {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Account')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            ListTile(
+              leading: const Icon(Icons.handyman),
+              title: const Text('My Helper Jobs'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                context.push('/client-jobs');
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       body: SafeArea(
         child: Center(

@@ -8,6 +8,8 @@ import 'core/services/ad_service.dart';
 import 'core/services/app_notification_center.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/chat_service.dart';
+import 'core/services/premium_service.dart';
+import 'core/services/google_ad_service.dart';
 import 'core/widgets/ad_break_screen.dart';
 import 'core/widgets/telegram/telegram_bottom_pill_nav.dart';
 import 'core/widgets/telegram/telegram_fragment_item.dart';
@@ -15,6 +17,7 @@ import 'features/listings/presentation/account_page.dart';
 import 'features/listings/presentation/donation_fab.dart';
 import 'features/listings/presentation/explore_page.dart';
 import 'features/listings/presentation/inbox_page.dart';
+import 'features/listings/presentation/premium_launch_screen.dart';
 import 'features/listings/presentation/saved_page.dart';
 
 class AppShell extends StatefulWidget {
@@ -30,8 +33,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   AdService? _adService;
   bool _isResumeAdInFlight = false;
   Timer? _unreadBadgeTimer;
+  bool _premiumLaunchShown = false;
   final _savedPageKey = GlobalKey<SavedPageState>();
   final List<Widget?> _pages = List<Widget?>.filled(4, null);
+  
+  bool _showBottomNav = true;
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis == Axis.vertical) {
+      if (notification is ScrollUpdateNotification) {
+        final delta = notification.scrollDelta ?? 0;
+        if (delta > 5.0 && _showBottomNav) {
+          setState(() => _showBottomNav = false);
+        } else if (delta < -5.0 && !_showBottomNav) {
+          setState(() => _showBottomNav = true);
+        }
+      }
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -44,6 +64,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
     _startUnreadBadgePolling();
     unawaited(_initAdService());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeShowPremiumLaunch());
+    });
+    // Fetch fresh profile on cold boot in case user upgraded out-of-band or was upgraded in a previous session
+    if (AuthService.isLoggedIn) {
+      unawaited(PremiumService.refreshPremiumStatus().then((_) {
+        if (mounted) setState(() {});
+      }));
+    }
   }
 
   @override
@@ -76,6 +105,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       unawaited(AppNotificationCenter.reload());
       unawaited(_refreshUnreadBadge());
       unawaited(_maybeShowResumeAd());
+      unawaited(PremiumService.refreshPremiumStatus().then((_) {
+        if (mounted) setState(() {});
+      }));
     }
   }
 
@@ -85,6 +117,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _unreadBadgeTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_refreshUnreadBadge());
     });
+  }
+
+  Future<void> _maybeShowPremiumLaunch() async {
+    if (!mounted || _premiumLaunchShown) return;
+    if (PremiumService.isPremiumActive()) return;
+    _premiumLaunchShown = true;
+
+    await Navigator.of(context, rootNavigator: true).push(
+      PageRouteBuilder(
+        opaque: true,
+        pageBuilder: (context, _, __) => const PremiumLaunchScreen(),
+        transitionsBuilder: (context, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
   }
 
   Future<void> _refreshUnreadBadge() async {
@@ -169,13 +217,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _pages[index] = const InboxPage();
         break;
       case 3:
-        _pages[index] = AccountPage(onNavigateToSaved: _navigateToSavedTab);
+        _pages[index] = AccountPage(
+          onNavigateToSaved: _navigateToSavedTab,
+          onNavigateToInbox: _navigateToInboxTab,
+        );
         break;
     }
   }
 
   void _navigateToSavedTab() {
     _navigateToTab(1, refreshSaved: true);
+  }
+
+  void _navigateToInboxTab() {
+    _navigateToTab(2);
   }
 
   void _navigateToTab(int index, {bool refreshSaved = false}) {
@@ -238,36 +293,53 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final isAccountTab = _index == 3;
 
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: List<Widget>.generate(
-          _pages.length,
-          (i) => _pages[i] ?? const SizedBox.shrink(),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
+        child: IndexedStack(
+          index: _index,
+          children: List<Widget>.generate(
+            _pages.length,
+            (i) => _pages[i] ?? const SizedBox.shrink(),
+          ),
         ),
       ),
       floatingActionButton: _isMarketplaceMode
           ? null
-          : DonationFab(
-              requireAuth: isAccountTab,
-              isAuthenticated: AuthService.isLoggedIn,
-              onLoginRequired: _showLoginRequiredSnackBar,
+          : AnimatedSlide(
+              duration: const Duration(milliseconds: 250),
+              offset: _showBottomNav ? Offset.zero : const Offset(0, 2),
+              child: DonationFab(
+                requireAuth: isAccountTab,
+                isAuthenticated: AuthService.isLoggedIn,
+                onLoginRequired: _showLoginRequiredSnackBar,
+              ),
             ),
       bottomNavigationBar: _isMarketplaceMode
           ? null
-          : ValueListenableBuilder<int>(
-              valueListenable: ChatService.unreadMessageCount,
-              builder: (context, unreadInboxCount, _) {
-                return TelegramBottomPillNav(
-                  items: _buildHomeTabs(unreadInboxCount),
-                  selectedIndex: _index,
-                  onSelected: (i) {
-                    _navigateToTab(i);
-                    if (i == 1 && _savedPageKey.currentState != null) {
-                      _savedPageKey.currentState?.refresh();
-                    }
-                  },
-                );
-              },
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const GoogleAdBannerWidget(),
+                AnimatedSlide(
+                  duration: const Duration(milliseconds: 250),
+                  offset: _showBottomNav ? Offset.zero : const Offset(0, 1.2),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: ChatService.unreadMessageCount,
+                    builder: (context, unreadInboxCount, _) {
+                      return TelegramBottomPillNav(
+                        items: _buildHomeTabs(unreadInboxCount),
+                        selectedIndex: _index,
+                        onSelected: (i) {
+                          _navigateToTab(i);
+                          if (i == 1 && _savedPageKey.currentState != null) {
+                            _savedPageKey.currentState?.refresh();
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
     );
   }

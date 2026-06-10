@@ -8,7 +8,9 @@ import '../data/id_scanner_service.dart';
 
 /// Page for scanning a found ID and registering it
 class FoundIdScanPage extends StatefulWidget {
-  const FoundIdScanPage({super.key});
+  final String? initialIdType;
+
+  const FoundIdScanPage({super.key, this.initialIdType});
 
   @override
   State<FoundIdScanPage> createState() => _FoundIdScanPageState();
@@ -23,6 +25,12 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   final _nameController = TextEditingController();
   final _idNumberController = TextEditingController();
   final _dobController = TextEditingController();
+  final _schoolController = TextEditingController();
+
+  static const String _nationalIdType = 'NATIONAL_ID';
+  static const String _schoolIdType = 'SCHOOL_ID';
+  final List<String> _idTypes = [_nationalIdType, _schoolIdType];
+  String _selectedIdType = _nationalIdType;
   
   File? _selectedImage;
   IdScanResult? _scanResult;
@@ -32,6 +40,19 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   String? _errorMessage;
   
   @override
+  void initState() {
+    super.initState();
+    _applyInitialIdType();
+  }
+
+  void _applyInitialIdType() {
+    final initial = widget.initialIdType;
+    if (initial != null && _idTypes.contains(initial)) {
+      _selectedIdType = initial;
+    }
+  }
+
+  @override
   void dispose() {
     _phoneController.dispose();
     _whatsappController.dispose();
@@ -40,6 +61,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
     _nameController.dispose();
     _idNumberController.dispose();
     _dobController.dispose();
+    _schoolController.dispose();
     super.dispose();
   }
   
@@ -212,6 +234,10 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       final response = await IdScannerService.registerFoundId(
         idNumber: _idNumberController.text.trim(),
         fullName: _nameController.text.trim(),
+        idType: _selectedIdType,
+        schoolName: _selectedIdType == _schoolIdType
+            ? _schoolController.text.trim()
+            : null,
         dateOfBirth: _parseDateOfBirth(_dobController.text.trim()),
         finderPhone: _phoneController.text.trim(),
         finderWhatsApp: _whatsappController.text.trim().isNotEmpty
@@ -421,6 +447,35 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         ),
                         const Divider(height: 24),
+                        DropdownButtonFormField<String>(
+                          value: _selectedIdType,
+                          items: _idTypes
+                              .map(
+                                (type) => DropdownMenuItem<String>(
+                                  value: type,
+                                  child: Text(
+                                    type == _schoolIdType
+                                        ? 'School ID'
+                                        : 'National ID',
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          decoration: InputDecoration(
+                            labelText: 'ID Type',
+                            prefixIcon: const Icon(Icons.badge_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _selectedIdType = value;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
                         TextFormField(
                           controller: _nameController,
                           decoration: InputDecoration(
@@ -439,11 +494,38 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                           },
                         ),
                         const SizedBox(height: 12),
+                        if (_selectedIdType == _schoolIdType) ...[
+                          TextFormField(
+                            controller: _schoolController,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: InputDecoration(
+                              labelText: 'School Name *',
+                              prefixIcon: const Icon(Icons.school_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (_selectedIdType != _schoolIdType) {
+                                return null;
+                              }
+                              if (value == null || value.trim().isEmpty) {
+                                return 'School name is required for School ID';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         TextFormField(
                           controller: _idNumberController,
-                          keyboardType: TextInputType.number,
+                          keyboardType: _selectedIdType == _schoolIdType
+                              ? TextInputType.text
+                              : TextInputType.number,
                           decoration: InputDecoration(
-                            labelText: 'ID Number *',
+                            labelText: _selectedIdType == _schoolIdType
+                                ? 'School ID Number *'
+                                : 'National ID Number *',
                             prefixIcon: const Icon(Icons.badge_outlined),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -453,7 +535,11 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                             if (value == null || value.trim().isEmpty) {
                               return 'ID number is required';
                             }
-                            if (value.trim().length < 7) {
+                            if (_selectedIdType == _schoolIdType) {
+                              if (value.trim().length < 3) {
+                                return 'Enter a valid school ID number';
+                              }
+                            } else if (value.trim().length < 7) {
                               return 'Enter a valid ID number';
                             }
                             return null;

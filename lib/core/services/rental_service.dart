@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import '../data/kenya_locations.dart';
 import '../models/rental.dart';
 import 'api_service.dart';
 import 'cache_service.dart';
 import 'client_identity_service.dart';
+import 'device_rental_cache_service.dart';
 import 'location_service.dart';
 import 'auth_service.dart';
 
@@ -470,7 +471,7 @@ class RentalService {
         if (nickname != null) 'nickname': nickname,
       };
 
-      final response = await http.post(
+      final response = await ApiService.timedPost(
         Uri.parse('${ApiService.baseUrl}/rentals/recommendations'),
         headers: _jsonHeadersWithAuth(),
         body: jsonEncode(requestBody),
@@ -713,6 +714,9 @@ class RentalService {
     double? latitude,
     double? longitude,
     bool sortByDistance = false,
+    bool useCone = false,
+    double? heading,
+    double? fov,
     int page = 0,
     int size = 20,
     double? minPrice,
@@ -731,6 +735,9 @@ class RentalService {
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
         'sortByDistance': sortByDistance,
+        'useCone': useCone,
+        if (heading != null) 'heading': heading,
+        if (fov != null) 'fov': fov,
         'anchorMode': 'AUTO',
         if (minPrice != null) 'minPrice': minPrice,
         if (maxPrice != null) 'maxPrice': maxPrice,
@@ -741,7 +748,7 @@ class RentalService {
         'size': size,
       };
 
-      final response = await http.post(
+      final response = await ApiService.timedPost(
         Uri.parse('${ApiService.baseUrl}/rentals/search/nearby'),
         headers: _jsonHeadersWithAuth(),
         body: jsonEncode(requestBody),
@@ -858,6 +865,11 @@ class RentalService {
   static Future<Rental?> getById(int id, {bool forceRefresh = false}) async {
     // Check cache first
     if (!forceRefresh) {
+      final deviceCached = await DeviceRentalCacheService.getCachedDetail(id);
+      if (deviceCached != null) {
+        CacheManager.rentalById.set('$id', deviceCached);
+        return deviceCached;
+      }
       final cached = CacheManager.rentalById.get('$id');
       if (cached != null) {
         return cached as Rental;
@@ -875,6 +887,7 @@ class RentalService {
       if (response.statusCode == 200) {
         final rental = Rental.fromJson(jsonDecode(response.body));
         CacheManager.rentalById.set('$id', rental);
+        await DeviceRentalCacheService.setCachedDetail(rental);
         return rental;
       } else if (response.statusCode == 404) {
         return null;

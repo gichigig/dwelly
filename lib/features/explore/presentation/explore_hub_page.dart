@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/widgets/top_notification_bell.dart';
 import '../../rentals/presentation/rentals_explore_view.dart';
 import '../../lost_id/presentation/lost_id_view.dart';
+import '../../helpers/presentation/helpers_view.dart';
 import 'explore_mode.dart';
 
 class ExploreHubPage extends StatefulWidget {
@@ -36,6 +37,11 @@ class _ExploreHubPageState extends State<ExploreHubPage> {
                   label: Text('Lost ID'),
                   icon: Icon(Icons.badge_outlined),
                 ),
+                ButtonSegment(
+                  value: ExploreMode.helpers,
+                  label: Text('Helpers'),
+                  icon: Icon(Icons.handyman_outlined),
+                ),
               ],
               selected: {_mode},
               onSelectionChanged: (s) => setState(() => _mode = s.first),
@@ -44,10 +50,11 @@ class _ExploreHubPageState extends State<ExploreHubPage> {
         ),
       ),
       body: IndexedStack(
-        index: _mode == ExploreMode.rentals ? 0 : 1,
+        index: _mode == ExploreMode.rentals ? 0 : _mode == ExploreMode.lostId ? 1 : 2,
         children: const [
           RentalsExploreView(key: ValueKey('rentals')),
           LostIdView(key: ValueKey('lostid')),
+          HelpersView(key: ValueKey('helpers')),
         ],
       ),
     );

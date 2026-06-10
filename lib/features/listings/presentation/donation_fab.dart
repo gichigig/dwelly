@@ -1,5 +1,10 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'donate_page.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/auth_bottom_sheets.dart';
 
 /// A floating action button for donations with an X to dismiss.
 /// When [requireAuth] is true and user is not authenticated,
@@ -22,6 +27,51 @@ class DonationFab extends StatefulWidget {
 
 class _DonationFabState extends State<DonationFab>
     with SingleTickerProviderStateMixin {
+    String _resolveDonationUrl() {
+      String baseUrl = 'https://billygichigdev.me/payments/mpesa';
+      const override = String.fromEnvironment(
+        'REALADMIN_DONATION_URL',
+        defaultValue: '',
+      );
+      if (override.isNotEmpty) {
+        baseUrl = override;
+      } else if (kDebugMode) {
+        if (kIsWeb) {
+          baseUrl = 'http://localhost:3000/payments/mpesa';
+        } else if (Platform.isIOS) {
+          baseUrl = 'http://localhost:3000/payments/mpesa';
+        } else {
+          baseUrl = 'http://10.0.2.2:3000/payments/mpesa';
+        }
+      }
+      
+      final token = AuthService.token;
+      if (token != null) {
+        return '$baseUrl?token=$token';
+      }
+      return baseUrl;
+    }
+
+    Future<void> _openDonationPage() async {
+      if (!AuthService.isLoggedIn) {
+        showLoginBottomSheet(
+          context,
+          onSuccess: () {},
+        );
+        return;
+      }
+      
+      final uri = Uri.parse(_resolveDonationUrl());
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to open donation page.')),
+        );
+      }
+    }
+
   bool _isExpanded = false;
   late AnimationController _animController;
   late Animation<double> _scaleAnim;
@@ -61,10 +111,7 @@ class _DonationFabState extends State<DonationFab>
       widget.onLoginRequired?.call();
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const DonatePage()),
-    );
+    _openDonationPage();
   }
 
   @override

@@ -1,48 +1,112 @@
 import 'dart:convert';
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../../core/models/user.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/cache_service.dart' as app_cache;
+import '../../../core/services/device_rental_cache_service.dart';
 import '../../../core/services/device_location_service.dart';
+import '../../../core/services/premium_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/data/kenya_locations.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/widgets/auth_gate_card.dart';
 import 'rental_alerts_page.dart';
-import 'donate_page.dart';
+import 'house_search_help_page.dart';
+import 'premium_page.dart';
 import 'notification_settings_page.dart';
 import 'security_center_page.dart';
 import 'security_setup_wizard_page.dart';
 import 'privacy_personalization_page.dart';
 import 'reports_safety_center_page.dart';
+import 'cache_management_page.dart';
 
 enum _SecurityWizardPromptAction { setupNow, remindLater }
 
 class AccountPage extends StatefulWidget {
   final VoidCallback? onNavigateToSaved;
-  const AccountPage({super.key, this.onNavigateToSaved});
+  final VoidCallback? onNavigateToInbox;
+
+  const AccountPage({
+    super.key,
+    this.onNavigateToSaved,
+    this.onNavigateToInbox,
+  });
 
   @override
   State<AccountPage> createState() => _AccountPageState();
 }
 
 class _AccountPageState extends State<AccountPage> {
+  String _resolveDonationUrl() {
+    String baseUrl = 'https://billygichigdev.me/payments/mpesa';
+    const override = String.fromEnvironment(
+      'REALADMIN_DONATION_URL',
+      defaultValue: '',
+    );
+    if (override.isNotEmpty) {
+      baseUrl = override;
+    } else if (kDebugMode) {
+      if (kIsWeb) {
+        baseUrl = 'http://localhost:3000/payments/mpesa';
+      } else if (Platform.isIOS) {
+        baseUrl = 'http://localhost:3000/payments/mpesa';
+      } else {
+        baseUrl = 'http://10.0.2.2:3000/payments/mpesa';
+      }
+    }
+    
+    final token = AuthService.token;
+    if (token != null) {
+      return '$baseUrl?token=$token';
+    }
+    return baseUrl;
+  }
+
+  Future<void> _openDonationPage() async {
+    if (!AuthService.isLoggedIn) {
+      showLoginBottomSheet(
+        context,
+        onSuccess: () {},
+      );
+      return;
+    }
+    
+    final uri = Uri.parse(_resolveDonationUrl());
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open donation page.')),
+      );
+    }
+  }
+
   static const String _securityWizardNextPromptPrefix =
       'security_setup_next_prompt_at_user_';
   static const Duration _securityWizardSnoozeDuration = Duration(days: 3);
   bool _securityCheckInFlight = false;
   DeviceLocationResult? _cachedDeviceLocation;
   bool _hasPendingProfileLocation = false;
+  String _cacheSizeStr = 'Calculating...';
+  int _totalCacheBytes = 0;
 
   @override
   void initState() {
     super.initState();
     _loadLocalLocationFallback();
+    _calculateCacheSize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoOpenSecurityWizard();
     });
@@ -56,6 +120,52 @@ class _AccountPageState extends State<AccountPage> {
       _cachedDeviceLocation = cached;
       _hasPendingProfileLocation = pending != null && pending.isNotEmpty;
     });
+  }
+
+// Top-level function for the background isolate
+int _calcDirSize(String dirPath) {
+  int total = 0;
+  final dir = Directory(dirPath);
+  if (dir.existsSync()) {
+    try {
+      for (final entity in dir.listSync(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          try {
+            total += entity.lengthSync();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+  return total;
+}
+
+  Future<void> _calculateCacheSize() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      
+      // Offload to a background isolate to prevent UI freezing
+      final totalSize = await compute(_calcDirSize, tempDir.path);
+      
+      if (!mounted) return;
+      setState(() {
+        _totalCacheBytes = totalSize;
+        if (totalSize < 1024 * 1024) {
+          _cacheSizeStr = '${(totalSize / 1024).toStringAsFixed(1)} KB';
+        } else if (totalSize < 1024 * 1024 * 1024) {
+          _cacheSizeStr = '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+        } else {
+          _cacheSizeStr = '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cacheSizeStr = 'Unknown size';
+          _totalCacheBytes = 0;
+        });
+      }
+    }
   }
 
   Future<void> _maybeAutoOpenSecurityWizard() async {
@@ -210,6 +320,8 @@ class _AccountPageState extends State<AccountPage> {
           ),
           const SizedBox(height: 24),
           _buildAppearanceCard(context),
+          const SizedBox(height: 16),
+          _buildCacheStorageItem(),
         ],
       ),
     );
@@ -314,10 +426,35 @@ class _AccountPageState extends State<AccountPage> {
             onTap: () => _showEditProfileDialog(context),
           ),
           _buildMenuItem(
+            icon: Icons.workspace_premium,
+            title: 'Dwelly Premium',
+            subtitle: _premiumSubtitle(user),
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
+            },
+          ),
+          _buildMenuItem(
             icon: Icons.bookmark,
             title: 'Saved Listings',
             onTap: () {
               widget.onNavigateToSaved?.call();
+            },
+          ),
+          _buildMenuItem(
+            icon: Icons.manage_search,
+            title: 'Hire a house search helper',
+            subtitle: 'Get help searching and continue in Inbox',
+            color: Theme.of(context).colorScheme.primary,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => HouseSearchHelpPage(
+                    onNavigateToInbox: widget.onNavigateToInbox,
+                  ),
+                ),
+              );
             },
           ),
           _buildMenuItem(
@@ -374,6 +511,20 @@ class _AccountPageState extends State<AccountPage> {
             },
           ),
           _buildMenuItem(
+            icon: Icons.workspace_premium,
+            title: user.isPremiumActive ? 'Premium Active' : 'Go Premium',
+            subtitle: user.isPremiumActive
+                ? 'Expires ${_formatDate(user.premiumExpiresAt)}'
+                : 'KES 300 for 30 days',
+            color: const Color(0xFF7C4DFF),
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
+            },
+          ),
+          _buildCacheStorageItem(),
+          _buildMenuItem(
             icon: Icons.dark_mode_outlined,
             title: 'Appearance',
             subtitle: _themeLabel(ThemeService.instance.mode),
@@ -389,11 +540,7 @@ class _AccountPageState extends State<AccountPage> {
             title: 'Support Dwelly',
             subtitle: 'Donate via M-Pesa',
             color: const Color(0xFF4CAF50),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const DonatePage()),
-              );
-            },
+            onTap: _openDonationPage,
           ),
           _buildMenuItem(
             icon: Icons.info,
@@ -433,6 +580,74 @@ class _AccountPageState extends State<AccountPage> {
     );
   }
 
+  Widget _buildCacheStorageItem() {
+    // 250 MB max for the visual bar (250 * 1024 * 1024 bytes)
+    const double maxVisualBytes = 250 * 1024 * 1024;
+    double progress = _totalCacheBytes / maxVisualBytes;
+    if (progress > 1.0) progress = 1.0;
+
+    return InkWell(
+      onTap: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CacheManagementPage()),
+        );
+        _calculateCacheSize();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.delete_sweep, color: Colors.grey[700]),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Clear device cache', style: TextStyle(fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$_cacheSizeStr stored on device',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: Colors.grey[300]?.withOpacity(0.5),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progress > 0.8 ? Colors.red : Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _premiumSubtitle(User user) {
+    if (PremiumService.isPremiumActive()) {
+      final expiresAt = user.premiumExpiresAt;
+      if (expiresAt != null) {
+        final date =
+            '${expiresAt.day.toString().padLeft(2, '0')}/'
+            '${expiresAt.month.toString().padLeft(2, '0')}/'
+            '${expiresAt.year}';
+        return 'Active until $date';
+      }
+      return 'Premium active';
+    }
+    return 'KES 300 for 30 days';
+  }
+
   Widget _buildAppearanceCard(BuildContext context) {
     final mode = ThemeService.instance.mode;
 
@@ -457,6 +672,14 @@ class _AccountPageState extends State<AccountPage> {
       case ThemeMode.dark:
         return 'Dark';
     }
+  }
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return 'soon';
+    final year = dateTime.year.toString().padLeft(4, '0');
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final day = dateTime.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 
   void _showThemeSheet(BuildContext context) {

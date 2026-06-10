@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:passkeys/authenticator.dart';
 import 'package:passkeys/types.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,9 +18,11 @@ import 'notification_service.dart';
 
 class AuthService {
   static const String _tokenKey = 'auth_token';
+  static const String _refreshTokenKey = 'auth_refresh_token';
   static const String _userKey = 'auth_user';
 
   static String? _token;
+  static String? _refreshToken;
   static User? _currentUser;
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -27,6 +30,10 @@ class AuthService {
   );
   static final PasskeyAuthenticator _passkeyAuthenticator =
       PasskeyAuthenticator();
+  static const String _bluvberryCallbackScheme = String.fromEnvironment(
+    'BLUVBERRY_CALLBACK_SCHEME',
+    defaultValue: 'dwelly',
+  );
 
   static String? get token => _token;
   static User? get currentUser => _currentUser;
@@ -35,6 +42,7 @@ class AuthService {
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(_tokenKey);
+    _refreshToken = prefs.getString(_refreshTokenKey);
     final userJson = prefs.getString(_userKey);
     if (userJson == null || userJson.isEmpty) {
       return;
@@ -61,9 +69,35 @@ class AuthService {
       // Avoid startup crash when old/corrupt auth payload exists in local storage.
       _logDebug('Auth cache restore failed; clearing stored session', e);
       _token = null;
+      _refreshToken = null;
       _currentUser = null;
       await prefs.remove(_tokenKey);
+      await prefs.remove(_refreshTokenKey);
       await prefs.remove(_userKey);
+    }
+  }
+
+  static Future<bool> refreshAuthToken() async {
+    if (_refreshToken == null) return false;
+
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': _refreshToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final authResponse = AuthResponse.fromJson(jsonDecode(response.body));
+        await _saveAuth(authResponse);
+        return true;
+      }
+      // If refresh fails (expired or revoked), clear everything.
+      await logout();
+      return false;
+    } catch (e) {
+      _logDebug('Failed to refresh token', e);
+      return false;
     }
   }
 
@@ -470,6 +504,108 @@ class AuthService {
     }
   }
 
+  // ==================== Bluvberry Sign-In ====================
+
+  static Future<AuthResponse> bluvberryLogin({bool persistSession = true}) async {
+    try {
+      final clientType = _resolveClientType();
+      final authorizeUrl =
+          '${ApiService.baseUrl}/auth/bluvberry/authorize?clientType=$clientType';
+
+      final result = await FlutterWebAuth2.authenticate(
+        url: authorizeUrl,
+        callbackUrlScheme: _bluvberryCallbackScheme,
+      );
+
+      final callbackUri = Uri.parse(result);
+      final code = callbackUri.queryParameters['code'];
+      if (code == null || code.isEmpty) {
+        throw const AppError.server(
+          message: 'Bluvberry sign-in did not return a valid code.',
+        );
+      }
+
+      final redirectUri = _resolveBluvberryRedirectUri();
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/auth/bluvberry/exchange'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'code': code,
+          'clientType': clientType,
+          'redirectUri': redirectUri,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final authResponse = AuthResponse.fromJson(jsonDecode(response.body));
+        if (persistSession) {
+          await _saveAuth(authResponse);
+        }
+        return authResponse;
+      }
+      throw ApiService.parseHttpError(
+        response,
+        fallbackMessage: 'Bluvberry sign-in failed.',
+      );
+    } catch (e) {
+      final appError = ApiService.parseException(
+        e,
+        fallbackMessage: 'Bluvberry sign-in failed.',
+      );
+      _logDebug('Bluvberry login error', appError.technicalMessage ?? e);
+      throw appError;
+    }
+  }
+
+  // ==================== RealAdmin SSO ====================
+
+  static Future<AuthResponse> realAdminSsoLogin({bool persistSession = true}) async {
+    try {
+      // Typically, an environment variable or config would dictate the RealAdmin frontend URL.
+      // Using localhost for prototype environments. For emulators connecting to host, we'll use 10.0.2.2 or 127.0.0.1
+      const authorizeUrl = 'http://127.0.0.1:3000/sso-authorize';
+
+      final result = await FlutterWebAuth2.authenticate(
+        url: authorizeUrl,
+        callbackUrlScheme: 'dwelly',
+      );
+
+      final callbackUri = Uri.parse(result);
+      final code = callbackUri.queryParameters['code'];
+      if (code == null || code.isEmpty) {
+        throw const AppError.server(
+          message: 'RealAdmin SSO did not return a valid code.',
+        );
+      }
+
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/auth/sso/exchange'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final authResponse = AuthResponse.fromJson(jsonDecode(response.body));
+        if (persistSession) {
+          await _saveAuth(authResponse);
+        }
+        return authResponse;
+      } else {
+        throw ApiService.parseHttpError(
+          response,
+          fallbackMessage: 'RealAdmin SSO failed.',
+        );
+      }
+    } catch (e) {
+      final appError = ApiService.parseException(
+        e,
+        fallbackMessage: 'RealAdmin SSO failed.',
+      );
+      _logDebug('RealAdmin SSO login error', appError.technicalMessage ?? e);
+      throw appError;
+    }
+  }
+
   // ==================== Google Sign-In ====================
 
   static Future<AuthResponse> googleLogin({bool persistSession = true}) async {
@@ -759,6 +895,12 @@ class AuthService {
           fypNicknames:
               (data['fypNicknames'] as List<dynamic>?)?.cast<String>() ??
               user.fypNicknames,
+          premiumStartedAt: data['premiumStartedAt'] != null
+            ? DateTime.tryParse(data['premiumStartedAt'].toString())
+            : _currentUser!.premiumStartedAt,
+          premiumExpiresAt: data['premiumExpiresAt'] != null
+            ? DateTime.tryParse(data['premiumExpiresAt'].toString())
+            : _currentUser!.premiumExpiresAt,
         );
         _currentUser = updatedUser;
         final prefs = await SharedPreferences.getInstance();
@@ -779,16 +921,60 @@ class AuthService {
     }
   }
 
+  static Future<User?> refreshCurrentUser() async {
+    if (_token == null) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/auth/me'),
+        headers: ApiService.getHeaders(token: _token),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final user = User.fromJson(data);
+        _currentUser = user;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_userKey, jsonEncode(user.toJson()));
+        return user;
+      }
+
+      throw ApiService.parseHttpError(
+        response,
+        fallbackMessage: 'Failed to refresh user profile.',
+      );
+    } catch (e) {
+      final appError = ApiService.parseException(
+        e,
+        fallbackMessage: 'Failed to refresh user profile.',
+      );
+      _logDebug('Refresh user error', appError.technicalMessage ?? e);
+      throw appError;
+    }
+  }
+
   static Future<void> logout() async {
+    // Notify the backend to revoke the token if possible.
+    if (_token != null && _refreshToken != null) {
+      try {
+        await http.post(
+          Uri.parse('${ApiService.baseUrl}/auth/logout'),
+          headers: ApiService.getHeaders(token: _token),
+        );
+      } catch (_) {}
+    }
+
     if (_token != null) {
       await NotificationService.unregisterDevice();
     }
     _token = null;
+    _refreshToken = null;
     _currentUser = null;
     CacheManager.clearAll();
     ApiService.clearCachedGets();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await prefs.remove(_refreshTokenKey);
     await prefs.remove(_userKey);
     await googleSignOut();
   }
@@ -799,9 +985,15 @@ class AuthService {
 
   static Future<void> _saveAuth(AuthResponse auth) async {
     _token = auth.token;
+    if (auth.refreshToken != null) {
+      _refreshToken = auth.refreshToken;
+    }
     _currentUser = auth.toUser();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, auth.token);
+    if (auth.refreshToken != null) {
+      await prefs.setString(_refreshTokenKey, auth.refreshToken!);
+    }
     await prefs.setString(_userKey, jsonEncode(_currentUser!.toJson()));
     await prefs.setString('last_login_at', DateTime.now().toIso8601String());
 
@@ -848,6 +1040,14 @@ class AuthService {
       case TargetPlatform.fuchsia:
         return 'WEB';
     }
+  }
+
+  static String _resolveBluvberryRedirectUri() {
+    if (kIsWeb) {
+      final base = Uri.base;
+      return base.replace(path: '/auth/bluvberry', query: '').toString();
+    }
+    return '${_bluvberryCallbackScheme}://auth/bluvberry';
   }
 
   static AppError _normalizeGoogleSignInException(PlatformException e) {

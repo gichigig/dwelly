@@ -45,6 +45,10 @@ class User {
   final List<String> fypWards; // Up to 5 preferred wards
   final List<String> fypNicknames; // Unlimited area nicknames
 
+  // Premium subscription
+  final DateTime? premiumStartedAt;
+  final DateTime? premiumExpiresAt;
+
   User({
     this.id,
     required this.email,
@@ -66,6 +70,8 @@ class User {
     this.locationLongitude,
     this.fypWards = const [],
     this.fypNicknames = const [],
+    this.premiumStartedAt,
+    this.premiumExpiresAt,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -93,6 +99,12 @@ class User {
       locationLongitude: _toDouble(json['locationLongitude']),
       fypWards: _toStringList(json['fypWards']),
       fypNicknames: _toStringList(json['fypNicknames']),
+      premiumStartedAt: json['premiumStartedAt'] != null
+          ? DateTime.tryParse(json['premiumStartedAt'].toString())
+          : null,
+      premiumExpiresAt: json['premiumExpiresAt'] != null
+          ? DateTime.tryParse(json['premiumExpiresAt'].toString())
+          : null,
     );
   }
 
@@ -115,6 +127,10 @@ class User {
       if (locationLongitude != null) 'locationLongitude': locationLongitude,
       'fypWards': fypWards,
       'fypNicknames': fypNicknames,
+      if (premiumStartedAt != null)
+        'premiumStartedAt': premiumStartedAt!.toIso8601String(),
+      if (premiumExpiresAt != null)
+        'premiumExpiresAt': premiumExpiresAt!.toIso8601String(),
     };
   }
 
@@ -144,6 +160,9 @@ class User {
 
   bool get hasFypPreferences => fypWards.isNotEmpty || fypNicknames.isNotEmpty;
 
+  bool get isPremiumActive =>
+      premiumExpiresAt != null && premiumExpiresAt!.isAfter(DateTime.now());
+
   User copyWith({
     int? id,
     String? email,
@@ -163,6 +182,8 @@ class User {
     double? locationLongitude,
     List<String>? fypWards,
     List<String>? fypNicknames,
+    DateTime? premiumStartedAt,
+    DateTime? premiumExpiresAt,
   }) {
     return User(
       id: id ?? this.id,
@@ -185,12 +206,15 @@ class User {
       locationLongitude: locationLongitude ?? this.locationLongitude,
       fypWards: fypWards ?? this.fypWards,
       fypNicknames: fypNicknames ?? this.fypNicknames,
+      premiumStartedAt: premiumStartedAt ?? this.premiumStartedAt,
+      premiumExpiresAt: premiumExpiresAt ?? this.premiumExpiresAt,
     );
   }
 }
 
 class AuthResponse {
   final String token;
+  final String? refreshToken;
   final String type;
   final int id;
   final String email;
@@ -212,8 +236,13 @@ class AuthResponse {
   final List<String> fypWards;
   final List<String> fypNicknames;
 
+  // Premium subscription
+  final DateTime? premiumStartedAt;
+  final DateTime? premiumExpiresAt;
+
   AuthResponse({
     required this.token,
+    this.refreshToken,
     required this.type,
     required this.id,
     required this.email,
@@ -230,11 +259,14 @@ class AuthResponse {
     this.locationLongitude,
     this.fypWards = const [],
     this.fypNicknames = const [],
+    this.premiumStartedAt,
+    this.premiumExpiresAt,
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
     return AuthResponse(
       token: json['token'] ?? '',
+      refreshToken: json['refreshToken'],
       type: json['type'] ?? 'Bearer',
       id: _toInt(json['id']) ?? 0,
       email: json['email'] ?? '',
@@ -251,6 +283,12 @@ class AuthResponse {
       locationLongitude: _toDouble(json['locationLongitude']),
       fypWards: _toStringList(json['fypWards']),
       fypNicknames: _toStringList(json['fypNicknames']),
+      premiumStartedAt: json['premiumStartedAt'] != null
+          ? DateTime.tryParse(json['premiumStartedAt'].toString())
+          : null,
+      premiumExpiresAt: json['premiumExpiresAt'] != null
+          ? DateTime.tryParse(json['premiumExpiresAt'].toString())
+          : null,
     );
   }
 
@@ -271,6 +309,8 @@ class AuthResponse {
       locationLongitude: locationLongitude,
       fypWards: fypWards,
       fypNicknames: fypNicknames,
+      premiumStartedAt: premiumStartedAt,
+      premiumExpiresAt: premiumExpiresAt,
     );
   }
 }

@@ -1,19 +1,36 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'app_shell.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/app_notification_center.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/theme_service.dart';
-import 'features/onboarding/location_onboarding_page.dart';
+import 'core/services/network_service.dart';
+import 'core/widgets/network_banner.dart';
+import 'features/onboarding/welcome_onboarding_page.dart';
 import 'features/splash/splash_screen.dart';
+
+class DwellyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..connectionTimeout = const Duration(seconds: 5);
+  }
+}
 
 void main() async {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      HttpOverrides.global = DwellyHttpOverrides();
+
+      await Firebase.initializeApp();
 
       FlutterError.onError = (details) {
         FlutterError.presentError(details);
@@ -26,13 +43,18 @@ void main() async {
       };
 
       // Keep critical startup work minimal so first frame appears faster.
-      final onboardingFuture = LocationOnboardingPage.isOnboardingComplete();
+      final onboardingFuture = WelcomeOnboardingPage.isOnboardingComplete();
       await Future.wait([
         AuthService.init(),
         ThemeService.init(),
         AppNotificationCenter.init(),
       ]);
+      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+        unawaited(MobileAds.instance.initialize());
+      }
       final onboardingDone = await onboardingFuture;
+
+      NetworkService.instance.initialize();
 
       runApp(
         DwellyApp(
@@ -74,10 +96,13 @@ class DwellyApp extends StatelessWidget {
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeService.mode,
+          builder: (context, child) {
+            return NetworkBanner(child: child!);
+          },
           home: SplashScreen(
             child: onboardingComplete
                 ? const AppShell()
-                : LocationOnboardingPage(child: const AppShell()),
+                : WelcomeOnboardingPage(child: const AppShell()),
           ),
         );
       },

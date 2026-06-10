@@ -22,6 +22,7 @@ class Rental {
   final int squareFeet;
   final String propertyType;
   final List<String> amenities;
+  final List<String> hashtags;
   final List<String> imageUrls;
   final bool petsAllowed;
   final bool parkingAvailable;
@@ -46,6 +47,12 @@ class Rental {
   // Popularity tracking
   final int saveCount;
 
+  // Premium Video fields
+  final bool hasVideo;
+  final String? videoUrl;
+  final String? compoundVideoUrl;
+  final String? cardDisplayPreference;
+
   Rental({
     this.id,
     required this.title,
@@ -68,6 +75,7 @@ class Rental {
     required this.squareFeet,
     required this.propertyType,
     this.amenities = const [],
+    this.hashtags = const [],
     this.imageUrls = const [],
     this.petsAllowed = false,
     this.parkingAvailable = false,
@@ -85,6 +93,10 @@ class Rental {
     this.requiresApproval = false,
     this.approvalStatus,
     this.saveCount = 0,
+    this.hasVideo = false,
+    this.videoUrl,
+    this.compoundVideoUrl,
+    this.cardDisplayPreference,
   });
   
   /// Returns true if the owner is a verified agent (gold badge)
@@ -116,6 +128,7 @@ class Rental {
       squareFeet: json['squareFeet'] ?? 0,
       propertyType: json['propertyType'] ?? 'OTHER',
       amenities: (json['amenities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      hashtags: (json['hashtags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       imageUrls: (json['imageUrls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       petsAllowed: json['petsAllowed'] ?? false,
       parkingAvailable: json['parkingAvailable'] ?? false,
@@ -133,6 +146,10 @@ class Rental {
       requiresApproval: json['requiresApproval'] ?? false,
       approvalStatus: json['approvalStatus'],
       saveCount: json['saveCount'] ?? 0,
+      hasVideo: json['hasVideo'] ?? false,
+      videoUrl: json['videoUrl'],
+      compoundVideoUrl: json['compoundVideoUrl'],
+      cardDisplayPreference: json['cardDisplayPreference'],
     );
   }
 
@@ -148,6 +165,7 @@ class Rental {
       if (county != null) 'county': county,
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
+      if (distanceMeters != null) 'distanceMeters': distanceMeters,
       if (areaName != null) 'areaName': areaName,
       if (directions != null) 'directions': directions,
       'city': city,
@@ -158,11 +176,29 @@ class Rental {
       'squareFeet': squareFeet,
       'propertyType': propertyType,
       'amenities': amenities,
+      'hashtags': hashtags,
       'imageUrls': imageUrls,
       'petsAllowed': petsAllowed,
       'parkingAvailable': parkingAvailable,
       'status': status,
       if (availableFrom != null) 'availableFrom': availableFrom,
+      if (ownerId != null) 'ownerId': ownerId,
+      if (ownerName != null) 'ownerName': ownerName,
+      if (ownerEmail != null) 'ownerEmail': ownerEmail,
+      if (ownerPhone != null) 'ownerPhone': ownerPhone,
+      if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+      if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
+      'ownerIsVerified': ownerIsVerified,
+      if (ownerUserType != null) 'ownerUserType': ownerUserType,
+      if (ownerVerificationStatus != null)
+        'ownerVerificationStatus': ownerVerificationStatus,
+      'requiresApproval': requiresApproval,
+      if (approvalStatus != null) 'approvalStatus': approvalStatus,
+      'saveCount': saveCount,
+      'hasVideo': hasVideo,
+      if (videoUrl != null) 'videoUrl': videoUrl,
+      if (compoundVideoUrl != null) 'compoundVideoUrl': compoundVideoUrl,
+      if (cardDisplayPreference != null) 'cardDisplayPreference': cardDisplayPreference,
     };
   }
 

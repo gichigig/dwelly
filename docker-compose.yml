@@ -24,8 +24,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./backend/src/main/resources/db/postgis_init.sql:/docker-entrypoint-initdb.d/postgis_init.sql
+      - ../dwelly-backend/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../dwelly-backend/src/main/resources/db/postgis_init.sql:/docker-entrypoint-initdb.d/postgis_init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -34,11 +34,9 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: ../dwelly-backend
       dockerfile: Dockerfile
     container_name: realestate-backend
-    env_file:
-      - ./backend/.env
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DB_HOST: postgres
@@ -59,14 +57,6 @@ services:
         condition: service_healthy
     volumes:
       - uploads_data:/app/uploads
-
-  ocr:
-    build:
-      context: ./realadmin/ocr_service
-      dockerfile: Dockerfile
-    container_name: realestate-ocr
-    ports:
-      - "8090:8090"
 
 volumes:
   postgres_data:

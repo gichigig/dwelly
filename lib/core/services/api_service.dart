@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 
 import '../errors/app_error.dart';
 import '../errors/error_mapper.dart';
+import 'network_service.dart';
 
 class ApiService {
   static final Map<String, _CachedGetEntry> _getCache = {};
   static final Map<String, Future<http.Response>> _inFlightGets = {};
   static final Map<String, String> _etagByKey = {};
-  static const Duration defaultRequestTimeout = Duration(seconds: 15);
+  static const Duration defaultRequestTimeout = Duration(seconds: 5);
 
   static const Map<String, String> _hostAliases = {
     // Common typo fallback to keep app usable if the wrong host is provided.
@@ -97,11 +99,7 @@ class ApiService {
   }
 
   static String get _defaultBaseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:8080/api';
-    }
-    // Android emulator uses 10.0.2.2 to reach host's localhost.
-    return 'http://10.0.2.2:8080/api';
+    return 'https://api.billygichigidev.me/api';
   }
 
   /// Helper method to get HTTP headers for API requests
@@ -121,6 +119,7 @@ class ApiService {
     Map<String, String>? headers,
     Duration timeout = defaultRequestTimeout,
   }) {
+    NetworkService.instance.checkNetwork();
     return http.get(uri, headers: headers).timeout(timeout);
   }
 
@@ -131,6 +130,7 @@ class ApiService {
     Encoding? encoding,
     Duration timeout = defaultRequestTimeout,
   }) {
+    NetworkService.instance.checkNetwork();
     return http
         .post(uri, headers: headers, body: body, encoding: encoding)
         .timeout(timeout);
@@ -143,6 +143,7 @@ class ApiService {
     Encoding? encoding,
     Duration timeout = defaultRequestTimeout,
   }) {
+    NetworkService.instance.checkNetwork();
     return http
         .put(uri, headers: headers, body: body, encoding: encoding)
         .timeout(timeout);
@@ -155,6 +156,7 @@ class ApiService {
     Encoding? encoding,
     Duration timeout = defaultRequestTimeout,
   }) {
+    NetworkService.instance.checkNetwork();
     return http
         .patch(uri, headers: headers, body: body, encoding: encoding)
         .timeout(timeout);
@@ -167,6 +169,7 @@ class ApiService {
     Encoding? encoding,
     Duration timeout = defaultRequestTimeout,
   }) {
+    NetworkService.instance.checkNetwork();
     return http
         .delete(uri, headers: headers, body: body, encoding: encoding)
         .timeout(timeout);

@@ -11,6 +11,8 @@ import '../../../core/widgets/banner_ad_widget.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/navigation/app_tab_navigator.dart';
 import 'chat_page.dart';
+import 'package:video_player/video_player.dart';
+import '../../../core/widgets/app_launch_ad_screen.dart';
 
 class RentalDetailPage extends StatefulWidget {
   final Rental rental;
@@ -27,6 +29,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   bool _hasRecordedDetailOpen = false;
   AdService? _adService;
   Advertisement? _listingDetailAd;
+  VideoPlayerController? _videoController;
 
   @override
   void initState() {
@@ -34,6 +37,78 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
     _recordDetailOpenOnce();
     _checkSaveStatus();
     _loadListingDetailAd();
+    _initVideo();
+  }
+
+  void _initVideo() {
+    final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
+    if (!isPremium) return;
+
+    _initializeVideoPlayer();
+  }
+
+  void _initializeVideoPlayer() {
+    if (widget.rental.hasVideo && widget.rental.videoUrl != null) {
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.rental.videoUrl!),
+      )..initialize().then((_) {
+          _videoController!.setLooping(true);
+          _videoController!.setVolume(1.0); // Allow sound in detail page
+          _videoController!.play();
+          if (mounted) setState(() {});
+        });
+    }
+  }
+
+  Future<void> _unlockVideoWithAd() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final adService = await AdService.getInstance();
+      final ad = await adService.getTargetedAd(
+        AdPlacement.INTERSTITIAL,
+        county: widget.rental.county,
+        constituency: widget.rental.constituency,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Remove loading
+
+      if (ad != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AppLaunchAdScreen(
+              ad: ad,
+              adService: adService,
+              placement: AdPlacement.INTERSTITIAL,
+              markLaunchAdShownOnComplete: false,
+              onComplete: () {
+                Navigator.pop(context); // Close ad screen
+                _initializeVideoPlayer();
+              },
+            ),
+          ),
+        );
+      } else {
+        // No ad available, just unlock video
+        _initializeVideoPlayer();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Remove loading
+      _initializeVideoPlayer(); // Fallback unlock
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
   }
 
   Future<void> _recordDetailOpenOnce() async {
@@ -237,12 +312,87 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: rental.imageUrls.isNotEmpty
+              background: (rental.imageUrls.isNotEmpty || rental.hasVideo)
                   ? PageView.builder(
-                      itemCount: rental.imageUrls.length,
+                      itemCount: rental.imageUrls.length + (rental.hasVideo ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (rental.hasVideo && index == 0) {
+                          if (_videoController != null && _videoController!.value.isInitialized) {
+                            return Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  color: Colors.black,
+                                  child: Center(
+                                    child: AspectRatio(
+                                      aspectRatio: _videoController!.value.aspectRatio,
+                                      child: VideoPlayer(_videoController!),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 16,
+                                  right: 16,
+                                  child: FloatingActionButton.small(
+                                    backgroundColor: Colors.black54,
+                                    onPressed: () {
+                                      setState(() {
+                                        _videoController!.value.volume > 0
+                                            ? _videoController!.setVolume(0)
+                                            : _videoController!.setVolume(1);
+                                      });
+                                    },
+                                    child: Icon(
+                                      _videoController!.value.volume > 0
+                                          ? Icons.volume_up
+                                          : Icons.volume_off,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          } else {
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Container(color: Colors.black87),
+                                Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'Watch Ad to Unlock Video',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      ElevatedButton.icon(
+                                        onPressed: _unlockVideoWithAd,
+                                        icon: const Icon(Icons.play_circle_fill),
+                                        label: const Text('Unlock Video'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Theme.of(context).primaryColor,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                        }
+
+                        final imageIndex = rental.hasVideo ? index - 1 : index;
                         return Image.network(
-                          rental.imageUrls[index],
+                          rental.imageUrls[imageIndex],
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return _buildPlaceholder();

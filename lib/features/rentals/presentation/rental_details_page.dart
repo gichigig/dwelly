@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:realestate/core/models/rental.dart';
 import 'package:realestate/core/di/providers.dart';
 import 'package:realestate/core/errors/ui_error.dart';
+import 'package:realestate/features/rentals/presentation/hashtag_search_page.dart';
 
 class RentalDetailsPage extends ConsumerStatefulWidget {
   final String id;
@@ -34,11 +38,24 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
         rental = result;
         isLoading = false;
       });
+      if (result != null) {
+        unawaited(_prefetchMedia(result));
+      }
     } catch (e) {
       setState(() {
         errorMessage = userErrorMessage(e);
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _prefetchMedia(Rental detail) async {
+    final urls = detail.imageUrls.take(5);
+    for (final url in urls) {
+      if (!mounted) {
+        return;
+      }
+      await precacheImage(CachedNetworkImageProvider(url), context);
     }
   }
 
@@ -104,15 +121,25 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                             setState(() => _currentImageIndex = index);
                           },
                           itemBuilder: (context, index) {
-                            return Image.network(
-                              rental!.imageUrls[index],
+                            return CachedNetworkImage(
+                              imageUrl: rental!.imageUrls[index],
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey[300],
-                                  child: const Icon(Icons.home, size: 64),
-                                );
-                              },
+                              placeholder: (context, url) => Container(
+                                color: Colors.grey[200],
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: Colors.grey[300],
+                                child: const Icon(Icons.home, size: 64),
+                              ),
                             );
                           },
                         )
@@ -511,6 +538,37 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                         return _AmenityChip(
                           icon: _getAmenityIcon(amenity),
                           label: amenity,
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  // Hashtags
+                  if (rental!.hashtags.isNotEmpty) ...[
+                    Text(
+                      'Tags',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: rental!.hashtags.map((tag) {
+                        return ActionChip(
+                          avatar: const Icon(Icons.tag, size: 16),
+                          label: Text(tag),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => HashtagSearchPage(hashtag: tag),
+                              ),
+                            );
+                          },
+                          backgroundColor: Colors.blue.withOpacity(0.1),
+                          labelStyle: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
+                          side: BorderSide.none,
+                          visualDensity: VisualDensity.compact,
                         );
                       }).toList(),
                     ),

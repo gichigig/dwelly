@@ -7,6 +7,7 @@ import '../models/advertisement.dart';
 import '../services/ad_service.dart';
 import 'video_ad_player.dart';
 import 'ad_form_modal.dart';
+import '../../features/splash/splash_screen.dart';
 
 /// Full-screen ad screen shown on app launch
 class AppLaunchAdScreen extends StatefulWidget {
@@ -289,45 +290,143 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: Stack(
-          fit: StackFit.expand,
+        child: Column(
           children: [
-            // Ad content
-            GestureDetector(onTap: _handleTap, child: _buildAdContent()),
-
-            // Sponsored label (top left)
-            if (widget.ad.sponsored)
-              Positioned(
-                top: 16,
-                left: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'SPONSORED',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+            // Top 3/4: Ad Content
+            Expanded(
+              flex: 3,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Ad content
+                  GestureDetector(
+                    onTap: _handleTap,
+                    child: Container(
                       color: Colors.black,
+                      child: _buildAdContent(),
                     ),
                   ),
+
+                  // Sponsored label (top left)
+                  if (widget.ad.sponsored)
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'SPONSORED',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Skip button (top right)
+                  if (widget.skipEnabled)
+                    Positioned(top: 16, right: 16, child: _buildSkipButton()),
+
+                  // Bottom info bar
+                  Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar()),
+                ],
+              ),
+            ),
+            // Bottom 1/4: Logo and Name
+            Expanded(
+              flex: 1,
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Small Logo
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF0EA5E9).withValues(alpha: 0.2),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: Colors.white,
+                                  child: CustomPaint(
+                                    painter: DwellyLogoPainter(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // App Name
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [
+                              Color(0xFF0EA5E9), // Teal
+                              Color(0xFF1E40AF), // Blue
+                            ],
+                          ).createShader(bounds),
+                          child: const Text(
+                            'Dwelly',
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Tagline
+                    Text(
+                      'Real Estate App',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-
-            // Skip button (top right)
-            if (widget.skipEnabled)
-              Positioned(top: 16, right: 16, child: _buildSkipButton()),
-
-            // Bottom info bar
-            Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar()),
+            ),
           ],
         ),
       ),

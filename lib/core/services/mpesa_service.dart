@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'api_service.dart';
+import 'auth_service.dart';
 
 class MpesaService {
   static const int _pollInterval = 3; // seconds
@@ -76,6 +77,103 @@ class MpesaService {
       }
     } catch (e) {
       return MpesaStatusResult(status: MpesaStatus.failed, resultDesc: 'Network error');
+    }
+  }
+
+  /// Initiate STK Push for premium purchase (KES 300)
+  static Future<MpesaStkResult> initiatePremiumStkPush({
+    required String phoneNumber,
+  }) async {
+    if (!AuthService.isLoggedIn || AuthService.token == null) {
+      return MpesaStkResult.error('Please sign in to continue.');
+    }
+
+    try {
+      final url = Uri.parse('${ApiService.baseUrl}/premium/stk-push');
+      final formattedPhone = _formatPhoneNumber(phoneNumber);
+      if (formattedPhone == null) {
+        return MpesaStkResult.error('Invalid phone number format');
+      }
+
+      final response = await http.post(
+        url,
+        headers: ApiService.getHeaders(token: AuthService.token),
+        body: jsonEncode({'phoneNumber': formattedPhone}),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        return MpesaStkResult.success(
+          checkoutRequestId: data['checkoutRequestId'],
+          merchantRequestId: data['merchantRequestId'],
+          customerMessage:
+              data['customerMessage'] ?? 'Please check your phone for the M-Pesa prompt',
+        );
+      }
+      return MpesaStkResult.error(data['message'] ?? 'Failed to initiate payment');
+    } catch (e) {
+      return MpesaStkResult.error('Network error. Please check your connection.');
+    }
+  }
+
+  /// Check premium payment status
+  static Future<PremiumStatusResult> checkPremiumStatus(String checkoutRequestId) async {
+    if (!AuthService.isLoggedIn || AuthService.token == null) {
+      return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Please sign in to continue.');
+    }
+
+    try {
+      final url = Uri.parse('${ApiService.baseUrl}/premium/status/$checkoutRequestId');
+      final response = await http.get(
+        url,
+        headers: ApiService.getHeaders(token: AuthService.token),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return PremiumStatusResult(
+          status: MpesaStatus.fromString(data['status'] ?? ''),
+          amount: data['amount'],
+          resultDesc: data['resultDesc'] ?? '',
+          mpesaReceiptNumber: data['mpesaReceiptNumber'] ?? '',
+          premiumActive: data['premiumActive'] == true,
+          premiumExpiresAt: data['premiumExpiresAt'] != null
+              ? DateTime.tryParse(data['premiumExpiresAt'].toString())
+              : null,
+        );
+      } else if (response.statusCode == 404) {
+        return PremiumStatusResult(status: MpesaStatus.pending);
+      } else if (response.statusCode == 401) {
+        return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Please sign in to continue.');
+      }
+      return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Failed to check status');
+    } catch (e) {
+      return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Network error');
+    }
+  }
+
+  /// Wait for premium payment completion with polling
+  static Stream<PremiumStatusResult> waitForPremiumPayment(String checkoutRequestId) async* {
+    int attempts = 0;
+
+    while (attempts < _maxPollAttempts) {
+      await Future.delayed(const Duration(seconds: _pollInterval));
+
+      final status = await checkPremiumStatus(checkoutRequestId);
+      yield status;
+
+      if (status.status != MpesaStatus.pending) {
+        break;
+      }
+
+      attempts++;
+    }
+
+    if (attempts >= _maxPollAttempts) {
+      yield PremiumStatusResult(
+        status: MpesaStatus.failed,
+        resultDesc: 'Payment timeout. Please check your M-Pesa messages.',
+      );
     }
   }
 
@@ -200,5 +298,23 @@ class MpesaStatusResult {
     this.amount,
     this.resultDesc = '',
     this.mpesaReceiptNumber = '',
+  });
+}
+
+class PremiumStatusResult {
+  final MpesaStatus status;
+  final int? amount;
+  final String resultDesc;
+  final String mpesaReceiptNumber;
+  final bool premiumActive;
+  final DateTime? premiumExpiresAt;
+
+  PremiumStatusResult({
+    required this.status,
+    this.amount,
+    this.resultDesc = '',
+    this.mpesaReceiptNumber = '',
+    this.premiumActive = false,
+    this.premiumExpiresAt,
   });
 }

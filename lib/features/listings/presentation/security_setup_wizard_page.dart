@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:passkeys/authenticator.dart';
 import 'package:passkeys/types.dart';
 import 'package:path_provider/path_provider.dart';
@@ -712,7 +712,7 @@ class _SecuritySetupWizardPageState extends State<SecuritySetupWizardPage> {
                               ElevatedButton(
                                 onPressed: _goNext,
                                 child: const Text('Continue'),
-                              )
+                              ),
                             OutlinedButton(
                               onPressed: _busy ? null : _goNext,
                               child: const Text('Skip for now'),

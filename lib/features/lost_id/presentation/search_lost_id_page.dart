@@ -4,7 +4,9 @@ import '../data/id_scanner_service.dart';
 
 /// Page for searching for a lost ID
 class SearchLostIdPage extends StatefulWidget {
-  const SearchLostIdPage({super.key});
+  final String? initialIdType;
+
+  const SearchLostIdPage({super.key, this.initialIdType});
 
   @override
   State<SearchLostIdPage> createState() => _SearchLostIdPageState();
@@ -14,15 +16,35 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _idNumberController = TextEditingController();
+  final _schoolController = TextEditingController();
+
+  static const String _nationalIdType = 'NATIONAL_ID';
+  static const String _schoolIdType = 'SCHOOL_ID';
+  final List<String> _idTypes = [_nationalIdType, _schoolIdType];
+  String _selectedIdType = _nationalIdType;
   
   bool _isSearching = false;
   SearchLostIdResponse? _searchResult;
   String? _errorMessage;
   
   @override
+  void initState() {
+    super.initState();
+    _applyInitialIdType();
+  }
+
+  void _applyInitialIdType() {
+    final initial = widget.initialIdType;
+    if (initial != null && _idTypes.contains(initial)) {
+      _selectedIdType = initial;
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _idNumberController.dispose();
+    _schoolController.dispose();
     super.dispose();
   }
   
@@ -39,6 +61,10 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
       final response = await IdScannerService.searchLostId(
         fullName: _nameController.text.trim(),
         idNumber: _idNumberController.text.trim(),
+        idType: _selectedIdType,
+        schoolName: _selectedIdType == _schoolIdType
+            ? _schoolController.text.trim()
+            : null,
       );
       
       setState(() {
@@ -96,13 +122,13 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
               ),
               const SizedBox(height: 24),
               
-              // Full Name input
+              // Name input
               TextFormField(
                 controller: _nameController,
                 textCapitalization: TextCapitalization.characters,
                 decoration: InputDecoration(
-                  labelText: 'Full Name (as on ID)',
-                  hintText: 'e.g., JOHN DOE MWANGI',
+                  labelText: 'Name (as on ID)',
+                  hintText: 'e.g., JOHN or JOHN DOE',
                   prefixIcon: const Icon(Icons.person_outline),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -110,27 +136,87 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your full name';
-                  }
-                  if (value.trim().split(' ').length < 2) {
-                    return 'Enter at least first and last name';
+                    return 'Please enter a name';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
+
+              // ID Type
+              DropdownButtonFormField<String>(
+                value: _selectedIdType,
+                items: _idTypes
+                    .map(
+                      (type) => DropdownMenuItem<String>(
+                        value: type,
+                        child: Text(
+                          type == _schoolIdType
+                              ? 'School ID'
+                              : 'National ID',
+                        ),
+                      ),
+                    )
+                    .toList(),
+                decoration: InputDecoration(
+                  labelText: 'ID Type',
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _selectedIdType = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+
+              if (_selectedIdType == _schoolIdType) ...[
+                TextFormField(
+                  controller: _schoolController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'School Name *',
+                    hintText: 'e.g., Nairobi School',
+                    prefixIcon: const Icon(Icons.school_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (_selectedIdType != _schoolIdType) return null;
+                    if (value == null || value.trim().isEmpty) {
+                      return 'School name is required for School ID';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
               
               // ID Number input
               TextFormField(
                 controller: _idNumberController,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(8),
-                ],
+                keyboardType: _selectedIdType == _schoolIdType
+                    ? TextInputType.text
+                    : TextInputType.number,
+                inputFormatters:
+                    _selectedIdType == _schoolIdType
+                        ? []
+                        : [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(8),
+                          ],
                 decoration: InputDecoration(
-                  labelText: 'ID Number',
-                  hintText: 'e.g., 12345678',
+                  labelText: _selectedIdType == _schoolIdType
+                      ? 'School ID Number'
+                      : 'National ID Number',
+                  hintText: _selectedIdType == _schoolIdType
+                      ? 'e.g., ADM-12345'
+                      : 'e.g., 12345678',
                   prefixIcon: const Icon(Icons.badge_outlined),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -140,7 +226,11 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter your ID number';
                   }
-                  if (value.trim().length < 7) {
+                  if (_selectedIdType == _schoolIdType) {
+                    if (value.trim().length < 3) {
+                      return 'Enter a valid school ID number';
+                    }
+                  } else if (value.trim().length < 7) {
                     return 'ID number must be 7-8 digits';
                   }
                   return null;

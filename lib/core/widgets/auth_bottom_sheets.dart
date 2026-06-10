@@ -76,6 +76,8 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
   final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  bool _isRealAdminLoading = false;
+  bool _isBluvberryLoading = false;
   bool _isMfaLoading = false;
   String? _error;
   MfaChallenge? _mfaChallenge;
@@ -214,6 +216,62 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
       if (mounted) {
         setState(() {
           _isGoogleLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _realAdminLogin() async {
+    setState(() {
+      _isRealAdminLoading = true;
+      _error = null;
+    });
+
+    try {
+      final authResponse = await AuthService.realAdminSsoLogin(
+        persistSession: false,
+      );
+      await _completeAuthenticatedLogin(authResponse);
+    } catch (e) {
+      if (!mounted || isSilentError(e)) return;
+      setState(() {
+        _error = userErrorMessage(
+          e,
+          fallbackMessage: 'RealAdmin sign-in failed. Please try again.',
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRealAdminLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _bluvberryLogin() async {
+    setState(() {
+      _isBluvberryLoading = true;
+      _error = null;
+    });
+
+    try {
+      final authResponse = await AuthService.bluvberryLogin(
+        persistSession: false,
+      );
+      await _completeAuthenticatedLogin(authResponse);
+    } catch (e) {
+      if (!mounted || isSilentError(e)) return;
+      setState(() {
+        _error = userErrorMessage(
+          e,
+          fallbackMessage: 'Bluvberry sign-in failed. Please try again.',
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBluvberryLoading = false;
         });
       }
     }
@@ -621,68 +679,55 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed:
-                            (_isLoading || _isGoogleLoading || _isMfaLoading)
-                            ? null
-                            : _googleLogin,
-                        icon: _isGoogleLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Image.network(
-                                'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
-                                height: 20,
-                                width: 20,
-                                errorBuilder: (_, __, ___) =>
-                                    const Icon(Icons.g_mobiledata, size: 24),
-                              ),
-                        label: const Text(
-                          'Continue with Google',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SocialIconButton(
+                          icon: Image.network(
+                            'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+                            height: 32,
+                            width: 32,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.g_mobiledata, size: 32),
                           ),
+                          label: 'Google',
+                          onPressed: (_isLoading ||
+                                  _isGoogleLoading ||
+                                  _isBluvberryLoading ||
+                                  _isMfaLoading)
+                              ? null
+                              : _googleLogin,
+                          isLoading: _isGoogleLoading,
                         ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        _SocialIconButton(
+                          icon: Image.asset(
+                            'assets/images/WhatsApp Image 2026-05-30 at 18.05.36.jpeg',
+                            height: 32,
+                            width: 32,
+                            fit: BoxFit.cover,
                           ),
-                          side: BorderSide(color: Colors.grey[300]!),
+                          label: 'RealAdmin',
+                          onPressed: (_isLoading ||
+                                  _isGoogleLoading ||
+                                  _isRealAdminLoading ||
+                                  _isMfaLoading)
+                              ? null
+                              : _realAdminLogin,
+                          isLoading: _isRealAdminLoading,
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed:
-                            (_isLoading || _isGoogleLoading || _isMfaLoading)
-                            ? null
-                            : _startPasskeyWithEmailPrompt,
-                        icon: const Icon(Icons.key_outlined),
-                        label: const Text(
-                          'Sign In with Passkey',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
+                        _SocialIconButton(
+                          icon: const Icon(Icons.key_outlined, size: 28),
+                          label: 'Passkey',
+                          onPressed: (_isLoading ||
+                                  _isGoogleLoading ||
+                                  _isBluvberryLoading ||
+                                  _isMfaLoading)
+                              ? null
+                              : _startPasskeyWithEmailPrompt,
                         ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(color: Colors.grey[300]!),
-                        ),
-                      ),
+                      ],
                     ),
                   ],
                 ],
@@ -1072,40 +1117,25 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: (_isLoading || _isGoogleLoading)
-                          ? null
-                          : _googleLogin,
-                      icon: _isGoogleLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Image.network(
-                              'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
-                              height: 20,
-                              width: 20,
-                              errorBuilder: (_, __, ___) =>
-                                  const Icon(Icons.g_mobiledata, size: 24),
-                            ),
-                      label: const Text(
-                        'Continue with Google',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _SocialIconButton(
+                        icon: Image.network(
+                          'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+                          height: 32,
+                          width: 32,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.g_mobiledata, size: 32),
                         ),
+                        label: 'Google',
+                        onPressed: (_isLoading || _isGoogleLoading)
+                            ? null
+                            : _googleLogin,
+                        isLoading: _isGoogleLoading,
                       ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1113,6 +1143,59 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SocialIconButton extends StatelessWidget {
+  final Widget icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
+  const _SocialIconButton({
+    required this.icon,
+    required this.label,
+    this.onPressed,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(30),
+          child: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.grey[300]!),
+            ),
+            child: Center(
+              child: isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : ClipOval(child: icon),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
     );
   }
 }

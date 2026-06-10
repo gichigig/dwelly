@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:video_player/video_player.dart';
 import '../../../core/models/rental.dart';
 import '../../../core/models/advertisement.dart';
 import '../../../core/data/kenya_locations.dart';
@@ -17,18 +18,21 @@ import '../../../core/services/saved_rental_service.dart';
 import '../../../core/services/user_preferences_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/ad_service.dart';
+import '../../../core/services/google_ad_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../core/widgets/app_launch_ad_screen.dart';
 import '../../../core/widgets/ad_break_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/widgets/banner_ad_widget.dart';
+import 'available_helpers_page.dart';
 import '../../../core/widgets/top_notification_bell.dart';
 import '../../../core/widgets/telegram/telegram_top_bar.dart';
 import '../../lost_id/presentation/found_id_scan_page.dart';
 import '../../lost_id/presentation/search_lost_id_page.dart';
 import '../../rentals/domain/rental_filters.dart' show UnitType, UnitTypeLabel;
 import '../../marketplace/presentation/marketplace_shell_page.dart';
-import '../../onboarding/widgets/onboarding_motion_step.dart';
 import 'rental_detail_page.dart';
+import 'map_explore_page.dart';
 
 class ExplorePage extends StatefulWidget {
   final ValueChanged<bool>? onMarketplaceModeChanged;
@@ -48,58 +52,15 @@ class _ExploreSwipeUpHintSheet extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: ColoredBox(
-                color: colorScheme.surfaceContainerHighest,
-                child: SizedBox(
-                  height: 160,
-                  width: double.infinity,
-                  child: OnboardingMotionScene(
-                    type: OnboardingMotionType.scroll,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.swipe_up_alt, size: 20),
-                SizedBox(width: 6),
-                Text(
-                  'Swipe for more',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Pull up to explore more rentals',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: Icon(
+            Icons.keyboard_arrow_up_rounded,
+            size: 42,
+            color: colorScheme.onSurfaceVariant.withOpacity(0.75),
+          ),
         ),
       ),
     );
@@ -150,6 +111,7 @@ class _ExplorePageState extends State<ExplorePage> {
   List<int> _feedAdPositions = [];
   Map<int, Advertisement?> _feedAds = {}; // Position -> Ad
   Advertisement? _homeBannerAd;
+  bool _showHelperBanner = true;
   Advertisement? _homeFeedAd;
   Advertisement? _searchResultsAd;
   Advertisement? _locationFilterAd;
@@ -214,6 +176,7 @@ class _ExplorePageState extends State<ExplorePage> {
     _searchFocusNode.addListener(_onSearchFocusChange);
     ChatService.safetyVisibilityVersion.addListener(_onSafetyVisibilityChanged);
     _startTypewriterEffect();
+    unawaited(_tryDetectLocation());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_maybeShowScrollHint());
     });
@@ -248,9 +211,22 @@ class _ExplorePageState extends State<ExplorePage> {
 
     // Load rentals immediately, then enrich with ads/location in background.
     _loadRentals();
-    unawaited(_initAds());
-    unawaited(_tryDetectLocation());
-    unawaited(_showLaunchAdIfNeeded());
+    _loadHelperBannerState();
+  }
+
+  Future<void> _loadHelperBannerState() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _showHelperBanner = prefs.getBool('show_helper_banner_v1') ?? true;
+    });
+  }
+
+  Future<void> _dismissHelperBanner() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('show_helper_banner_v1', false);
+    setState(() {
+      _showHelperBanner = false;
+    });
   }
 
   Future<void> _initAds() async {
@@ -642,10 +618,34 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 
   Future<void> _tryDetectLocation() async {
+    bool rentalsLoaded = false;
     try {
-      // First try cached location (instant)
-      final cached = await DeviceLocationService.getCachedLocation();
-      if (cached != null && cached.hasLocationData) {
+      // Hard 5-second deadline for the entire location detection.
+      // Geolocator native code can hang indefinitely on iOS simulator,
+      // so we enforce a Dart-level deadline that cannot be bypassed.
+      await Future.any([
+        _doDetectLocation().then((loaded) => rentalsLoaded = loaded),
+        Future.delayed(const Duration(seconds: 5)),
+      ]);
+    } catch (_) {
+      // Silently fail
+    } finally {
+      if (mounted) {
+        setState(() => _isDetectingLocation = false);
+        if (!rentalsLoaded && !_useFYP && !_hasSearchContext && !_filters.hasFilters) {
+          unawaited(_loadRentals(refresh: true));
+        }
+      }
+    }
+  }
+
+  /// Inner location detection logic, separated so _tryDetectLocation can
+  /// enforce a hard timeout via Future.any.
+  Future<bool> _doDetectLocation() async {
+    // First try cached location (instant)
+    final cached = await DeviceLocationService.getCachedLocation();
+    if (cached != null && cached.hasLocationData) {
+      if (mounted) {
         setState(() {
           _deviceLocation = cached;
           _isDetectingLocation = false;
@@ -653,42 +653,35 @@ class _ExplorePageState extends State<ExplorePage> {
         unawaited(_refreshLocationAwareAds());
         if (!_useFYP && !_hasSearchContext && !_filters.hasFilters) {
           unawaited(_loadRentals(refresh: true));
+          return true;
         }
-        return;
       }
+      return false;
+    }
 
-      // If we previously stored a denied flag, verify actual OS permission first.
-      // Users may have re-enabled permission in system settings.
-      final denied = await DeviceLocationService.hasUserDeniedLocation();
-      if (denied) {
-        final currentPermission = await DeviceLocationService.checkPermission();
-        if (currentPermission == LocationPermission.always ||
-            currentPermission == LocationPermission.whileInUse) {
-          await DeviceLocationService.setUserDeniedLocation(false);
-        } else if (currentPermission == LocationPermission.denied) {
-          await DeviceLocationService.setUserDeniedLocation(false);
-        } else if (currentPermission == LocationPermission.deniedForever) {
-          return;
-        }
-      }
-
-      final result = await DeviceLocationService.getCurrentLocation();
-      if (result.success && result.hasLocationData && mounted) {
-        setState(() {
-          _deviceLocation = result;
-        });
-        unawaited(_refreshLocationAwareAds());
-        if (!_useFYP && !_hasSearchContext && !_filters.hasFilters) {
-          unawaited(_loadRentals(refresh: true));
-        }
-      }
-    } catch (_) {
-      // Silently fail — just load all rentals
-    } finally {
-      if (mounted) {
-        setState(() => _isDetectingLocation = false);
+    // If we previously stored a denied flag, verify actual OS permission first.
+    // Users may have re-enabled permission in system settings.
+    final denied = await DeviceLocationService.hasUserDeniedLocation();
+    if (denied) {
+      final currentPermission = await DeviceLocationService.checkPermission();
+      if (currentPermission == LocationPermission.always ||
+          currentPermission == LocationPermission.whileInUse) {
+        await DeviceLocationService.setUserDeniedLocation(false);
+      } else if (currentPermission == LocationPermission.denied) {
+        await DeviceLocationService.setUserDeniedLocation(false);
+      } else if (currentPermission == LocationPermission.deniedForever) {
+        return false;
       }
     }
+
+    final result = await DeviceLocationService.getCurrentLocation();
+    if (result.success && result.hasLocationData && mounted) {
+      setState(() {
+        _deviceLocation = result;
+      });
+      unawaited(_refreshLocationAwareAds());
+    }
+    return false;
   }
 
   void _onScroll() {
@@ -738,7 +731,34 @@ class _ExplorePageState extends State<ExplorePage> {
     });
 
     try {
-      PaginatedRentals result;
+      // Hard 8-second deadline for the entire rental fetch.
+      // Prevents infinite loading if any inner API call bypasses .timeout()
+      // (e.g. TLS handshake stalls, DNS resolution hangs).
+      final result = await _fetchRentals().timeout(
+        const Duration(seconds: 8),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _rentals = result.rentals;
+        _hasMore = result.hasMore;
+        _currentPage = 0;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = userErrorMessage(
+          e,
+          fallbackMessage: 'Failed to load rentals.',
+        );
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// Inner fetch logic extracted so _loadRentals can enforce a hard timeout.
+  Future<PaginatedRentals> _fetchRentals() async {
       final hasConstituencyFilter =
           _filters.constituency != null && _filters.constituency!.isNotEmpty;
       _nearbyAreas = [];
@@ -773,9 +793,9 @@ class _ExplorePageState extends State<ExplorePage> {
             searchResult.anchorCounty ?? searchResult.resolvedCounty;
         _searchExhausted = searchResult.searchExhausted;
         _nextAction = searchResult.nextAction;
-        result = searchResult.rentals;
         _usingLocationAwareFeed = false;
         _usingConstituencyFeed = false;
+        return searchResult.rentals;
       } else if (_useFYP) {
         // FYP recommendations using user's fypWards/fypNicknames or local prefs
         final preferredAreas = _getFypPreferredAreas();
@@ -783,7 +803,7 @@ class _ExplorePageState extends State<ExplorePage> {
             _prefsService?.getExpandedBedroomPreferences() ?? [];
         final priceRange = _prefsService?.getPreferredPriceRange();
 
-        result = await RentalService.getRecommendations(
+        final result = await RentalService.getRecommendations(
           page: 0,
           size: _pageSize,
           preferredAreas: preferredAreas.isNotEmpty ? preferredAreas : null,
@@ -795,6 +815,7 @@ class _ExplorePageState extends State<ExplorePage> {
         );
         _usingLocationAwareFeed = false;
         _usingConstituencyFeed = false;
+        return result;
       } else if (hasConstituencyFilter) {
         final searchResult = await RentalService.smartLocationSearch(
           constituency: _filters.constituency,
@@ -817,11 +838,11 @@ class _ExplorePageState extends State<ExplorePage> {
             searchResult.anchorCounty ?? searchResult.resolvedCounty;
         _searchExhausted = searchResult.searchExhausted;
         _nextAction = searchResult.nextAction;
-        result = searchResult.rentals;
         _usingLocationAwareFeed = false;
         _usingConstituencyFeed = true;
+        return searchResult.rentals;
       } else if (_forceGlobalFeed) {
-        result = await RentalService.getPaginated(
+        final result = await RentalService.getPaginated(
           page: 0,
           size: _pageSize,
           filters: _filters,
@@ -829,6 +850,7 @@ class _ExplorePageState extends State<ExplorePage> {
         _usingLocationAwareFeed = false;
         _usingConstituencyFeed = false;
         _forceGlobalFeed = false;
+        return result;
       } else if (_deviceLocation != null && _deviceLocation!.hasLocationData) {
         // Default feed is location-first: user's ward first, then constituency neighbors.
         try {
@@ -863,53 +885,37 @@ class _ExplorePageState extends State<ExplorePage> {
           _nextAction = searchResult.nextAction;
           if (searchResult.rentals.rentals.isNotEmpty ||
               searchResult.rentals.totalElements > 0) {
-            result = searchResult.rentals;
             _usingLocationAwareFeed = true;
             _usingConstituencyFeed = false;
+            return searchResult.rentals;
           } else {
-            result = await RentalService.getPaginated(
+            _usingLocationAwareFeed = false;
+            _usingConstituencyFeed = false;
+            return await RentalService.getPaginated(
               page: 0,
               size: _pageSize,
               filters: _filters,
             );
-            _usingLocationAwareFeed = false;
-            _usingConstituencyFeed = false;
           }
         } catch (_) {
-          result = await RentalService.getPaginated(
+          _usingLocationAwareFeed = false;
+          _usingConstituencyFeed = false;
+          return await RentalService.getPaginated(
             page: 0,
             size: _pageSize,
             filters: _filters,
           );
-          _usingLocationAwareFeed = false;
-          _usingConstituencyFeed = false;
         }
       } else {
         // Regular paginated load with filters
-        result = await RentalService.getPaginated(
+        _usingLocationAwareFeed = false;
+        _usingConstituencyFeed = false;
+        return await RentalService.getPaginated(
           page: 0,
           size: _pageSize,
           filters: _filters,
         );
-        _usingLocationAwareFeed = false;
-        _usingConstituencyFeed = false;
       }
-
-      setState(() {
-        _rentals = result.rentals;
-        _hasMore = result.hasMore;
-        _currentPage = 0;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = userErrorMessage(
-          e,
-          fallbackMessage: 'Failed to load rentals.',
-        );
-        _isLoading = false;
-      });
-    }
   }
 
   Future<void> _loadMoreRentals() async {
@@ -1534,6 +1540,17 @@ class _ExplorePageState extends State<ExplorePage> {
                               title: 'Find Your Home',
                               subtitle: 'Rentals near you, faster to scan',
                               actions: [
+                                IconButton(
+                                  tooltip: 'Premium Map Radar',
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const MapExplorePage(),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.radar, color: Colors.green),
+                                ),
                                 const TopNotificationBell(),
                                 IconButton(
                                   tooltip: 'Switch to Marketplace',
@@ -1673,8 +1690,8 @@ class _ExplorePageState extends State<ExplorePage> {
                                                 context,
                                               ).colorScheme.primaryContainer
                                             : Theme.of(context)
-                                                .colorScheme
-                                                .surfaceContainerHighest,
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: IconButton(
@@ -1724,8 +1741,8 @@ class _ExplorePageState extends State<ExplorePage> {
                                                         context,
                                                       ).colorScheme.primary
                                                     : Theme.of(context)
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
                                               ),
                                       ),
                                     ),
@@ -2116,6 +2133,19 @@ class _ExplorePageState extends State<ExplorePage> {
                   ),
                 ),
               const SizedBox(height: 8),
+            if (_showHelperBanner)
+              _HouseSearchHelpBanner(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AvailableHelpersPage(),
+                    ),
+                  );
+                },
+                onClose: _dismissHelperBanner,
+              ),
+              const SizedBox(height: 8),
               // Content
               Expanded(child: _buildContent()),
             ],
@@ -2451,6 +2481,10 @@ class _ExplorePageState extends State<ExplorePage> {
             );
           }
 
+          if (itemInfo.isGoogleAd) {
+            return const GoogleAdBannerWidget();
+          }
+
           if (itemInfo.rental != null) {
             final rental = itemInfo.rental!;
             return _RentalCard(
@@ -2527,6 +2561,11 @@ class _ExplorePageState extends State<ExplorePage> {
           AdPlacement.RENTAL_FEED.name,
         );
       }
+
+      // Inject Google AdBanner every 5 rentals
+      if (oneBasedPosition % 5 == 0) {
+        items.add(_ListItemInfo(isGoogleAd: true));
+      }
     }
 
     if (_hasMore) {
@@ -2555,9 +2594,94 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 }
 
+class _HouseSearchHelpBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  const _HouseSearchHelpBanner({
+    required this.onTap,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Stack(
+        children: [
+          Material(
+            color: colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 32, 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.manage_search, color: colorScheme.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Need someone to search for you?',
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'See available helpers and their rates.',
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer.withValues(
+                                alpha: 0.78,
+                              ),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: colorScheme.primary),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: IconButton(
+              icon: Icon(Icons.close, size: 18, color: colorScheme.onPrimaryContainer.withOpacity(0.5)),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: onClose,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Helper class to identify item type in list
 class _ListItemInfo {
   final bool isAd;
+  final bool isGoogleAd;
   final bool isLoadingIndicator;
   final Advertisement? ad;
   final String? adPlacement;
@@ -2565,6 +2689,7 @@ class _ListItemInfo {
 
   _ListItemInfo({
     this.isAd = false,
+    this.isGoogleAd = false,
     this.isLoadingIndicator = false,
     this.ad,
     this.adPlacement,
@@ -2848,7 +2973,7 @@ class _FeedAdCardState extends State<_FeedAdCard> {
   }
 }
 
-class _RentalCard extends StatelessWidget {
+class _RentalCard extends StatefulWidget {
   final Rental rental;
   final VoidCallback onTap;
   final String? searchArea;
@@ -2865,16 +2990,156 @@ class _RentalCard extends StatelessWidget {
     required this.onReport,
   });
 
+  @override
+  State<_RentalCard> createState() => _RentalCardState();
+}
+
+class _RentalCardState extends State<_RentalCard> {
+  VideoPlayerController? _videoController;
+  VideoPlayerController? _compoundVideoController;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideos();
+  }
+
+  void _initVideos() {
+    final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
+    if (!isPremium) return;
+
+    if (widget.rental.hasVideo) {
+      if (widget.rental.cardDisplayPreference == 'VIDEO' &&
+          widget.rental.videoUrl != null) {
+        _videoController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.rental.videoUrl!),
+        )..initialize().then((_) {
+            _videoController!.setVolume(0);
+            _videoController!.setLooping(true);
+            _videoController!.play();
+            if (mounted) setState(() {});
+          });
+      }
+
+      if (widget.rental.cardDisplayPreference == 'ONE_PICTURE' &&
+          widget.rental.compoundVideoUrl != null) {
+        _compoundVideoController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.rental.compoundVideoUrl!),
+        )..initialize().then((_) {
+            _compoundVideoController!.setVolume(0);
+            _compoundVideoController!.setLooping(true);
+            _compoundVideoController!.play();
+            if (mounted) setState(() {});
+          });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _compoundVideoController?.dispose();
+    super.dispose();
+  }
+
   bool get _isExactMatch {
-    if (searchArea == null) return false;
-    return rental.city.toLowerCase() == searchArea!.toLowerCase();
+    if (widget.searchArea == null) return false;
+    return widget.rental.city.toLowerCase() == widget.searchArea!.toLowerCase();
   }
 
   bool get _isNearbyMatch {
-    if (searchArea == null || _isExactMatch) return false;
-    final nearbyAreas = LocationService.getNearbyAreas(searchArea!);
+    if (widget.searchArea == null || _isExactMatch) return false;
+    final nearbyAreas = LocationService.getNearbyAreas(widget.searchArea!);
     return nearbyAreas.any(
-      (area) => rental.city.toLowerCase().contains(area.toLowerCase()),
+      (area) => widget.rental.city.toLowerCase().contains(area.toLowerCase()),
+    );
+  }
+
+  Widget _buildMediaArea(BuildContext context) {
+    if (widget.rental.imageUrls.isEmpty) return _buildImageFallback(context);
+
+    final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
+
+    // Premium Video Feature
+    if (widget.rental.hasVideo && isPremium) {
+      if (widget.rental.cardDisplayPreference == 'VIDEO' && _videoController != null) {
+        return AspectRatio(
+          aspectRatio: 16 / 9,
+          child: _videoController!.value.isInitialized
+              ? VideoPlayer(_videoController!)
+              : const Center(child: CircularProgressIndicator()),
+        );
+      } else if (widget.rental.cardDisplayPreference == 'THREE_PICTURES' && widget.rental.imageUrls.length >= 3) {
+        return AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Image.network(widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity),
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                flex: 1,
+                child: Column(
+                  children: [
+                    Expanded(child: Image.network(widget.rental.imageUrls[1], fit: BoxFit.cover, width: double.infinity)),
+                    const SizedBox(height: 2),
+                    Expanded(child: Image.network(widget.rental.imageUrls[2], fit: BoxFit.cover, width: double.infinity)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      } else if (widget.rental.cardDisplayPreference == 'DOUBLE_PICTURE' && widget.rental.imageUrls.length >= 2) {
+        return AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Row(
+            children: [
+              Expanded(child: Image.network(widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity)),
+              const SizedBox(width: 2),
+              Expanded(child: Image.network(widget.rental.imageUrls[1], fit: BoxFit.cover, height: double.infinity)),
+            ],
+          ),
+        );
+      } else if (widget.rental.cardDisplayPreference == 'ONE_PICTURE' || widget.rental.cardDisplayPreference == null) {
+        return AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(widget.rental.imageUrls.first, fit: BoxFit.cover),
+              if (_compoundVideoController != null && _compoundVideoController!.value.isInitialized)
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4, spreadRadius: 1)],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: VideoPlayer(_compoundVideoController!),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // Default fallback to single image
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Image.network(
+        widget.rental.imageUrls.first,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildImageFallback(context),
+      ),
     );
   }
 
@@ -2882,28 +3147,18 @@ class _RentalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final specs =
-        '${rental.bedrooms} bed ? ${rental.bathrooms} bath ? ${rental.squareFeet} sqft';
+        '${widget.rental.bedrooms} bed • ${widget.rental.bathrooms} bath • ${widget.rental.squareFeet} sqft';
 
     return Card(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (rental.imageUrls.isNotEmpty)
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Image.network(
-                  rental.imageUrls.first,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _buildImageFallback(context),
-                ),
-              )
-            else
-              _buildImageFallback(context),
+            _buildMediaArea(context),
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -2913,7 +3168,7 @@ class _RentalCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          rental.title,
+                          widget.rental.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium?.copyWith(
@@ -2923,7 +3178,7 @@ class _RentalCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        rental.formattedPrice,
+                        widget.rental.formattedPrice,
                         style: theme.textTheme.titleSmall?.copyWith(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w800,
@@ -2940,7 +3195,7 @@ class _RentalCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${rental.city}, ${rental.state}',
+                    '${widget.rental.city}, ${widget.rental.state}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.primary,
                       fontWeight: FontWeight.w600,
@@ -2961,13 +3216,13 @@ class _RentalCard extends StatelessWidget {
                             ),
                           if (_isNearbyMatch)
                             _buildStatusChip(context, 'Nearby', Colors.green),
-                          if (rental.ownerIsVerified)
+                          if (widget.rental.ownerIsVerified)
                             _buildStatusChip(
                               context,
-                              rental.isVerifiedAgent
+                              widget.rental.isVerifiedAgent
                                   ? 'Verified Agent'
                                   : 'Verified',
-                              rental.isVerifiedAgent
+                              widget.rental.isVerifiedAgent
                                   ? const Color(0xFFFFB800)
                                   : Colors.blue,
                             ),
@@ -2975,18 +3230,18 @@ class _RentalCard extends StatelessWidget {
                       ),
                       const Spacer(),
                       IconButton(
-                        tooltip: isSaved ? 'Unsave' : 'Save',
-                        onPressed: onToggleSave,
+                        tooltip: widget.isSaved ? 'Unsave' : 'Save',
+                        onPressed: widget.onToggleSave,
                         icon: Icon(
-                          isSaved ? Icons.bookmark : Icons.bookmark_border,
-                          color: isSaved
+                          widget.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                          color: widget.isSaved
                               ? Colors.amber[700]
                               : theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                       IconButton(
                         tooltip: 'Report listing',
-                        onPressed: onReport,
+                        onPressed: widget.onReport,
                         icon: Icon(
                           Icons.flag_outlined,
                           color: theme.colorScheme.onSurfaceVariant,

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:passkeys/authenticator.dart';
 import 'package:passkeys/types.dart';
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +13,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 import 'security_setup_wizard_page.dart';
 import '../../auth/presentation/forgot_password_screen.dart';
+import '../../../core/models/user.dart';
 
 class SecurityCenterPage extends StatefulWidget {
   const SecurityCenterPage({super.key});
@@ -33,6 +34,7 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
   String _authProviderLabel(User? user) {
     final provider = (user?.authProvider ?? 'LOCAL').toUpperCase();
     if (provider == 'GOOGLE') return 'Google';
+    if (provider == 'BLUVBERRY') return 'Bluvberry';
     return 'Email/Password';
   }
 

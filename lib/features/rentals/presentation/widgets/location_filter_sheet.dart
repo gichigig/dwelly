@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../../core/data/kenya_locations.dart';
 import '../../../../core/services/device_location_service.dart';
+import '../../../../core/services/premium_service.dart';
 import '../../../../core/services/rental_service.dart';
 import '../../domain/rental_filters.dart';
+import '../../../listings/presentation/premium_page.dart';
 
 /// A bottom sheet for filtering rentals by location
 /// Supports searching by nickname/area name and will suggest wards if not found
@@ -176,7 +178,13 @@ class _LocationFilterSheetState extends State<LocationFilterSheet> {
     });
   }
 
-  void _applyFilter() {
+  Future<void> _applyFilter() async {
+    final canUse = await PremiumService.canUseLocationFilter();
+    if (!canUse) {
+      if (!mounted) return;
+      await _showPremiumRequiredDialog();
+      return;
+    }
     final int? minPrice = _priceFilterActive ? _priceRange.start.round() : null;
     final int? maxPrice = _priceFilterActive ? _priceRange.end.round() : null;
 
@@ -200,6 +208,7 @@ class _LocationFilterSheetState extends State<LocationFilterSheet> {
           maxPrice: maxPrice,
         ),
       );
+      await PremiumService.recordLocationFilterUse();
       Navigator.pop(context);
     } else if (_searchController.text.isNotEmpty ||
         _selectedUnitType != null ||
@@ -216,8 +225,36 @@ class _LocationFilterSheetState extends State<LocationFilterSheet> {
           maxPrice: maxPrice,
         ),
       );
+      await PremiumService.recordLocationFilterUse();
       Navigator.pop(context);
     }
+  }
+
+  Future<void> _showPremiumRequiredDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Premium required'),
+        content: const Text(
+          'Non-premium users can change location filters once per day. Go Premium to unlock unlimited filtering.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Not now'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PremiumPage()),
+              );
+            },
+            child: const Text('Go Premium'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:realestate/core/services/intercepted_client.dart' as http;
 import '../models/rental.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
@@ -58,7 +58,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.get(
+      final response = await ApiService.timedGet(
         Uri.parse('${ApiService.baseUrl}/saved-rentals?page=$page&size=$size'),
         headers: {
           'Accept': 'application/json',
@@ -142,7 +142,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.get(
+      final response = await ApiService.timedGet(
         Uri.parse('${ApiService.baseUrl}/saved-rentals/all'),
         headers: {
           'Accept': 'application/json',
@@ -180,7 +180,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.get(
+      final response = await ApiService.timedGet(
         Uri.parse('${ApiService.baseUrl}/saved-rentals/ids'),
         headers: {
           'Accept': 'application/json',
@@ -230,7 +230,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.post(
+      final response = await ApiService.timedPost(
         Uri.parse('${ApiService.baseUrl}/saved-rentals/$rentalId'),
         headers: {
           'Content-Type': 'application/json',
@@ -263,7 +263,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.delete(
+      final response = await ApiService.timedDelete(
         Uri.parse('${ApiService.baseUrl}/saved-rentals/$rentalId'),
         headers: {'Authorization': 'Bearer ${AuthService.token}'},
       );
@@ -292,7 +292,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.put(
+      final response = await ApiService.timedPut(
         Uri.parse('${ApiService.baseUrl}/saved-rentals/$rentalId/notes'),
         headers: {
           'Content-Type': 'application/json',
@@ -320,7 +320,7 @@ class SavedRentalService {
     }
 
     try {
-      final response = await http.get(
+      final response = await ApiService.timedGet(
         Uri.parse('${ApiService.baseUrl}/saved-rentals/count'),
         headers: {'Authorization': 'Bearer ${AuthService.token}'},
       );
