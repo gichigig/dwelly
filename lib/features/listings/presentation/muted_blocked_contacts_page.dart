@@ -4,6 +4,9 @@ import '../../../core/errors/ui_error.dart';
 import '../../../core/models/chat.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/chat_service.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/widgets/full_screen_image_avatar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 
 class MutedBlockedContactsPage extends StatefulWidget {
@@ -228,8 +231,9 @@ class _MutedBlockedContactsPageState extends State<MutedBlockedContactsPage> {
         itemBuilder: (context, index) {
           final contact = _contacts[index];
           return ListTile(
-            leading: CircleAvatar(
-              child: Text(
+            leading: FullScreenImageAvatar(
+              avatarUrl: contact.targetAvatarUrl,
+              fallbackWidget: Text(
                 contact.targetName.isEmpty
                     ? '?'
                     : contact.targetName.substring(0, 1).toUpperCase(),

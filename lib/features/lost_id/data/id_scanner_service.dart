@@ -2,18 +2,56 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:realestate/core/services/api_service.dart';
+import 'package:realestate/core/services/auth_service.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 /// Service for scanning Kenyan IDs and interacting with the Found ID API
 class IdScannerService {
   /// Scan an image and extract Kenyan ID information
   static Future<IdScanResult> scanIdFromImage(File imageFile) async {
-    return IdScanResult(
-      success: false,
-      fullText: '',
-      errors: [
-        'Text recognition is disabled in this build. Use a physical device to scan IDs.',
-      ],
-    );
+    final textRecognizer = TextRecognizer();
+    
+    try {
+      final inputImage = InputImage.fromFile(imageFile);
+      final recognizedText = await textRecognizer.processImage(inputImage);
+      
+      final text = recognizedText.text;
+      final lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      
+      // Extract ID fields
+      final idNumber = _extractIdNumber(text, lines);
+      final names = _extractFullNames(text, lines);
+      
+      final errors = <String>[];
+      
+      if (idNumber == null) {
+        errors.add('Could not detect ID number. Please ensure the ID number is clearly visible.');
+      }
+      if (names['fullName'] == null) {
+        errors.add('Could not detect name. Please ensure the name is clearly visible.');
+      }
+
+      final hasAnyCoreField = idNumber != null || names['fullName'] != null;
+      
+      return IdScanResult(
+        success: hasAnyCoreField,
+        idNumber: idNumber,
+        fullName: names['fullName'],
+        firstName: names['firstName'],
+        middleName: names['middleName'],
+        lastName: names['lastName'],
+        fullText: text,
+        errors: errors,
+      );
+    } catch (e) {
+      return IdScanResult(
+        success: false,
+        fullText: '',
+        errors: ['Failed to process image: ${e.toString()}'],
+      );
+    } finally {
+      textRecognizer.close();
+    }
   }
   
   /// Extract ID number (7-8 digits)
@@ -216,58 +254,6 @@ class IdScannerService {
     };
   }
   
-  /// Extract date of birth (DD.MM.YYYY format)
-  static String? _extractDateOfBirth(String text, List<String> lines) {
-    final datePatterns = [
-      RegExp(r'(\d{1,2})\.(\d{1,2})\.(\d{4})'),
-      RegExp(r'(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})'),
-      RegExp(r'(\d{1,2})\s+(\d{1,2})\s+(\d{4})'),
-    ];
-    
-    // Find DATE OF BIRTH line
-    final dobLineIndex = lines.indexWhere((line) {
-      final upper = line.toUpperCase();
-      return upper.contains('DATE OF BIRTH') || upper.contains('DOB') ||
-             (upper.contains('BIRTH') && upper.contains('DATE'));
-    });
-    
-    if (dobLineIndex != -1) {
-      for (var i = dobLineIndex; i < (dobLineIndex + 3).clamp(0, lines.length); i++) {
-        final line = lines[i];
-        for (final pattern in datePatterns) {
-          final match = pattern.firstMatch(line);
-          if (match != null) {
-            final day = match.group(1)!.padLeft(2, '0');
-            final month = match.group(2)!.padLeft(2, '0');
-            final year = match.group(3)!;
-            
-            final yearNum = int.tryParse(year) ?? 0;
-            if (yearNum >= 1920 && yearNum <= 2015) {
-              return '$year-$month-$day';
-            }
-          }
-        }
-      }
-    }
-    
-    // Fallback: find first reasonable date
-    for (final pattern in datePatterns) {
-      final matches = pattern.allMatches(text);
-      for (final match in matches) {
-        final day = match.group(1)!.padLeft(2, '0');
-        final month = match.group(2)!.padLeft(2, '0');
-        final year = match.group(3)!;
-        
-        final yearNum = int.tryParse(year) ?? 0;
-        if (yearNum >= 1920 && yearNum <= 2015) {
-          return '$year-$month-$day';
-        }
-      }
-    }
-    
-    return null;
-  }
-  
   // ==================== API Methods ====================
   
   /// Register a found ID in the database
@@ -285,7 +271,10 @@ class IdScannerService {
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/found-ids'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Mobile-Api-Key': ApiService.mobileApiKey,
+        },
         body: jsonEncode({
           'idNumber': idNumber,
           'fullName': fullName,
@@ -367,6 +356,106 @@ class IdScannerService {
         message: 'Network error. Please check your connection.',
       );
     }
+  }
+
+  /// Create a lost ID alert subscription
+  static Future<LostIdAlertModel?> createLostIdAlert({
+    required String idNumber,
+    required String fullName,
+    required bool whatsappAlertsEnabled,
+    String? whatsappNumber,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/found-ids/alerts'),
+        headers: ApiService.getHeaders(token: AuthService.token),
+        body: jsonEncode({
+          'idNumber': idNumber,
+          'fullName': fullName,
+          'whatsappAlertsEnabled': whatsappAlertsEnabled,
+          'whatsappNumber': whatsappNumber,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return LostIdAlertModel.fromJson(data);
+      } else {
+        final data = jsonDecode(response.body);
+        throw Exception(data['error'] ?? 'Failed to create lost ID alert');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Get active lost ID alerts for current user
+  static Future<List<LostIdAlertModel>> getLostIdAlerts() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/found-ids/alerts'),
+        headers: ApiService.getHeaders(token: AuthService.token),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => LostIdAlertModel.fromJson(json)).toList();
+      } else {
+        final data = jsonDecode(response.body);
+        throw Exception(data['error'] ?? 'Failed to fetch lost ID alerts');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Delete a lost ID alert subscription
+  static Future<void> deleteLostIdAlert(int alertId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${ApiService.baseUrl}/found-ids/alerts/$alertId'),
+        headers: ApiService.getHeaders(token: AuthService.token),
+      );
+
+      if (response.statusCode != 200) {
+        final data = jsonDecode(response.body);
+        throw Exception(data['error'] ?? 'Failed to delete lost ID alert');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+}
+
+/// Model for lost ID alerts
+class LostIdAlertModel {
+  final int id;
+  final String idNumber;
+  final String fullName;
+  final bool whatsappAlertsEnabled;
+  final String? whatsappNumber;
+  final DateTime createdAt;
+
+  LostIdAlertModel({
+    required this.id,
+    required this.idNumber,
+    required this.fullName,
+    required this.whatsappAlertsEnabled,
+    this.whatsappNumber,
+    required this.createdAt,
+  });
+
+  factory LostIdAlertModel.fromJson(Map<String, dynamic> json) {
+    return LostIdAlertModel(
+      id: json['id'] as int,
+      idNumber: json['idNumber'] as String,
+      fullName: json['fullName'] as String,
+      whatsappAlertsEnabled: json['whatsappAlertsEnabled'] as bool? ?? false,
+      whatsappNumber: json['whatsappNumber'] as String?,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now(),
+    );
   }
 }
 

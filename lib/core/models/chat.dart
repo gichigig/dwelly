@@ -3,6 +3,8 @@ class ChatMessage {
   final int conversationId;
   final int senderId;
   final String senderName;
+  final String? senderUsername;
+  final String? senderAvatarUrl;
   final String? clientMessageId;
   final String content;
   final String messageType; // TEXT, VIDEO, SAFETY_WARNING
@@ -17,6 +19,8 @@ class ChatMessage {
     required this.conversationId,
     required this.senderId,
     required this.senderName,
+    this.senderUsername,
+    this.senderAvatarUrl,
     this.clientMessageId,
     required this.content,
     this.messageType = 'TEXT',
@@ -40,6 +44,8 @@ class ChatMessage {
       conversationId: json['conversationId'] ?? 0,
       senderId: json['senderId'] ?? 0,
       senderName: json['senderName'] ?? '',
+      senderUsername: json['senderUsername'],
+      senderAvatarUrl: json['senderAvatarUrl'],
       clientMessageId: json['clientMessageId']?.toString(),
       content: json['content'] ?? '',
       messageType: json['messageType'] ?? 'TEXT',
@@ -58,6 +64,7 @@ class ChatMessage {
       'conversationId': conversationId,
       'senderId': senderId,
       'senderName': senderName,
+      if (senderUsername != null) 'senderUsername': senderUsername,
       if (clientMessageId != null) 'clientMessageId': clientMessageId,
       'content': content,
       'messageType': messageType,
@@ -79,8 +86,12 @@ class Conversation {
   final String rentalTitle;
   final int userId;
   final String userName;
+  final String? userUsername;
+  final String? userAvatarUrl;
   final int ownerId;
   final String ownerName;
+  final String? ownerUsername;
+  final String? ownerAvatarUrl;
   final bool mutedByMe;
   final bool blockedByMe;
   final bool blockedMe;
@@ -99,8 +110,12 @@ class Conversation {
     required this.rentalTitle,
     required this.userId,
     required this.userName,
+    this.userUsername,
+    this.userAvatarUrl,
     required this.ownerId,
     required this.ownerName,
+    this.ownerUsername,
+    this.ownerAvatarUrl,
     this.mutedByMe = false,
     this.blockedByMe = false,
     this.blockedMe = false,
@@ -124,8 +139,12 @@ class Conversation {
       rentalTitle: json['rentalTitle'] ?? '',
       userId: json['userId'] ?? 0,
       userName: json['userName'] ?? '',
+      userUsername: json['userUsername'],
+      userAvatarUrl: json['userAvatarUrl'],
       ownerId: json['ownerId'] ?? 0,
       ownerName: json['ownerName'] ?? '',
+      ownerUsername: json['ownerUsername'],
+      ownerAvatarUrl: json['ownerAvatarUrl'],
       mutedByMe: json['mutedByMe'] == true,
       blockedByMe: json['blockedByMe'] == true,
       blockedMe: json['blockedMe'] == true,
@@ -151,8 +170,10 @@ class Conversation {
       'rentalTitle': rentalTitle,
       'userId': userId,
       'userName': userName,
+      if (userUsername != null) 'userUsername': userUsername,
       'ownerId': ownerId,
       'ownerName': ownerName,
+      if (ownerUsername != null) 'ownerUsername': ownerUsername,
       'mutedByMe': mutedByMe,
       'blockedByMe': blockedByMe,
       'blockedMe': blockedMe,
@@ -202,6 +223,7 @@ class ChatSafetyContact {
   final int targetUserId;
   final String targetName;
   final String? targetEmail;
+  final String? targetAvatarUrl;
   final bool muted;
   final bool blocked;
   final DateTime? updatedAt;
@@ -210,6 +232,7 @@ class ChatSafetyContact {
     required this.targetUserId,
     required this.targetName,
     this.targetEmail,
+    this.targetAvatarUrl,
     required this.muted,
     required this.blocked,
     this.updatedAt,
@@ -220,6 +243,7 @@ class ChatSafetyContact {
       targetUserId: (json['targetUserId'] as num?)?.toInt() ?? 0,
       targetName: (json['targetName'] ?? '').toString(),
       targetEmail: json['targetEmail']?.toString(),
+      targetAvatarUrl: json['targetAvatarUrl']?.toString(),
       muted: json['muted'] == true,
       blocked: json['blocked'] == true,
       updatedAt: json['updatedAt'] == null

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/helpers_repository.dart';
 import 'hire_helper_bottom_sheet.dart';
+import 'package:dwelly/core/services/api_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/widgets/full_screen_image_avatar.dart';
 
 class HelpersView extends ConsumerStatefulWidget {
   const HelpersView({super.key});
@@ -70,10 +73,11 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                         children: [
                           Row(
                             children: [
-                              CircleAvatar(
+                              FullScreenImageAvatar(
                                 radius: 24,
                                 backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                                child: Text(
+                                avatarUrl: helper.avatarUrl,
+                                fallbackWidget: Text(
                                   helper.name[0],
                                   style: TextStyle(
                                     color: Theme.of(context).primaryColor,

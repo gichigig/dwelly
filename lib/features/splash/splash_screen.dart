@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/advertisement.dart';
 import '../../core/services/ad_service.dart';
 import '../../core/services/google_ad_service.dart';
+import '../../core/services/premium_service.dart';
 import '../../core/widgets/app_launch_ad_screen.dart';
 
 class _SplashAdPayload {
@@ -140,26 +141,33 @@ class _SplashScreenState extends State<SplashScreen>
           animation: _animationController,
           builder: (context, child) {
             return Column(
+              mainAxisAlignment: PremiumService.isPremiumActive() ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
-                // Top 3/4: Ad
-              Expanded(
-                flex: 3,
-                child: SafeArea(
-                  child: Center(
-                    child: Opacity(
-                      opacity: _fadeAnimation.value,
-                      child: Transform.scale(
-                        scale: _scaleAnimation.value,
-                        child: const GoogleAdMediumRectangleWidget(),
+              if (!PremiumService.isPremiumActive()) ...[
+                Expanded(
+                  child: Opacity(
+                    opacity: _fadeAnimation.value,
+                    child: const SizedBox(
+                      width: double.infinity,
+                      height: double.infinity,
+                      child: FittedBox(
+                        fit: BoxFit.fill,
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: 300,
+                          height: 250,
+                          child: GoogleAdMediumRectangleWidget(),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 2), // 2px gap bordering the logo
+              ],
               
-              // Bottom 1/4: Logo and Name
-              Expanded(
-                flex: 1,
+              // Bottom Logo and Name
+              SafeArea(
+                top: false,
                 child: Opacity(
                   opacity: _fadeAnimation.value,
                   child: Transform.scale(
@@ -287,6 +295,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
             ],
           );
         },

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:realestate/core/services/intercepted_client.dart' as http;
+import 'package:http/http.dart' as http;
 import '../data/kenya_locations.dart';
 import '../models/rental.dart';
 import 'api_service.dart';
@@ -8,6 +8,7 @@ import 'cache_service.dart';
 import 'client_identity_service.dart';
 import 'device_rental_cache_service.dart';
 import 'location_service.dart';
+import 'sqlite_cache_service.dart';
 import 'auth_service.dart';
 
 /// Response wrapper for paginated results
@@ -256,6 +257,22 @@ class RentalService {
     int size = 20,
     RentalFilters? filters,
   }) async {
+    final signature = SqliteCacheService.generateSignature(filters, size);
+
+    // Instant load from SQLite for the first page
+    if (page == 0) {
+      final localData = await SqliteCacheService.instance.getPaginatedFeed(signature, page);
+      if (localData != null) {
+        // Fetch in background to update DB for next time
+        _networkFetchPaginated(page, size, filters, signature).catchError((_) => localData);
+        return localData;
+      }
+    }
+
+    return await _networkFetchPaginated(page, size, filters, signature);
+  }
+
+  static Future<PaginatedRentals> _networkFetchPaginated(int page, int size, RentalFilters? filters, String signature) async {
     try {
       // Prefer backend endpoint that already returns active + approved rentals.
       final paginatedResponse = await ApiService.cachedGet(
@@ -264,11 +281,11 @@ class RentalService {
         ),
         headers: _acceptHeadersWithAuth(),
         ttl: page == 0
-            ? const Duration(seconds: 45)
-            : const Duration(seconds: 20),
+            ? const Duration(minutes: 10)
+            : const Duration(minutes: 5),
         staleWhileRevalidate: page == 0
-            ? const Duration(seconds: 120)
-            : const Duration(seconds: 60),
+            ? const Duration(minutes: 15)
+            : const Duration(minutes: 10),
       );
 
       if (paginatedResponse.statusCode == 200) {
@@ -282,21 +299,24 @@ class RentalService {
           rentals = _applyLocalFilters(rentals, filters);
         }
 
-        return PaginatedRentals(
+        final result = PaginatedRentals(
           rentals: rentals,
           totalElements: data['totalElements'] ?? rentals.length,
           totalPages: data['totalPages'] ?? 1,
           currentPage: data['currentPage'] ?? page,
           hasMore: data['hasMore'] ?? false,
         );
+        
+        await SqliteCacheService.instance.savePaginatedFeed(signature, page, result);
+        return result;
       }
 
       // Legacy fallback: this endpoint can include non-public statuses, so filter locally.
       final response = await ApiService.cachedGet(
         Uri.parse('${ApiService.baseUrl}/rentals'),
         headers: _acceptHeadersWithAuth(),
-        ttl: const Duration(seconds: 30),
-        staleWhileRevalidate: const Duration(seconds: 90),
+        ttl: const Duration(minutes: 10),
+        staleWhileRevalidate: const Duration(minutes: 15),
       );
 
       if (response.statusCode == 200) {
@@ -334,13 +354,16 @@ class RentalService {
             ? allRentals.sublist(start, end)
             : <Rental>[];
 
-        return PaginatedRentals(
+        final result = PaginatedRentals(
           rentals: paginatedRentals,
           totalElements: allRentals.length,
           totalPages: (allRentals.length / size).ceil(),
           currentPage: page,
           hasMore: end < allRentals.length,
         );
+        
+        await SqliteCacheService.instance.savePaginatedFeed(signature, page, result);
+        return result;
       } else {
         throw ApiService.parseHttpError(
           response,
@@ -714,9 +737,6 @@ class RentalService {
     double? latitude,
     double? longitude,
     bool sortByDistance = false,
-    bool useCone = false,
-    double? heading,
-    double? fov,
     int page = 0,
     int size = 20,
     double? minPrice,
@@ -735,9 +755,6 @@ class RentalService {
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
         'sortByDistance': sortByDistance,
-        'useCone': useCone,
-        if (heading != null) 'heading': heading,
-        if (fov != null) 'fov': fov,
         'anchorMode': 'AUTO',
         if (minPrice != null) 'minPrice': minPrice,
         if (maxPrice != null) 'maxPrice': maxPrice,

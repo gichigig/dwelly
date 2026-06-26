@@ -1,0 +1,12 @@
+--- lib/features/listings/presentation/inbox_page.dart
++++ lib/features/listings/presentation/inbox_page.dart
+@@ -1,9 +1,7 @@
+ import 'dart:async';
+ 
+-import 'package:go_router/go_router.dart';
+ import 'package:flutter/material.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import '../../user_profile/presentation/user_public_profile_page.dart';
+-import 'contacts_list_page.dart';
+ import '../../../core/models/chat.dart';
+ import '../../../core/models/rental.dart';

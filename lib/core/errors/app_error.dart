@@ -12,6 +12,7 @@ enum AppErrorCode {
   passkeyDomainMismatch,
   userCancelled,
   unknown,
+  concurrentLogin,
 }
 
 class AppError implements Exception {

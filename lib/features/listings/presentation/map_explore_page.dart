@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/rental.dart';
 import '../../../core/services/device_location_service.dart';
 import '../../../core/services/rental_service.dart';
-import '../../../core/services/rental_service.dart';
 import 'rental_detail_page.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:io' show Platform;
 
 class MapExplorePage extends StatefulWidget {
   const MapExplorePage({super.key});
@@ -18,7 +21,7 @@ class MapExplorePage extends StatefulWidget {
 }
 
 class _MapExplorePageState extends State<MapExplorePage> {
-  final Completer<GoogleMapController> _controller = Completer<GoogleMapController>();
+  final MapController _mapController = MapController();
   
   List<Rental> _rentals = [];
   bool _isLoading = true;
@@ -52,7 +55,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
         setState(() {
           _deviceLocation = loc;
         });
-        await _loadRentals(loc.latitude!, loc.longitude!);
+        await _loadRentals(loc.latitude, loc.longitude);
       } else {
         if (mounted) setState(() => _isLoading = false);
       }
@@ -63,14 +66,12 @@ class _MapExplorePageState extends State<MapExplorePage> {
 
   Future<void> _loadRentals(double lat, double lng) async {
     try {
-      // Load nearby rentals (using a large radius or smart location search)
-      // For the radar to be impressive, we need a decent number of rentals around the user.
       final result = await RentalService.smartLocationSearch(
         latitude: lat,
         longitude: lng,
         sortByDistance: true,
         page: 0,
-        size: 50, // fetch plenty for the radar
+        size: 50,
       );
       if (mounted) {
         setState(() {
@@ -113,11 +114,8 @@ class _MapExplorePageState extends State<MapExplorePage> {
     });
   }
 
-  // --- Math Helpers for the Cone ---
-
-  /// Calculate a destination coordinate given start lat/lng, distance (m) and bearing (deg)
   LatLng _calculateDestination(double lat, double lng, double distanceMeters, double bearingDeg) {
-    const R = 6371e3; // Earth radius in meters
+    const R = 6371e3;
     final d = distanceMeters;
     
     final lat1 = lat * math.pi / 180;
@@ -137,13 +135,12 @@ class _MapExplorePageState extends State<MapExplorePage> {
     return LatLng(lat2 * 180 / math.pi, lng2 * 180 / math.pi);
   }
 
-  /// Check if a rental is inside the radar cone
   bool _isRentalInCone(Rental rental) {
     if (!_isRadarActive || _currentHeading == null || _deviceLocation == null) return true;
     if (rental.latitude == null || rental.longitude == null) return false;
 
-    final devLat = _deviceLocation!.latitude!;
-    final devLng = _deviceLocation!.longitude!;
+    final devLat = _deviceLocation!.latitude;
+    final devLng = _deviceLocation!.longitude;
 
     final distance = Geolocator.distanceBetween(
       devLat, devLng,
@@ -157,51 +154,66 @@ class _MapExplorePageState extends State<MapExplorePage> {
       rental.latitude!, rental.longitude!
     );
 
-    // Normalize bearings to 0-360
     var b1 = _currentHeading! % 360;
     if (b1 < 0) b1 += 360;
     
     var b2 = bearingToRental % 360;
     if (b2 < 0) b2 += 360;
 
-    // Calculate shortest angular difference
     var diff = (b1 - b2).abs();
     if (diff > 180) diff = 360 - diff;
 
-    // If within half the cone angle, it's inside
     return diff <= (radarAngleDegrees / 2);
   }
 
-  // --- Map Rendering ---
+  List<Polygon> _buildPolygons() {
+    if (!_isRadarActive || _currentHeading == null || _deviceLocation == null) return [];
 
-  Set<Polygon> _buildPolygons() {
-    if (!_isRadarActive || _currentHeading == null || _deviceLocation == null) return {};
-
-    final lat = _deviceLocation!.latitude!;
-    final lng = _deviceLocation!.longitude!;
+    final lat = _deviceLocation!.latitude;
+    final lng = _deviceLocation!.longitude;
     
     final leftBearing = _currentHeading! - (radarAngleDegrees / 2);
     final rightBearing = _currentHeading! + (radarAngleDegrees / 2);
 
     final pLeft = _calculateDestination(lat, lng, radarDistanceMeters, leftBearing);
     final pRight = _calculateDestination(lat, lng, radarDistanceMeters, rightBearing);
-    // Add some intermediate points for a smooth curve (optional, but a triangle is fine for now)
     final pCenter = _calculateDestination(lat, lng, radarDistanceMeters, _currentHeading!);
 
-    return {
+    return [
       Polygon(
-        polygonId: const PolygonId('radar_cone'),
         points: [
           LatLng(lat, lng),
           pLeft,
           pCenter,
           pRight,
         ],
-        fillColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-        strokeColor: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-        strokeWidth: 2,
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+        borderColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+        borderStrokeWidth: 2,
       )
-    };
+    ];
+  }
+
+  Future<void> _getDirections(Rental r) async {
+    if (r.latitude == null || r.longitude == null) return;
+    final lat = r.latitude!;
+    final lng = r.longitude!;
+    
+    // Create URLs for Apple Maps and Google Maps
+    final appleMapsUrl = Uri.parse('http://maps.apple.com/?daddr=$lat,$lng');
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+
+    if (Platform.isIOS) {
+      if (await canLaunchUrl(appleMapsUrl)) {
+        await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
+      } else if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+      }
+    } else {
+      if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+      }
+    }
   }
 
   void _showRentalPreview(Rental r) {
@@ -241,17 +253,32 @@ class _MapExplorePageState extends State<MapExplorePage> {
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.primary),
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () {
-                      Navigator.pop(context); // close bottom sheet
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => RentalDetailPage(rental: r))
-                      );
-                    },
-                    child: const Text('View Full Details'),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => RentalDetailPage(rental: r))
+                          );
+                        },
+                        icon: const Icon(Icons.info_outline),
+                        label: const Text('Details'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _getDirections(r);
+                        },
+                        icon: const Icon(Icons.directions),
+                        label: const Text('Directions'),
+                      ),
+                    ),
+                  ],
                 )
               ],
             ),
@@ -261,20 +288,27 @@ class _MapExplorePageState extends State<MapExplorePage> {
     );
   }
 
-  Set<Marker> _buildMarkers() {
+  List<Marker> _buildMarkers() {
     return _rentals
         .where((r) => r.latitude != null && r.longitude != null)
         .where(_isRentalInCone)
         .map((r) {
-          final isPremium = r.hasVideo == true; // Example rule: highlight premium
+          final isPremium = r.hasVideo == true; 
           
           return Marker(
-            markerId: MarkerId(r.id.toString()),
-            position: LatLng(r.latitude!, r.longitude!),
-            onTap: () => _showRentalPreview(r),
-            icon: isPremium ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow) : BitmapDescriptor.defaultMarker,
+            point: LatLng(r.latitude!, r.longitude!),
+            width: 40,
+            height: 40,
+            child: GestureDetector(
+              onTap: () => _showRentalPreview(r),
+              child: Icon(
+                Icons.location_on,
+                size: 40,
+                color: isPremium ? Colors.yellow : Colors.red,
+              ),
+            ),
           );
-        }).toSet();
+        }).toList();
   }
 
   @override
@@ -294,25 +328,45 @@ class _MapExplorePageState extends State<MapExplorePage> {
       );
     }
 
-    final initialPos = CameraPosition(
-      target: LatLng(_deviceLocation!.latitude!, _deviceLocation!.longitude!),
-      zoom: 14.0,
-    );
-
     return Scaffold(
       body: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: initialPos,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            compassEnabled: false,
-            zoomControlsEnabled: false,
-            markers: _buildMarkers(),
-            polygons: _buildPolygons(),
-            onMapCreated: (controller) {
-              _controller.complete(controller);
-            },
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: LatLng(_deviceLocation!.latitude, _deviceLocation!.longitude),
+              initialZoom: 14.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.bluvberry.dwelly',
+              ),
+              PolygonLayer(
+                polygons: _buildPolygons(),
+              ),
+              MarkerClusterLayerWidget(
+                options: MarkerClusterLayerOptions(
+                  maxClusterRadius: 45,
+                  size: const Size(40, 40),
+                  markers: _buildMarkers(),
+                  builder: (context, markers) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      child: Center(
+                        child: Text(
+                          markers.length.toString(),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
           
           // Radar Overlay UI

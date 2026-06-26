@@ -20,9 +20,9 @@ class Rental {
   final int bedrooms;
   final int bathrooms;
   final int squareFeet;
+  final int? floor;
   final String propertyType;
   final List<String> amenities;
-  final List<String> hashtags;
   final List<String> imageUrls;
   final bool petsAllowed;
   final bool parkingAvailable;
@@ -32,6 +32,7 @@ class Rental {
   final String? ownerName;
   final String? ownerEmail;
   final String? ownerPhone;
+  final String? ownerAvatarUrl;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   
@@ -47,11 +48,15 @@ class Rental {
   // Popularity tracking
   final int saveCount;
 
-  // Premium Video fields
+  // Video fields
   final bool hasVideo;
   final String? videoUrl;
   final String? compoundVideoUrl;
   final String? cardDisplayPreference;
+
+  // Sponsorship fields
+  final String? sponsorshipType;
+  final bool isSponsored;
 
   Rental({
     this.id,
@@ -73,9 +78,9 @@ class Rental {
     required this.bedrooms,
     required this.bathrooms,
     required this.squareFeet,
+    this.floor,
     required this.propertyType,
     this.amenities = const [],
-    this.hashtags = const [],
     this.imageUrls = const [],
     this.petsAllowed = false,
     this.parkingAvailable = false,
@@ -85,6 +90,7 @@ class Rental {
     this.ownerName,
     this.ownerEmail,
     this.ownerPhone,
+    this.ownerAvatarUrl,
     this.createdAt,
     this.updatedAt,
     this.ownerIsVerified = false,
@@ -97,6 +103,8 @@ class Rental {
     this.videoUrl,
     this.compoundVideoUrl,
     this.cardDisplayPreference,
+    this.sponsorshipType,
+    this.isSponsored = false,
   });
   
   /// Returns true if the owner is a verified agent (gold badge)
@@ -126,9 +134,9 @@ class Rental {
       bedrooms: json['bedrooms'] ?? 0,
       bathrooms: json['bathrooms'] ?? 0,
       squareFeet: json['squareFeet'] ?? 0,
+      floor: json['floor'],
       propertyType: json['propertyType'] ?? 'OTHER',
       amenities: (json['amenities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      hashtags: (json['hashtags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       imageUrls: (json['imageUrls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       petsAllowed: json['petsAllowed'] ?? false,
       parkingAvailable: json['parkingAvailable'] ?? false,
@@ -138,6 +146,7 @@ class Rental {
       ownerName: json['ownerName'] ?? json['createdByName'],
       ownerEmail: json['ownerEmail'],
       ownerPhone: json['ownerPhone'],
+      ownerAvatarUrl: json['ownerAvatarUrl'],
       createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt']) : null,
       updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt']) : null,
       ownerIsVerified: json['ownerIsVerified'] ?? false,
@@ -150,6 +159,8 @@ class Rental {
       videoUrl: json['videoUrl'],
       compoundVideoUrl: json['compoundVideoUrl'],
       cardDisplayPreference: json['cardDisplayPreference'],
+      sponsorshipType: json['sponsorshipType'],
+      isSponsored: json['isSponsored'] ?? false,
     );
   }
 
@@ -174,9 +185,9 @@ class Rental {
       'bedrooms': bedrooms,
       'bathrooms': bathrooms,
       'squareFeet': squareFeet,
+      if (floor != null) 'floor': floor,
       'propertyType': propertyType,
       'amenities': amenities,
-      'hashtags': hashtags,
       'imageUrls': imageUrls,
       'petsAllowed': petsAllowed,
       'parkingAvailable': parkingAvailable,
@@ -186,6 +197,7 @@ class Rental {
       if (ownerName != null) 'ownerName': ownerName,
       if (ownerEmail != null) 'ownerEmail': ownerEmail,
       if (ownerPhone != null) 'ownerPhone': ownerPhone,
+      if (ownerAvatarUrl != null) 'ownerAvatarUrl': ownerAvatarUrl,
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
       'ownerIsVerified': ownerIsVerified,
@@ -199,6 +211,8 @@ class Rental {
       if (videoUrl != null) 'videoUrl': videoUrl,
       if (compoundVideoUrl != null) 'compoundVideoUrl': compoundVideoUrl,
       if (cardDisplayPreference != null) 'cardDisplayPreference': cardDisplayPreference,
+      if (sponsorshipType != null) 'sponsorshipType': sponsorshipType,
+      'isSponsored': isSponsored,
     };
   }
 

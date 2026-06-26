@@ -1,0 +1,49 @@
+--- lib/core/services/group_service.dart
++++ lib/core/services/group_service.dart
+@@ -53,6 +53,42 @@
+     }
+   }
+ 
++  static Future<ChatGroup> createGroup(String name, {String? description, int? rentalId, bool adminOnlyMessage = false}) async {
++    final response = await ApiService.timedPost(
++      Uri.parse('${ApiService.baseUrl}/groups'),
++      headers: {
++        'Content-Type': 'application/json',
++        'Authorization': 'Bearer ${AuthService.token}',
++      },
++      body: json.encode({
++        'name': name,
++        if (description != null) 'description': description,
++        if (rentalId != null) 'rentalId': rentalId,
++        'adminOnlyMessage': adminOnlyMessage,
++      }),
++    );
++
++    if (response.statusCode == 200 || response.statusCode == 201) {
++      final data = json.decode(utf8.decode(response.bodyBytes));
++      return ChatGroup.fromJson(data);
++    } else {
++      throw Exception('Failed to create group: ${response.statusCode}');
++    }
++  }
++
++  static Future<void> addMember(int groupId, String identifier, {String role = 'MEMBER'}) async {
++    final response = await ApiService.timedPost(
++      Uri.parse('${ApiService.baseUrl}/groups/$groupId/members'),
++      headers: {
++        'Content-Type': 'application/json',
++        'Authorization': 'Bearer ${AuthService.token}',
++      },
++      body: json.encode({
++        'identifier': identifier,
++        'role': role,
++      }),
++    );
++
++    if (response.statusCode != 200 && response.statusCode != 201) {
++      throw Exception('Failed to add member: ${response.statusCode}');
++    }
++  }
++
+   static Future<GroupMessage> sendGroupMessage(
+     int groupId,

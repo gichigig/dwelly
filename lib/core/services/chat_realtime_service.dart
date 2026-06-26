@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 import '../models/chat.dart';
+import '../models/chat_group.dart';
 import '../errors/app_error.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
@@ -132,6 +133,26 @@ class ChatRealtimeService {
         try {
           final decoded = jsonDecode(body) as Map<String, dynamic>;
           onEvent(MessageStatusEvent.fromJson(decoded));
+        } catch (_) {
+          // Ignore malformed events.
+        }
+      },
+    );
+  }
+
+  StompUnsubscribe? subscribeUserGroups(
+    int userId,
+    ValueChanged<ChatGroup> onGroup,
+  ) {
+    if (!_isConnected || _client == null) return null;
+    return _client!.subscribe(
+      destination: '/topic/user/$userId/groups',
+      callback: (frame) {
+        final body = frame.body;
+        if (body == null || body.isEmpty) return;
+        try {
+          final decoded = jsonDecode(body) as Map<String, dynamic>;
+          onGroup(ChatGroup.fromJson(decoded));
         } catch (_) {
           // Ignore malformed events.
         }

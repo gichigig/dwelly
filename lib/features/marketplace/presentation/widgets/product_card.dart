@@ -4,6 +4,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../../core/theme/marketplace_theme.dart';
 import '../../../../core/models/marketplace_product.dart';
+import '../../../../core/services/api_service.dart';
 
 class ProductCard extends StatefulWidget {
   final MarketplaceProduct product;
@@ -315,8 +316,10 @@ class _ProductCardState extends State<ProductCard> {
 
   String? _resolveImageUrl(MarketplaceProduct product, int tick) {
     if (product.imageUrls.isEmpty) return null;
-    if (product.imageUrls.length == 1) return product.imageUrls.first;
-    return product.imageUrls[tick % product.imageUrls.length];
+    final url = product.imageUrls.length == 1 
+        ? product.imageUrls.first 
+        : product.imageUrls[tick % product.imageUrls.length];
+    return ApiService.resolveMediaUrl(url);
   }
 
   Widget _buildImageFallback() {

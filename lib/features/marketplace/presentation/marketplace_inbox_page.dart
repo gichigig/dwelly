@@ -6,9 +6,11 @@ import '../../../core/errors/ui_error.dart';
 import '../../../core/models/chat.dart';
 import '../../../core/models/rental.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/widgets/auth_gate_card.dart';
+import '../../../core/widgets/full_screen_image_avatar.dart';
 import '../../listings/presentation/chat_page.dart';
 
 class MarketplaceInboxPage extends StatefulWidget {
@@ -204,6 +206,7 @@ class _MarketplaceInboxPageState extends State<MarketplaceInboxPage>
       propertyType: 'OTHER',
       ownerId: conversation.ownerId > 0 ? conversation.ownerId : null,
       ownerName: conversation.ownerName,
+      ownerAvatarUrl: conversation.ownerAvatarUrl,
     );
 
     await Navigator.of(context).push(
@@ -297,9 +300,14 @@ class _MarketplaceInboxPageState extends State<MarketplaceInboxPage>
                   );
                 }
                 final conversation = _conversations[index];
+                final currentUserId = AuthService.currentUser?.id;
+                final isOwner = conversation.ownerId == currentUserId;
+                final otherAvatarUrl = isOwner ? conversation.userAvatarUrl : conversation.ownerAvatarUrl;
+
                 return ListTile(
-                  leading: CircleAvatar(
-                    child: Text(_avatarLabel(conversation)),
+                  leading: FullScreenImageAvatar(
+                    avatarUrl: otherAvatarUrl,
+                    fallbackWidget: Text(_avatarLabel(conversation)),
                   ),
                   title: Text(
                     conversation.listingTitle ?? 'Marketplace Product',

@@ -4,6 +4,8 @@ import 'package:realestate/core/services/intercepted_client.dart' as http;
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/widgets/full_screen_image_avatar.dart';
 import 'house_search_help_page.dart';
 
 class AvailableHelpersPage extends StatefulWidget {
@@ -106,6 +108,7 @@ class _AvailableHelpersPageState extends State<AvailableHelpersPage> {
                         final helper = _helpers[index];
                         final name = helper['name'] ?? 'Helper';
                         final price = helper['helperPrice'] ?? 0;
+                        final avatarUrl = helper['avatarUrl'];
                         
                         return Card(
                           elevation: 0,
@@ -120,10 +123,11 @@ class _AvailableHelpersPageState extends State<AvailableHelpersPage> {
                             padding: const EdgeInsets.all(16),
                             child: Row(
                               children: [
-                                CircleAvatar(
+                                FullScreenImageAvatar(
                                   radius: 28,
                                   backgroundColor: colorScheme.primaryContainer,
-                                  child: Icon(Icons.person, color: colorScheme.primary, size: 32),
+                                  avatarUrl: avatarUrl?.toString(),
+                                  fallbackWidget: Icon(Icons.person, color: colorScheme.primary, size: 32),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(

@@ -66,9 +66,13 @@ class _PremiumLaunchScreenState extends State<PremiumLaunchScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0D47A1), // Deep Blue Background
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
+        child: CustomScrollView(
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -185,8 +189,8 @@ class _PremiumLaunchScreenState extends State<PremiumLaunchScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../errors/app_error.dart';
 import '../errors/error_mapper.dart';
@@ -25,6 +26,8 @@ class ApiService {
     'CLOUDFLARE_URL',
     defaultValue: '',
   );
+
+  static const String mobileApiKey = 'FBC15F5E-B537-4E21-A55D-838817507365';
 
   // Use 10.0.2.2 for Android emulator, localhost for web/iOS simulator
   static String get baseUrl {
@@ -98,7 +101,23 @@ class ApiService {
     return '$normalized/api';
   }
 
+  /// Helper method to resolve media URLs (e.g., from /api/files/...) into absolute URLs
+  static String? resolveMediaUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    
+    final base = effectiveBaseUrl;
+    final baseWithoutApi = base.endsWith('/api') ? base.substring(0, base.length - 4) : base;
+    
+    if (url.startsWith('/')) {
+      return '$baseWithoutApi$url';
+    }
+    
+    return '$baseWithoutApi/$url';
+  }
+
   static String get _defaultBaseUrl {
+    // Using permanent Cloudflare Tunnel for physical device testing
     return 'https://api.billygichigidev.me/api';
   }
 
@@ -173,6 +192,66 @@ class ApiService {
     return http
         .delete(uri, headers: headers, body: body, encoding: encoding)
         .timeout(timeout);
+  }
+
+  static Future<String> uploadFile(
+    File file,
+    String endpoint, {
+    String fileField = 'file',
+    String? token,
+  }) async {
+    NetworkService.instance.checkNetwork();
+    final uri = Uri.parse('$effectiveBaseUrl$endpoint');
+    final request = http.MultipartRequest('POST', uri);
+
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    // Attempt to guess mime type from extension
+    final ext = file.path.split('.').last.toLowerCase();
+    MediaType? mediaType;
+    if (ext == 'jpg' || ext == 'jpeg') {
+      mediaType = MediaType('image', 'jpeg');
+    } else if (ext == 'png') {
+      mediaType = MediaType('image', 'png');
+    } else if (ext == 'gif') {
+      mediaType = MediaType('image', 'gif');
+    } else if (ext == 'webp') {
+      mediaType = MediaType('image', 'webp');
+    } else if (ext == 'mp4') {
+      mediaType = MediaType('video', 'mp4');
+    } else if (ext == 'webm') {
+      mediaType = MediaType('video', 'webm');
+    } else if (ext == 'mov') {
+      mediaType = MediaType('video', 'quicktime');
+    } else if (ext == 'heic' || ext == 'heif') {
+      // Backend only accepts standard web formats right now, but we label it correctly
+      mediaType = MediaType('image', 'heic');
+    } else if (ext == 'pdf') {
+      mediaType = MediaType('application', 'pdf');
+    } else {
+      // Fallback for image picker on iOS simulator where extension might be weird
+      mediaType = MediaType('image', 'jpeg');
+    }
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        fileField, 
+        file.path,
+        contentType: mediaType,
+      ),
+    );
+
+    final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+    final response = await http.Response.fromStream(streamedResponse).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final data = jsonDecode(response.body);
+      return data['url'] as String;
+    } else {
+      throw parseHttpError(response, fallbackMessage: 'Failed to upload file');
+    }
   }
 
   // Helper to parse JSON

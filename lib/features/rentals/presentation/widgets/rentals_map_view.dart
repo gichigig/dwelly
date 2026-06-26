@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/models/rental.dart';
 import '../../../../core/services/device_location_service.dart';
@@ -143,6 +145,9 @@ class _RentalsMapViewState extends State<RentalsMapView> {
       myLocationEnabled: true,
       myLocationButtonEnabled: true,
       compassEnabled: true,
+      gestureRecognizers: {
+        Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer())
+      },
       markers: _markers,
       onMapCreated: (GoogleMapController controller) {
         _controller.complete(controller);

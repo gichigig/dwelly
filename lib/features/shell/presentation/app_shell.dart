@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../explore/presentation/explore_hub_page.dart';
-
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -13,7 +11,7 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
 
   final _tabs = const [
-    ExploreHubPage(),
+    _PlaceholderPage(title: 'Explore'),
     _PlaceholderPage(title: 'Saved'),
     _PlaceholderPage(title: 'Post'),
     _PlaceholderPage(title: 'Account'),

@@ -168,15 +168,14 @@ class CreateAlertRequest {
 }
 
 class RentalAlertService {
-  static Future<List<RentalAlert>> getAlerts() async {
+  static Future<Map<String, dynamic>> getAlertsPaginated({int page = 0, int limit = 20}) async {
     if (!AuthService.isLoggedIn) {
-      // Return empty list if not logged in instead of throwing
-      return [];
+      return {'alerts': <RentalAlert>[], 'hasMore': false, 'page': 0};
     }
 
     try {
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/rental-alerts'),
+        Uri.parse('${ApiService.baseUrl}/rental-alerts?page=$page&size=$limit'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer ${AuthService.token}',
@@ -184,20 +183,24 @@ class RentalAlertService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((json) => RentalAlert.fromJson(json)).toList();
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final List<dynamic> content = data['content'] ?? [];
+        final alerts = content.map((json) => RentalAlert.fromJson(json)).toList();
+        return {
+          'alerts': alerts,
+          'hasMore': data['last'] == false,
+          'page': data['number'] ?? 0,
+        };
       } else if (response.statusCode == 401 || response.statusCode == 403) {
-        // Token expired or invalid - return empty list instead of throwing
         print('Auth error fetching alerts: ${response.statusCode}');
-        return [];
+        return {'alerts': <RentalAlert>[], 'hasMore': false, 'page': 0};
       } else {
         print('Fetch alerts failed: ${response.statusCode} - ${response.body}');
         throw Exception('Failed to fetch alerts: ${response.statusCode}');
       }
     } catch (e) {
       print('Get alerts error: $e');
-      // Return empty list on error to prevent UI crash
-      return [];
+      return {'alerts': <RentalAlert>[], 'hasMore': false, 'page': 0};
     }
   }
 

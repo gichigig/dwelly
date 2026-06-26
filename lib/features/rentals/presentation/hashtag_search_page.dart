@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:realestate/core/models/rental.dart';
-import 'package:realestate/core/services/rental_service.dart';
-import 'package:realestate/features/listings/presentation/rental_card.dart';
-import 'package:realestate/core/errors/ui_error.dart';
+import 'package:dwelly/core/models/rental.dart';
+import 'package:dwelly/core/services/rental_service.dart';
+import 'package:dwelly/features/listings/presentation/rental_card.dart';
+import 'package:dwelly/core/errors/ui_error.dart';
 
 class HashtagSearchPage extends ConsumerStatefulWidget {
   final String hashtag;

@@ -10,27 +10,60 @@ class RentalAlertsPage extends StatefulWidget {
 }
 
 class _RentalAlertsPageState extends State<RentalAlertsPage> {
+  final ScrollController _scrollController = ScrollController();
   List<RentalAlert> _alerts = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = false;
+  int _page = 0;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadAlerts();
   }
 
-  Future<void> _loadAlerts() async {
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _isLoading || _isLoadingMore || !_hasMore) return;
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadAlerts(loadMore: true);
+    }
+  }
+
+  Future<void> _loadAlerts({bool loadMore = false}) async {
+    if (loadMore && (_isLoadingMore || !_hasMore)) return;
+
     setState(() {
-      _isLoading = true;
+      if (loadMore) {
+        _isLoadingMore = true;
+      } else {
+        _isLoading = true;
+        _page = 0;
+      }
       _error = null;
     });
 
     try {
-      final alerts = await RentalAlertService.getAlerts();
+      final nextPage = loadMore ? _page + 1 : 0;
+      final result = await RentalAlertService.getAlertsPaginated(page: nextPage);
       setState(() {
-        _alerts = alerts;
+        if (loadMore) {
+          _alerts = [..._alerts, ...result['alerts']];
+        } else {
+          _alerts = result['alerts'];
+        }
+        _hasMore = result['hasMore'];
+        _page = result['page'];
         _isLoading = false;
+        _isLoadingMore = false;
       });
     } catch (e) {
       setState(() {
@@ -39,6 +72,7 @@ class _RentalAlertsPageState extends State<RentalAlertsPage> {
           fallbackMessage: 'Failed to load rental alerts.',
         );
         _isLoading = false;
+        _isLoadingMore = false;
       });
     }
   }
@@ -140,11 +174,19 @@ class _RentalAlertsPageState extends State<RentalAlertsPage> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadAlerts,
+      onRefresh: () => _loadAlerts(),
       child: ListView.builder(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
-        itemCount: _alerts.length,
+        itemCount: _alerts.length + (_isLoadingMore ? 1 : 0),
         itemBuilder: (context, index) {
+          if (index >= _alerts.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+
           final alert = _alerts[index];
           return _AlertCard(
             alert: alert,

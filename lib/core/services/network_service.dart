@@ -13,6 +13,7 @@ class NetworkService {
   final ValueNotifier<NetworkStatus> status = ValueNotifier(NetworkStatus.online);
 
   StreamSubscription? _connectivitySubscription;
+  Timer? _pollingTimer;
   bool _isChecking = false;
 
   void initialize() {
@@ -26,11 +27,19 @@ class NetworkService {
       }
     });
 
+    // Periodic check to recover if the OS fails to deliver connectivity events
+    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (status.value == NetworkStatus.offline || status.value == NetworkStatus.slow) {
+        checkNetwork();
+      }
+    });
+
     checkNetwork();
   }
 
   void dispose() {
     _connectivitySubscription?.cancel();
+    _pollingTimer?.cancel();
     status.dispose();
   }
 
@@ -41,8 +50,9 @@ class NetworkService {
     try {
       final stopwatch = Stopwatch()..start();
       
-      // Try resolving Google's DNS via TCP to measure latency
-      final socket = await Socket.connect('8.8.8.8', 53, timeout: const Duration(seconds: 2));
+      // Try connecting to a highly available server on standard HTTP port 80
+      // TCP Port 53 to 8.8.8.8 is often blocked by mobile carrier firewalls!
+      final socket = await Socket.connect('example.com', 80, timeout: const Duration(seconds: 3));
       socket.destroy();
       
       stopwatch.stop();

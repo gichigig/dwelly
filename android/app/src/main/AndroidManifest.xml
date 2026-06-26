@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Camera permission for ID scanning -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Contacts permission for viewing contacts -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Push notification permission (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
@@ -56,7 +58,7 @@
         <!-- Google Mobile Ads Application ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-7814990820270971~6622162943"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

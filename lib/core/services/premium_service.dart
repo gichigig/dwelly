@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 
@@ -5,8 +6,25 @@ class PremiumService {
   static const String _locationFilterLastUsedKey =
       'premium_location_filter_last_used_date';
 
+  /// Reactive notifier so widgets can listen for premium status changes
+  /// (e.g., Google Ad widgets dispose loaded ads when premium activates).
+  static final ValueNotifier<bool> premiumActive = ValueNotifier(false);
+
   static bool isPremiumActive() {
     return AuthService.currentUser?.isPremiumActive ?? false;
+  }
+
+  static bool shouldHideAds() {
+    return AuthService.currentUser?.shouldHideAds ?? false;
+  }
+
+  /// Call whenever the current user changes (login, refresh, logout) so that
+  /// listeners (ad widgets, etc.) react immediately.
+  static void notifyPremiumStatusChanged() {
+    final newValue = shouldHideAds();
+    if (premiumActive.value != newValue) {
+      premiumActive.value = newValue;
+    }
   }
 
   static Future<bool> canUseLocationFilter() async {

@@ -11,10 +11,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../errors/app_error.dart';
 import '../errors/passkey_error_mapper.dart';
 import '../models/user.dart';
+import 'ad_service.dart';
 import 'api_service.dart';
 import 'cache_service.dart';
 import 'device_location_service.dart';
 import 'notification_service.dart';
+import 'contact_service.dart';
+import 'premium_service.dart';
 
 class AuthService {
   static const String _tokenKey = 'auth_token';
@@ -24,6 +27,7 @@ class AuthService {
   static String? _token;
   static String? _refreshToken;
   static User? _currentUser;
+  static Completer<bool>? _refreshInFlight;
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
@@ -52,15 +56,19 @@ class AuthService {
       final decoded = jsonDecode(userJson);
       if (decoded is Map<String, dynamic>) {
         _currentUser = User.fromJson(decoded);
+        PremiumService.notifyPremiumStatusChanged();
         if (_token != null) {
           unawaited(_syncPendingLocationIfAny());
+          unawaited(ContactService.loadContacts());
         }
         return;
       }
       if (decoded is Map) {
         _currentUser = User.fromJson(decoded.cast<String, dynamic>());
+        PremiumService.notifyPremiumStatusChanged();
         if (_token != null) {
           unawaited(_syncPendingLocationIfAny());
+          unawaited(ContactService.loadContacts());
         }
         return;
       }
@@ -78,8 +86,16 @@ class AuthService {
   }
 
   static Future<bool> refreshAuthToken() async {
+    // Mutex: if a refresh is already in flight, all concurrent callers
+    // share the same result instead of each triggering a separate refresh
+    // (which rotates the session-id and invalidates in-flight requests).
+    if (_refreshInFlight != null) {
+      return _refreshInFlight!.future;
+    }
+
     if (_refreshToken == null) return false;
 
+    _refreshInFlight = Completer<bool>();
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/refresh'),
@@ -90,19 +106,24 @@ class AuthService {
       if (response.statusCode == 200) {
         final authResponse = AuthResponse.fromJson(jsonDecode(response.body));
         await _saveAuth(authResponse);
+        _refreshInFlight!.complete(true);
         return true;
       }
       // If refresh fails (expired or revoked), clear everything.
       await logout();
+      _refreshInFlight!.complete(false);
       return false;
     } catch (e) {
       _logDebug('Failed to refresh token', e);
+      _refreshInFlight?.complete(false);
       return false;
+    } finally {
+      _refreshInFlight = null;
     }
   }
 
-  static Future<AuthResponse> login(String email, String password) async {
-    final initResult = await loginInit(email, password);
+  static Future<AuthResponse> login(String email, String password, {bool forceLogin = false}) async {
+    final initResult = await loginInit(email, password, forceLogin: forceLogin);
     if (initResult.status == LoginInitStatus.authenticated &&
         initResult.authResponse != null) {
       return initResult.authResponse!;
@@ -118,6 +139,7 @@ class AuthService {
     String password,
     {
     bool persistAuthenticatedSession = true,
+    bool forceLogin = false,
   }) async {
     try {
       final response = await http.post(
@@ -127,6 +149,7 @@ class AuthService {
           'email': email,
           'password': password,
           'clientType': _resolveClientType(),
+          'forceLogin': forceLogin,
         }),
       );
 
@@ -138,6 +161,18 @@ class AuthService {
           await _saveAuth(result.authResponse!);
         }
         return result;
+      }
+      if (response.statusCode == 409) {
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded['error'] == 'CONCURRENT_LOGIN_DETECTED') {
+            throw AppError(
+              code: AppErrorCode.concurrentLogin,
+              message: decoded['message'] ?? 'You are already logged in on another device.',
+              statusCode: 409,
+            );
+          }
+        } catch (_) {}
       }
       if (response.statusCode == 401) {
         throw const AppError(
@@ -160,12 +195,16 @@ class AuthService {
     }
   }
 
-  static Future<MfaChallenge> passkeyLoginInit(String email) async {
+  static Future<MfaChallenge> passkeyLoginInit(String email, {bool forceLogin = false}) async {
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/login/passkey/init'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'clientType': _resolveClientType()}),
+        body: jsonEncode({
+          'email': email, 
+          'clientType': _resolveClientType(),
+          'forceLogin': forceLogin,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -177,6 +216,18 @@ class AuthService {
           );
         }
         return challenge;
+      }
+      if (response.statusCode == 409) {
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded['error'] == 'CONCURRENT_LOGIN_DETECTED') {
+            throw AppError(
+              code: AppErrorCode.concurrentLogin,
+              message: decoded['message'] ?? 'You are already logged in on another device.',
+              statusCode: 409,
+            );
+          }
+        } catch (_) {}
       }
 
       throw ApiService.parseHttpError(
@@ -301,8 +352,9 @@ class AuthService {
   static Future<AuthResponse> loginWithPasskey(
     String email, {
     bool persistSession = true,
+    bool forceLogin = false,
   }) async {
-    final challenge = await passkeyLoginInit(email);
+    final challenge = await passkeyLoginInit(email, forceLogin: forceLogin);
     return completePasskeyChallenge(
       challengeId: challenge.challengeId,
       challengeToken: challenge.challengeToken,
@@ -562,8 +614,8 @@ class AuthService {
   static Future<AuthResponse> realAdminSsoLogin({bool persistSession = true}) async {
     try {
       // Typically, an environment variable or config would dictate the RealAdmin frontend URL.
-      // Using localhost for prototype environments. For emulators connecting to host, we'll use 10.0.2.2 or 127.0.0.1
-      const authorizeUrl = 'http://127.0.0.1:3000/sso-authorize';
+      // Pointing directly to production SSO
+      const authorizeUrl = 'https://ishinadwelly.com/sso-authorize';
 
       final result = await FlutterWebAuth2.authenticate(
         url: authorizeUrl,
@@ -608,7 +660,7 @@ class AuthService {
 
   // ==================== Google Sign-In ====================
 
-  static Future<AuthResponse> googleLogin({bool persistSession = true}) async {
+  static Future<AuthResponse> googleLogin({bool persistSession = true, bool forceLogin = false}) async {
     try {
       // Trigger Google Sign-In flow
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
@@ -631,7 +683,10 @@ class AuthService {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/google'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'idToken': idToken}),
+        body: jsonEncode({
+          'idToken': idToken,
+          'forceLogin': forceLogin,
+        }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -640,6 +695,20 @@ class AuthService {
           await _saveAuth(authResponse);
         }
         return authResponse;
+      }
+      if (response.statusCode == 409) {
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded['error'] == 'CONCURRENT_LOGIN_DETECTED') {
+            // Need to sign out of Google immediately because we aborted the Dwelly login.
+            unawaited(googleSignOut());
+            throw AppError(
+              code: AppErrorCode.concurrentLogin,
+              message: decoded['message'] ?? 'You are already logged in on another device.',
+              statusCode: 409,
+            );
+          }
+        } catch (_) {}
       }
       throw ApiService.parseHttpError(
         response,
@@ -799,7 +868,9 @@ class AuthService {
   static Future<User> updateProfile({
     required String firstName,
     required String lastName,
+    String? username,
     String? phone,
+    String? avatarUrl,
   }) async {
     if (_currentUser == null || _token == null) {
       throw const AppError(
@@ -819,7 +890,9 @@ class AuthService {
         body: jsonEncode({
           'firstName': firstName,
           'lastName': lastName,
+          if (username != null) 'username': username,
           if (phone != null) 'phone': phone,
+          if (avatarUrl != null) 'avatarUrl': avatarUrl,
         }),
       );
 
@@ -934,6 +1007,7 @@ class AuthService {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final user = User.fromJson(data);
         _currentUser = user;
+        PremiumService.notifyPremiumStatusChanged();
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_userKey, jsonEncode(user.toJson()));
         return user;
@@ -953,23 +1027,55 @@ class AuthService {
     }
   }
 
+  static Future<void> setPrimaryRole(String role) async {
+    if (_token == null) throw const AppError.server(message: 'Not logged in');
+
+    try {
+      final response = await http.put(
+        Uri.parse('${ApiService.baseUrl}/auth/role'),
+        headers: ApiService.getHeaders(token: _token),
+        body: jsonEncode({'role': role}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final authResponse = AuthResponse.fromJson(jsonDecode(response.body));
+        await persistAuthResponse(authResponse);
+      } else {
+        throw ApiService.parseHttpError(
+          response,
+          fallbackMessage: 'Failed to update primary role.',
+        );
+      }
+    } catch (e) {
+      final appError = ApiService.parseException(
+        e,
+        fallbackMessage: 'Failed to update primary role.',
+      );
+      _logDebug('Set primary role error', appError.technicalMessage ?? e);
+      throw appError;
+    }
+  }
+
   static Future<void> logout() async {
+    final tokenToUnregister = _token;
+
     // Notify the backend to revoke the token if possible.
     if (_token != null && _refreshToken != null) {
       try {
         await http.post(
           Uri.parse('${ApiService.baseUrl}/auth/logout'),
           headers: ApiService.getHeaders(token: _token),
-        );
+        ).timeout(const Duration(seconds: 3));
       } catch (_) {}
     }
 
-    if (_token != null) {
-      await NotificationService.unregisterDevice();
+    if (tokenToUnregister != null) {
+      unawaited(NotificationService.unregisterDevice(token: tokenToUnregister).catchError((_) => false));
     }
     _token = null;
     _refreshToken = null;
     _currentUser = null;
+    PremiumService.notifyPremiumStatusChanged();
     CacheManager.clearAll();
     ApiService.clearCachedGets();
     final prefs = await SharedPreferences.getInstance();
@@ -996,6 +1102,22 @@ class AuthService {
     }
     await prefs.setString(_userKey, jsonEncode(_currentUser!.toJson()));
     await prefs.setString('last_login_at', DateTime.now().toIso8601String());
+
+    // Notify premium status change so ad widgets react immediately.
+    PremiumService.notifyPremiumStatusChanged();
+
+    // Clear ad caches when a premium user logs in so stale free-tier
+    // ads are not served from cache.
+    if (_currentUser!.isPremiumActive) {
+      try {
+        final adService = await AdService.getInstance();
+        await adService.clearCache();
+      } catch (_) {
+        // Ad service is optional; don't block login.
+      }
+    }
+
+    unawaited(ContactService.loadContacts());
 
     // Register device for push notifications
     final fcmToken = NotificationService.fcmToken;

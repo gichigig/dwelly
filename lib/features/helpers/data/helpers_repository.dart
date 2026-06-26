@@ -1,10 +1,8 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
-import '../../../core/config/env.dart';
-import '../../auth/data/auth_repository.dart';
-
-class Helper {
+import 'package:dwelly/core/services/api_service.dart';
+import 'package:dwelly/core/services/auth_service.dart';class Helper {
   final int id;
   final String name;
   final double helperPrice;
@@ -12,6 +10,7 @@ class Helper {
   final String? helperCoverageLevel;
   final List<String>? helperConstituencies;
   final List<String>? helperWards;
+  final String? avatarUrl;
 
   Helper({
     required this.id,
@@ -21,6 +20,7 @@ class Helper {
     this.helperCoverageLevel,
     this.helperConstituencies,
     this.helperWards,
+    this.avatarUrl,
   });
 
   factory Helper.fromJson(Map<String, dynamic> json) {
@@ -32,18 +32,17 @@ class Helper {
       helperCoverageLevel: json['helperCoverageLevel'],
       helperConstituencies: json['helperConstituencies'] != null ? List<String>.from(json['helperConstituencies']) : null,
       helperWards: json['helperWards'] != null ? List<String>.from(json['helperWards']) : null,
+      avatarUrl: json['avatarUrl'],
     );
   }
 }
 
 class HelpersRepository {
-  final AuthRepository _authRepo;
-
-  HelpersRepository(this._authRepo);
+  HelpersRepository();
 
   Future<List<Helper>> getAvailableHelpers({String? county}) async {
-    final token = await _authRepo.getToken();
-    var uri = Uri.parse('${Env.apiBaseUrl}/api/helper/available');
+    final token = AuthService.token;
+    var uri = Uri.parse('${ApiService.baseUrl}/api/helper/available');
     if (county != null && county.isNotEmpty) {
       uri = uri.replace(queryParameters: {'county': county});
     }
@@ -64,17 +63,16 @@ class HelpersRepository {
     }
   }
 
-  Future<void> hireHelper(int helperId, String phone, String description) async {
-    final token = await _authRepo.getToken();
+  Future<void> hireHelper(int helperId, String phone) async {
+    final token = AuthService.token;
     final response = await http.post(
-      Uri.parse('${Env.apiBaseUrl}/api/helper-jobs/hire/$helperId'),
+      Uri.parse('${ApiService.baseUrl}/api/helper-jobs/hire/$helperId'),
       headers: {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
         'phoneNumber': phone,
-        'description': description,
       }),
     );
 
@@ -86,7 +84,7 @@ class HelpersRepository {
 }
 
 final helpersRepositoryProvider = Provider((ref) {
-  return HelpersRepository(ref.watch(authRepositoryProvider));
+  return HelpersRepository();
 });
 
 final availableHelpersProvider = FutureProvider.family<List<Helper>, String?>((ref, county) {

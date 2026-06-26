@@ -13,14 +13,12 @@ class HireHelperBottomSheet extends ConsumerStatefulWidget {
 
 class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
   final _phoneController = TextEditingController();
-  final _descController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
-    _descController.dispose();
     super.dispose();
   }
 
@@ -32,7 +30,6 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
       await ref.read(helpersRepositoryProvider).hireHelper(
         widget.helper.id,
         _phoneController.text.trim(),
-        _descController.text.trim(),
       );
 
       if (mounted) {
@@ -103,20 +100,6 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-            TextFormField(
-              controller: _descController,
-              decoration: const InputDecoration(
-                labelText: 'Job Description',
-                hintText: 'What do you need help with?',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-              validator: (val) {
-                if (val == null || val.trim().isEmpty) return 'Description is required';
-                return null;
-              },
             ),
             const SizedBox(height: 16),
             TextFormField(

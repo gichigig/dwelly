@@ -14,7 +14,6 @@ import 'core/widgets/ad_break_screen.dart';
 import 'core/widgets/telegram/telegram_bottom_pill_nav.dart';
 import 'core/widgets/telegram/telegram_fragment_item.dart';
 import 'features/listings/presentation/account_page.dart';
-import 'features/listings/presentation/donation_fab.dart';
 import 'features/listings/presentation/explore_page.dart';
 import 'features/listings/presentation/inbox_page.dart';
 import 'features/listings/presentation/premium_launch_screen.dart';
@@ -303,17 +302,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         ),
       ),
-      floatingActionButton: _isMarketplaceMode
-          ? null
-          : AnimatedSlide(
-              duration: const Duration(milliseconds: 250),
-              offset: _showBottomNav ? Offset.zero : const Offset(0, 2),
-              child: DonationFab(
-                requireAuth: isAccountTab,
-                isAuthenticated: AuthService.isLoggedIn,
-                onLoginRequired: _showLoginRequiredSnackBar,
-              ),
-            ),
       bottomNavigationBar: _isMarketplaceMode
           ? null
           : Column(

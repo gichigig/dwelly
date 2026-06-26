@@ -2,10 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSContactsUsageDescription</key>
+    <string>We need access to your contacts to help you find and chat with your friends on Dwelly.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<string>ca-app-pub-7814990820270971~5305211849</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -41,7 +43,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs camera access to scan found IDs.</string>
+	<string>This app needs camera access to scan found IDs or take a profile picture.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to choose a profile picture.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app uses your location to find rentals near you.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -90,6 +94,8 @@
 	<array>
 		<string>https</string>
 		<string>http</string>
+		<string>whatsapp</string>
+		<string>sms</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

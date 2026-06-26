@@ -15,6 +15,7 @@ import '../../../core/services/chat_service.dart';
 import '../../../core/services/marketplace_service.dart';
 import '../../../core/widgets/feed_ad_widget.dart';
 import '../../listings/presentation/chat_page.dart';
+import '../../../core/services/api_service.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final int productId;
@@ -527,7 +528,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         );
                       }
                       return CachedNetworkImage(
-                        imageUrl: image,
+                        imageUrl: ApiService.resolveMediaUrl(image) ?? image,
                         fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
                           color: Colors.grey[200],

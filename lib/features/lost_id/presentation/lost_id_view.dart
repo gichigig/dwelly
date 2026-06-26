@@ -6,6 +6,7 @@ import '../../../core/services/device_location_service.dart';
 import 'found_id_scan_page.dart';
 import 'search_lost_id_page.dart';
 import 'location_verification_sheet.dart';
+import '../data/id_scanner_service.dart';
 
 class LostIdView extends ConsumerStatefulWidget {
   const LostIdView({super.key});
@@ -16,6 +17,8 @@ class LostIdView extends ConsumerStatefulWidget {
 
 class _LostIdViewState extends ConsumerState<LostIdView> {
   final _searchController = TextEditingController();
+  List<LostIdAlertModel>? _alerts;
+  bool _isLoadingAlerts = false;
   
   // Typewriter animation state
   String _hintText = '';
@@ -44,6 +47,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
     _charIndex = 1;
     _startTypewriterAnimation();
     _checkAndRequestLocation();
+    _fetchAlerts();
   }
 
   @override
@@ -395,41 +399,290 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
     );
   }
 
+  Future<void> _fetchAlerts() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingAlerts = true;
+    });
+    try {
+      final alerts = await IdScannerService.getLostIdAlerts();
+      if (mounted) {
+        setState(() {
+          _alerts = alerts;
+          _isLoadingAlerts = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching alerts: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingAlerts = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteAlert(int alertId) async {
+    try {
+      await IdScannerService.deleteLostIdAlert(alertId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Alert removed successfully.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      _fetchAlerts();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to remove alert: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildContent() {
-    // Placeholder - in a real app this would fetch from the repo
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    if (_isLoadingAlerts && _alerts == null) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    final alerts = _alerts ?? [];
+
+    if (alerts.isEmpty) {
+      // Show default service overview when no alerts exist
+      return SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 40),
+            Icon(Icons.badge_outlined, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Lost & Found ID Service',
+              style: TextStyle(
+                color: Colors.grey[700], 
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Help reunite lost IDs with their owners. Scan a found ID or search for your lost one.',
+                style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildInfoChip(Icons.lock, 'Secure'),
+                const SizedBox(width: 8),
+                _buildInfoChip(Icons.timer, 'Auto-delete'),
+                const SizedBox(width: 8),
+                _buildInfoChip(Icons.no_photography, 'No images stored'),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchAlerts,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          Icon(Icons.badge_outlined, size: 64, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            'Lost & Found ID Service',
-            style: TextStyle(
-              color: Colors.grey[700], 
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'Help reunite lost IDs with their owners. Scan a found ID or search for your lost one.',
-              style: TextStyle(color: Colors.grey[500], fontSize: 14),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 24),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildInfoChip(Icons.lock, 'Secure'),
-              const SizedBox(width: 8),
-              _buildInfoChip(Icons.timer, 'Auto-delete'),
-              const SizedBox(width: 8),
-              _buildInfoChip(Icons.no_photography, 'No images stored'),
+              Text(
+                'Active Watchlist Alerts',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${alerts.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+              ),
             ],
+          ),
+          const SizedBox(height: 12),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: alerts.length,
+            itemBuilder: (context, index) {
+              final alert = alerts[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Colors.grey.shade200),
+                ),
+                elevation: 0,
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      // Bell alert icon with gradient background
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.blue.shade400, Colors.blue.shade700],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.notifications_active,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      // Alert Details
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              alert.fullName,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.badge, size: 14, color: Colors.grey.shade500),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'ID No: ${alert.idNumber}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (alert.whatsappAlertsEnabled) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.green.shade200),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.chat,
+                                      size: 12,
+                                      color: Colors.green,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        'WhatsApp Alert: ${alert.whatsappNumber ?? "Enabled"}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.green.shade700,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      // Cancel Alert Button
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        color: Colors.red.shade400,
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Cancel ID Alert?'),
+                              content: Text(
+                                'Are you sure you want to stop monitoring matching updates for ID card No. ${alert.idNumber}?'
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Keep Alert'),
+                                ),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                  ),
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _deleteAlert(alert.id);
+                                  },
+                                  child: const Text('Cancel Alert'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          // Short info footer
+          const Divider(),
+          const SizedBox(height: 12),
+          Text(
+            'Keep this window open or check back later. When someone registers a matching ID, we\'ll instantly notify you.',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

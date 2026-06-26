@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/auth/presentation/forgot_password_screen.dart';
 import '../errors/ui_error.dart';
+import '../errors/app_error.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 
@@ -145,7 +146,34 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     super.dispose();
   }
 
-  Future<void> _login() async {
+  Future<void> _handleConcurrentLogin(Future<void> Function() retryWithForceLogin) async {
+    final useCurrent = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Already logged in'),
+        content: const Text(
+          'You are already logged in on another device. '
+          'Do you want to log out of the other device and log in here?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Log Out Other Device'),
+          ),
+        ],
+      ),
+    );
+
+    if (useCurrent == true && mounted) {
+      await retryWithForceLogin();
+    }
+  }
+
+  Future<void> _login({bool forceLogin = false}) async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -158,6 +186,7 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
         _emailController.text.trim(),
         _passwordController.text,
         persistAuthenticatedSession: false,
+        forceLogin: forceLogin,
       );
 
       if (result.status == LoginInitStatus.authenticated) {
@@ -179,7 +208,12 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
             result.challenge!.availableMethods.first;
       });
     } catch (e) {
-      if (!mounted || isSilentError(e)) return;
+      if (!mounted) return;
+      if (e is AppError && e.code == AppErrorCode.concurrentLogin) {
+        await _handleConcurrentLogin(() => _login(forceLogin: true));
+        return;
+      }
+      if (isSilentError(e)) return;
       setState(() {
         _error = userErrorMessage(
           e,
@@ -195,17 +229,22 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     }
   }
 
-  Future<void> _googleLogin() async {
+  Future<void> _googleLogin({bool forceLogin = false}) async {
     setState(() {
       _isGoogleLoading = true;
       _error = null;
     });
 
     try {
-      final authResponse = await AuthService.googleLogin(persistSession: false);
+      final authResponse = await AuthService.googleLogin(persistSession: false, forceLogin: forceLogin);
       await _completeAuthenticatedLogin(authResponse);
     } catch (e) {
-      if (!mounted || isSilentError(e)) return;
+      if (!mounted) return;
+      if (e is AppError && e.code == AppErrorCode.concurrentLogin) {
+        await _handleConcurrentLogin(() => _googleLogin(forceLogin: true));
+        return;
+      }
+      if (isSilentError(e)) return;
       setState(() {
         _error = userErrorMessage(
           e,
@@ -277,7 +316,7 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     }
   }
 
-  Future<void> _startPasskeyWithEmailPrompt() async {
+  Future<void> _startPasskeyWithEmailPrompt({bool forceLogin = false}) async {
     final email = await _showPasskeyEmailPrompt();
     if (!mounted || email == null) return;
 
@@ -291,10 +330,15 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
       final authResponse = await AuthService.loginWithPasskey(
         email,
         persistSession: false,
+        forceLogin: forceLogin,
       );
       await _completeAuthenticatedLogin(authResponse);
     } catch (e) {
       if (!mounted) return;
+      if (e is AppError && e.code == AppErrorCode.concurrentLogin) {
+        await _handleConcurrentLogin(() => _startPasskeyWithEmailPrompt(forceLogin: true));
+        return;
+      }
       final noCredential = AuthService.isPasskeyNoCredentialError(e);
       final differentAccount = AuthService.isPasskeyDifferentAccountError(e);
       final message = userErrorMessage(

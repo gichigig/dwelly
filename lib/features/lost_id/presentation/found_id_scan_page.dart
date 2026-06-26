@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../data/id_scanner_service.dart';
+import '../../../core/services/google_ad_service.dart';
 
 /// Page for scanning a found ID and registering it
 class FoundIdScanPage extends StatefulWidget {
@@ -24,7 +25,6 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   final _collectionPlaceController = TextEditingController();
   final _nameController = TextEditingController();
   final _idNumberController = TextEditingController();
-  final _dobController = TextEditingController();
   final _schoolController = TextEditingController();
 
   static const String _nationalIdType = 'NATIONAL_ID';
@@ -37,6 +37,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   bool _isScanning = false;
   bool _isSubmitting = false;
   bool _isGettingLocation = false;
+  bool _isManualEntry = false;
   String? _errorMessage;
   
   @override
@@ -60,11 +61,22 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
     _collectionPlaceController.dispose();
     _nameController.dispose();
     _idNumberController.dispose();
-    _dobController.dispose();
     _schoolController.dispose();
     super.dispose();
   }
   
+  void _enableManualEntry() {
+    setState(() {
+      _isManualEntry = true;
+      _selectedImage = null;
+      _scanResult = null;
+      _errorMessage = null;
+      _nameController.clear();
+      _idNumberController.clear();
+      _schoolController.clear();
+    });
+  }
+
   Future<void> _getCurrentLocation() async {
     setState(() {
       _isGettingLocation = true;
@@ -176,6 +188,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       
       if (pickedFile != null) {
         setState(() {
+          _isManualEntry = false;
           _selectedImage = File(pickedFile.path);
           _scanResult = null;
           _errorMessage = null;
@@ -206,9 +219,10 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
         _isScanning = false;
 
         _nameController.text = result.fullName ?? '';
-        _idNumberController.text = result.idNumber ?? '';
-        _dobController.text = _formatDateOfBirth(result.dateOfBirth);
-
+        if (result.idNumber != null) {
+          _idNumberController.text = result.idNumber!;
+        }
+        
         if (!result.success) {
           _errorMessage = result.errors.join('\n');
         }
@@ -238,7 +252,6 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
         schoolName: _selectedIdType == _schoolIdType
             ? _schoolController.text.trim()
             : null,
-        dateOfBirth: _parseDateOfBirth(_dobController.text.trim()),
         finderPhone: _phoneController.text.trim(),
         finderWhatsApp: _whatsappController.text.trim().isNotEmpty
             ? _whatsappController.text.trim()
@@ -356,6 +369,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                             _selectedImage = null;
                             _scanResult = null;
                             _errorMessage = null;
+                            _isManualEntry = false;
                           });
                         },
                         icon: const Icon(Icons.close),
@@ -415,8 +429,8 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                 ),
               ],
               
-              // Scan results - EDITABLE
-              if (_scanResult != null) ...[
+              // Scan results or Manual Entry - EDITABLE
+              if (_scanResult != null || _isManualEntry) ...[
                 const SizedBox(height: 20),
                 Card(
                   child: Padding(
@@ -441,9 +455,11 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _scanResult!.success
-                              ? 'Edit any details below if they are not exact'
-                              : 'We could not read everything. Fill in the missing fields.',
+                          _isManualEntry 
+                              ? 'Enter the details of the ID you found below.'
+                              : _scanResult!.success
+                                  ? 'Edit any details below if they are not exact'
+                                  : 'We could not read everything. Fill in the missing fields.',
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         ),
                         const Divider(height: 24),
@@ -544,19 +560,6 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                             }
                             return null;
                           },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _dobController,
-                          keyboardType: TextInputType.datetime,
-                          decoration: InputDecoration(
-                            labelText: 'Date of Birth (Optional)',
-                            hintText: 'DD/MM/YYYY',
-                            prefixIcon: const Icon(Icons.calendar_today),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -674,6 +677,9 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   ),
                 ),
               ],
+              const SizedBox(height: 32),
+              const Center(child: GoogleAdMediumRectangleWidget()),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -723,6 +729,22 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
           icon: const Icon(Icons.photo_library_outlined),
           label: const Text('Choose from Gallery'),
         ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () {
+            setState(() {
+              _isManualEntry = true;
+              _selectedImage = null;
+              _scanResult = null;
+              _errorMessage = null;
+            });
+          },
+          icon: const Icon(Icons.edit_note),
+          label: const Text('Enter Details Manually'),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.grey.shade700,
+          ),
+        ),
       ],
     );
   }
@@ -755,50 +777,5 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
     );
   }
   
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  String _formatDateOfBirth(String? dob) {
-    if (dob == null) return '';
-    try {
-      final parts = dob.split('-');
-      if (parts.length == 3) {
-        return '${parts[2]}/${parts[1]}/${parts[0]}';
-      }
-    } catch (_) {}
-    return dob;
-  }
-  
-  /// Parse DD/MM/YYYY back to YYYY-MM-DD for the API
-  String? _parseDateOfBirth(String dob) {
-    if (dob.isEmpty) return null;
-    try {
-      final parts = dob.split('/');
-      if (parts.length == 3) {
-        return '${parts[2]}-${parts[1]}-${parts[0]}';
-      }
-    } catch (_) {}
-    return dob;
-  }
+
 }

@@ -22,9 +22,11 @@ import '../../../core/services/google_ad_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../core/widgets/app_launch_ad_screen.dart';
 import '../../../core/widgets/ad_break_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/widgets/banner_ad_widget.dart';
-import 'available_helpers_page.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/network_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../helper/presentation/helper_hub_page.dart';
 import '../../../core/widgets/top_notification_bell.dart';
 import '../../../core/widgets/telegram/telegram_top_bar.dart';
 import '../../lost_id/presentation/found_id_scan_page.dart';
@@ -33,6 +35,9 @@ import '../../rentals/domain/rental_filters.dart' show UnitType, UnitTypeLabel;
 import '../../marketplace/presentation/marketplace_shell_page.dart';
 import 'rental_detail_page.dart';
 import 'map_explore_page.dart';
+import '../../../core/widgets/tutorial_overlay.dart';
+import 'package:realestate/features/user_profile/presentation/user_public_profile_page.dart';
+import '../../../core/widgets/full_screen_image_avatar.dart';
 
 class ExplorePage extends StatefulWidget {
   final ValueChanged<bool>? onMarketplaceModeChanged;
@@ -145,6 +150,15 @@ class _ExplorePageState extends State<ExplorePage> {
   // Saved rental IDs (for bookmark state on cards)
   Set<int> _savedRentalIds = {};
 
+  // Tutorial spotlight GlobalKeys
+  final _searchBarKey = GlobalKey();
+  final _filterButtonKey = GlobalKey();
+  final _locationButtonKey = GlobalKey();
+  final _radarButtonKey = GlobalKey();
+  final _marketplaceButtonKey = GlobalKey();
+  final _lostIdButtonKey = GlobalKey();
+  TutorialOverlayController? _tutorialController;
+
   // Typewriter effect state
   Timer? _typewriterTimer;
   int _typewriterIndex = 0;
@@ -175,11 +189,74 @@ class _ExplorePageState extends State<ExplorePage> {
     _scrollController.addListener(_onScroll);
     _searchFocusNode.addListener(_onSearchFocusChange);
     ChatService.safetyVisibilityVersion.addListener(_onSafetyVisibilityChanged);
+    NetworkService.instance.status.addListener(_onNetworkStatusChanged);
     _startTypewriterEffect();
     unawaited(_tryDetectLocation());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_maybeShowScrollHint());
+      // Delay to avoid conflicting with PremiumLaunchScreen auto-skip timer popping the wrong route
+      Future.delayed(const Duration(seconds: 6), () {
+        if (mounted) unawaited(_maybeShowScrollHint());
+      });
     });
+
+    // Trigger tutorial for first-time users
+    // Delay to let the premium launch screen appear and dismiss first
+    Future.delayed(const Duration(seconds: 7), () {
+      if (mounted) _startTutorialIfNeeded();
+    });
+  }
+
+  void _startTutorialIfNeeded() {
+    if (!mounted) return;
+    print('[Tutorial] _startTutorialIfNeeded called — mounted: $mounted');
+    _tutorialController = TutorialOverlayController(context);
+
+    final steps = <TutorialStep>[
+      TutorialStep(
+        targetKey: _searchBarKey,
+        title: 'Search Locations',
+        description:
+            'Type any area, ward, or constituency to find rentals near you.',
+        icon: Icons.search,
+      ),
+      TutorialStep(
+        targetKey: _filterButtonKey,
+        title: 'Filter Results',
+        description:
+            'Refine your search by price, property type, and bedrooms.',
+        icon: Icons.tune,
+      ),
+      TutorialStep(
+        targetKey: _locationButtonKey,
+        title: 'Your Location',
+        description:
+            'Tap to find rentals near your current GPS location automatically.',
+        icon: Icons.my_location,
+      ),
+      TutorialStep(
+        targetKey: _radarButtonKey,
+        title: 'Map Radar',
+        description:
+            'Open the interactive map to explore listings around you visually.',
+        icon: Icons.radar,
+      ),
+      TutorialStep(
+        targetKey: _marketplaceButtonKey,
+        title: 'Marketplace',
+        description:
+            'Switch to the marketplace to buy and sell household items.',
+        icon: Icons.swap_horiz,
+      ),
+      TutorialStep(
+        targetKey: _lostIdButtonKey,
+        title: 'Lost & Found ID',
+        description:
+            'Scan or search for lost national IDs to help reunite owners.',
+        icon: Icons.camera_alt_outlined,
+      ),
+    ];
+
+    _tutorialController!.start(steps);
   }
 
   @override
@@ -192,8 +269,20 @@ class _ExplorePageState extends State<ExplorePage> {
     ChatService.safetyVisibilityVersion.removeListener(
       _onSafetyVisibilityChanged,
     );
+    NetworkService.instance.status.removeListener(_onNetworkStatusChanged);
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  /// When network recovers and we're in an error state, auto-retry loading.
+  void _onNetworkStatusChanged() {
+    final status = NetworkService.instance.status.value;
+    if ((status == NetworkStatus.online || status == NetworkStatus.backOnline) &&
+        _error != null &&
+        !_isLoading &&
+        mounted) {
+      unawaited(_loadRentals(refresh: true));
+    }
   }
 
   void _onSafetyVisibilityChanged() {
@@ -702,7 +791,7 @@ class _ExplorePageState extends State<ExplorePage> {
     if (offset <= 0 && !_isHeaderVisible) {
       setState(() => _isHeaderVisible = true);
     }
-    if (offset >= _scrollController.position.maxScrollExtent - 200) {
+    if (offset >= _scrollController.position.maxScrollExtent - 2500) {
       _loadMoreRentals();
     }
   }
@@ -1518,6 +1607,7 @@ class _ExplorePageState extends State<ExplorePage> {
     }
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1538,9 +1628,9 @@ class _ExplorePageState extends State<ExplorePage> {
                           children: [
                             TelegramTopBar(
                               title: 'Find Your Home',
-                              subtitle: 'Rentals near you, faster to scan',
                               actions: [
                                 IconButton(
+                                  key: _radarButtonKey,
                                   tooltip: 'Premium Map Radar',
                                   onPressed: () {
                                     Navigator.of(context).push(
@@ -1552,14 +1642,6 @@ class _ExplorePageState extends State<ExplorePage> {
                                   icon: const Icon(Icons.radar, color: Colors.green),
                                 ),
                                 const TopNotificationBell(),
-                                IconButton(
-                                  tooltip: 'Switch to Marketplace',
-                                  onPressed: () {
-                                    setState(() => _isMarketplaceMode = true);
-                                    widget.onMarketplaceModeChanged?.call(true);
-                                  },
-                                  icon: const Icon(Icons.swap_horiz),
-                                ),
                               ],
                             ),
                             const SizedBox(height: 10),
@@ -1570,6 +1652,7 @@ class _ExplorePageState extends State<ExplorePage> {
                                 Row(
                                   children: [
                                     Expanded(
+                                      key: _searchBarKey,
                                       child: TextField(
                                         controller: _searchController,
                                         focusNode: _searchFocusNode,
@@ -1621,6 +1704,7 @@ class _ExplorePageState extends State<ExplorePage> {
                                                   },
                                                 )
                                               : IconButton(
+                                                  key: _lostIdButtonKey,
                                                   icon: const Icon(
                                                     Icons.camera_alt_outlined,
                                                   ),
@@ -1655,6 +1739,7 @@ class _ExplorePageState extends State<ExplorePage> {
                                     const SizedBox(width: 8),
                                     // Filter Button
                                     Container(
+                                      key: _filterButtonKey,
                                       decoration: BoxDecoration(
                                         color: _filters.hasFilters
                                             ? Theme.of(context).primaryColor
@@ -1680,6 +1765,7 @@ class _ExplorePageState extends State<ExplorePage> {
                                     const SizedBox(width: 8),
                                     // My Location Button
                                     Container(
+                                      key: _locationButtonKey,
                                       decoration: BoxDecoration(
                                         color:
                                             (_deviceLocation != null &&
@@ -2139,7 +2225,7 @@ class _ExplorePageState extends State<ExplorePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const AvailableHelpersPage(),
+                      builder: (_) => const HelperHubPage(),
                     ),
                   );
                 },
@@ -2496,6 +2582,8 @@ class _ExplorePageState extends State<ExplorePage> {
                 if (rental.id != null) _toggleSaveRental(rental.id!);
               },
               onReport: () => _showReportDialog(rental),
+              userLatitude: _deviceLocation?.latitude,
+              userLongitude: _deviceLocation?.longitude,
             );
           }
 
@@ -2536,11 +2624,17 @@ class _ExplorePageState extends State<ExplorePage> {
         ? AdPlacement.SEARCH_RESULTS.name
         : AdPlacement.HOME_BANNER.name;
 
+    int nonSponsoredCount = 0;
+
     for (int i = 0; i < _rentals.length; i++) {
       final rental = _rentals[i];
       final oneBasedPosition = i + 1;
 
       items.add(_ListItemInfo(rental: rental));
+
+      if (!rental.isSponsored) {
+        nonSponsoredCount++;
+      }
 
       // Context ads blend into feed and can re-appear later.
       if (contextAd != null &&
@@ -2562,8 +2656,8 @@ class _ExplorePageState extends State<ExplorePage> {
         );
       }
 
-      // Inject Google AdBanner every 5 rentals
-      if (oneBasedPosition % 5 == 0) {
+      // Inject Google AdBanner every 5 non-sponsored rentals
+      if (!rental.isSponsored && nonSponsoredCount > 0 && nonSponsoredCount % 5 == 0) {
         items.add(_ListItemInfo(isGoogleAd: true));
       }
     }
@@ -2767,12 +2861,11 @@ class _FeedAdCardState extends State<_FeedAdCard> {
                   AspectRatio(
                     aspectRatio: 16 / 10,
                     child: widget.ad.imageUrl != null
-                        ? Image.network(
-                            widget.ad.imageUrl!,
+                        ? CachedNetworkImage(
+                            imageUrl: widget.ad.imageUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return _buildPlaceholder();
-                            },
+                            errorWidget: (context, url, error) => _buildPlaceholder(),
+                            placeholder: (context, url) => Container(color: Colors.grey[200]),
                           )
                         : _buildPlaceholder(),
                   ),
@@ -2980,6 +3073,8 @@ class _RentalCard extends StatefulWidget {
   final bool isSaved;
   final VoidCallback onToggleSave;
   final VoidCallback onReport;
+  final double? userLatitude;
+  final double? userLongitude;
 
   const _RentalCard({
     required this.rental,
@@ -2988,6 +3083,8 @@ class _RentalCard extends StatefulWidget {
     required this.isSaved,
     required this.onToggleSave,
     required this.onReport,
+    this.userLatitude,
+    this.userLongitude,
   });
 
   @override
@@ -3006,11 +3103,10 @@ class _RentalCardState extends State<_RentalCard> {
 
   void _initVideos() {
     final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
-    if (!isPremium) return;
 
     if (widget.rental.hasVideo) {
       if (widget.rental.cardDisplayPreference == 'VIDEO' &&
-          widget.rental.videoUrl != null) {
+          widget.rental.videoUrl != null && isPremium) {
         _videoController = VideoPlayerController.networkUrl(
           Uri.parse(widget.rental.videoUrl!),
         )..initialize().then((_) {
@@ -3021,7 +3117,7 @@ class _RentalCardState extends State<_RentalCard> {
           });
       }
 
-      if (widget.rental.cardDisplayPreference == 'ONE_PICTURE' &&
+      if ((widget.rental.cardDisplayPreference == 'ONE_PICTURE' || widget.rental.cardDisplayPreference == null) &&
           widget.rental.compoundVideoUrl != null) {
         _compoundVideoController = VideoPlayerController.networkUrl(
           Uri.parse(widget.rental.compoundVideoUrl!),
@@ -3060,9 +3156,8 @@ class _RentalCardState extends State<_RentalCard> {
 
     final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
 
-    // Premium Video Feature
-    if (widget.rental.hasVideo && isPremium) {
-      if (widget.rental.cardDisplayPreference == 'VIDEO' && _videoController != null) {
+    if (widget.rental.hasVideo) {
+      if (widget.rental.cardDisplayPreference == 'VIDEO' && _videoController != null && isPremium) {
         return AspectRatio(
           aspectRatio: 16 / 9,
           child: _videoController!.value.isInitialized
@@ -3076,16 +3171,16 @@ class _RentalCardState extends State<_RentalCard> {
             children: [
               Expanded(
                 flex: 2,
-                child: Image.network(widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity),
+                child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity),
               ),
               const SizedBox(width: 2),
               Expanded(
                 flex: 1,
                 child: Column(
                   children: [
-                    Expanded(child: Image.network(widget.rental.imageUrls[1], fit: BoxFit.cover, width: double.infinity)),
+                    Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[1], fit: BoxFit.cover, width: double.infinity)),
                     const SizedBox(height: 2),
-                    Expanded(child: Image.network(widget.rental.imageUrls[2], fit: BoxFit.cover, width: double.infinity)),
+                    Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[2], fit: BoxFit.cover, width: double.infinity)),
                   ],
                 ),
               ),
@@ -3097,9 +3192,9 @@ class _RentalCardState extends State<_RentalCard> {
           aspectRatio: 16 / 9,
           child: Row(
             children: [
-              Expanded(child: Image.network(widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity)),
+              Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity)),
               const SizedBox(width: 2),
-              Expanded(child: Image.network(widget.rental.imageUrls[1], fit: BoxFit.cover, height: double.infinity)),
+              Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[1], fit: BoxFit.cover, height: double.infinity)),
             ],
           ),
         );
@@ -3109,7 +3204,7 @@ class _RentalCardState extends State<_RentalCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(widget.rental.imageUrls.first, fit: BoxFit.cover),
+              CachedNetworkImage(imageUrl: widget.rental.imageUrls.first, fit: BoxFit.cover),
               if (_compoundVideoController != null && _compoundVideoController!.value.isInitialized)
                 Positioned(
                   bottom: 8,
@@ -3135,11 +3230,94 @@ class _RentalCardState extends State<_RentalCard> {
     // Default fallback to single image
     return AspectRatio(
       aspectRatio: 16 / 9,
-      child: Image.network(
-        widget.rental.imageUrls.first,
+      child: CachedNetworkImage(
+        imageUrl: widget.rental.imageUrls.first,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildImageFallback(context),
+        errorWidget: (_, __, ___) => _buildImageFallback(context),
       ),
+    );
+  }
+
+  void _showOwnerPreview(BuildContext context, ThemeData theme) {
+    final rental = widget.rental;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              FullScreenImageAvatar(
+                radius: 40,
+                backgroundColor: theme.colorScheme.primaryContainer,
+                avatarUrl: rental.ownerAvatarUrl,
+                fallbackWidget: Icon(Icons.person, size: 40, color: theme.colorScheme.onPrimaryContainer),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                rental.ownerName ?? 'Owner',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (rental.ownerIsVerified)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.verified, size: 14, color: Colors.blue),
+                          const SizedBox(width: 4),
+                          Text(
+                            rental.isVerifiedAgent ? 'Verified Agent' : 'Verified',
+                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.blue, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UserPublicProfilePage(userId: rental.ownerId!),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.person_outline, size: 18),
+                  label: const Text('View Full Profile'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -3147,7 +3325,25 @@ class _RentalCardState extends State<_RentalCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final specs =
-        '${widget.rental.bedrooms} bed • ${widget.rental.bathrooms} bath • ${widget.rental.squareFeet} sqft';
+        '${widget.rental.bedrooms} bed • ${widget.rental.bathrooms} bath • ${widget.rental.squareFeet} sqft${widget.rental.floor != null ? ' • Floor ${widget.rental.floor}' : ''}';
+
+    String? distanceText;
+    if (widget.userLatitude != null &&
+        widget.userLongitude != null &&
+        widget.rental.latitude != null &&
+        widget.rental.longitude != null) {
+      final distanceMeters = Geolocator.distanceBetween(
+        widget.userLatitude!,
+        widget.userLongitude!,
+        widget.rental.latitude!,
+        widget.rental.longitude!,
+      );
+      if (distanceMeters < 1000) {
+        distanceText = '${distanceMeters.toStringAsFixed(0)}m away';
+      } else {
+        distanceText = '${(distanceMeters / 1000).toStringAsFixed(1)}km away';
+      }
+    }
 
     return Card(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
@@ -3161,11 +3357,29 @@ class _RentalCardState extends State<_RentalCard> {
             _buildMediaArea(context),
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (widget.rental.ownerId != null) {
+                        _showOwnerPreview(context, theme);
+                      }
+                    },
+                    child: FullScreenImageAvatar(
+                      radius: 20,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      avatarUrl: widget.rental.ownerAvatarUrl,
+                      fallbackWidget: Icon(Icons.person, color: theme.colorScheme.onPrimaryContainer),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
                       Expanded(
                         child: Text(
                           widget.rental.title,
@@ -3194,41 +3408,58 @@ class _RentalCardState extends State<_RentalCard> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '${widget.rental.city}, ${widget.rental.state}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        '${widget.rental.city}, ${widget.rental.state}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          if (_isExactMatch)
-                            _buildStatusChip(
-                              context,
-                              'Exact area',
-                              Colors.blue,
-                            ),
-                          if (_isNearbyMatch)
-                            _buildStatusChip(context, 'Nearby', Colors.green),
-                          if (widget.rental.ownerIsVerified)
-                            _buildStatusChip(
-                              context,
-                              widget.rental.isVerifiedAgent
-                                  ? 'Verified Agent'
-                                  : 'Verified',
-                              widget.rental.isVerifiedAgent
-                                  ? const Color(0xFFFFB800)
-                                  : Colors.blue,
-                            ),
-                        ],
+                      Expanded(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (_isExactMatch)
+                              _buildStatusChip(
+                                context,
+                                'Exact area',
+                                Colors.blue,
+                              ),
+                            if (_isNearbyMatch)
+                              _buildStatusChip(context, 'Nearby', Colors.green),
+                            if (widget.rental.ownerIsVerified)
+                              _buildStatusChip(
+                                context,
+                                widget.rental.isVerifiedAgent
+                                    ? 'Verified Agent'
+                                    : 'Verified',
+                                widget.rental.isVerifiedAgent
+                                    ? const Color(0xFFFFB800)
+                                    : Colors.blue,
+                              ),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
+                      if (distanceText != null) ...[
+                        Icon(Icons.location_on, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 2),
+                        Text(
+                          distanceText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       IconButton(
                         tooltip: widget.isSaved ? 'Unsave' : 'Save',
                         onPressed: widget.onToggleSave,
@@ -3255,7 +3486,10 @@ class _RentalCardState extends State<_RentalCard> {
           ],
         ),
       ),
-    );
+    ],
+  ),
+),
+);
   }
 
   Widget _buildImageFallback(BuildContext context) {

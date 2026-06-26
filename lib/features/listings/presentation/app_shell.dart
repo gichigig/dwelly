@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../explore/presentation/explore_hub_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -12,7 +11,7 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
 
   final _tabs = const [
-    ExploreHubPage(),
+    _PlaceholderPage(title: 'Explore'),
     // these two can later become real Saved & Account modules
     _PlaceholderPage(title: 'Saved'),
     _PlaceholderPage(title: 'Post'),

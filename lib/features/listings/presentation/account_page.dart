@@ -21,15 +21,19 @@ import '../../../core/services/theme_service.dart';
 import '../../../core/data/kenya_locations.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/widgets/auth_gate_card.dart';
+import '../../../core/widgets/full_screen_image_avatar.dart';
 import 'rental_alerts_page.dart';
 import 'house_search_help_page.dart';
 import 'premium_page.dart';
 import 'notification_settings_page.dart';
+import '../../helper/presentation/helper_jobs_page.dart';
 import 'security_center_page.dart';
 import 'security_setup_wizard_page.dart';
 import 'privacy_personalization_page.dart';
 import 'reports_safety_center_page.dart';
 import 'cache_management_page.dart';
+import '../../helper/presentation/helper_hub_page.dart';
+import '../../landlord/presentation/landlord_page.dart';
 
 enum _SecurityWizardPromptAction { setupNow, remindLater }
 
@@ -350,10 +354,11 @@ int _calcDirSize(String dirPath) {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  CircleAvatar(
+                  FullScreenImageAvatar(
                     radius: 36,
                     backgroundColor: Theme.of(context).primaryColor,
-                    child: Text(
+                    avatarUrl: user.avatarUrl,
+                    fallbackWidget: Text(
                       user.firstName.isNotEmpty
                           ? user.firstName[0].toUpperCase()
                           : '?',
@@ -442,18 +447,24 @@ int _calcDirSize(String dirPath) {
               widget.onNavigateToSaved?.call();
             },
           ),
+
           _buildMenuItem(
-            icon: Icons.manage_search,
-            title: 'Hire a house search helper',
-            subtitle: 'Get help searching and continue in Inbox',
-            color: Theme.of(context).colorScheme.primary,
+            icon: Icons.handyman,
+            title: 'Helper Hub',
+            subtitle: 'Find a helper or become one',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => HouseSearchHelpPage(
-                    onNavigateToInbox: widget.onNavigateToInbox,
-                  ),
-                ),
+                MaterialPageRoute(builder: (_) => const HelperHubPage()),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: Icons.real_estate_agent,
+            title: user.primaryRole == 'landlord' ? 'Landlord Dashboard' : 'Become a Landlord',
+            subtitle: 'Manage properties with RealAdmin',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LandlordPage()),
               );
             },
           ),
@@ -489,6 +500,18 @@ int _calcDirSize(String dirPath) {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => const SecurityCenterPage(),
+                ),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: Icons.work,
+            title: 'My Helper Jobs',
+            subtitle: 'View your active helper requests and jobs',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const HelperJobsPage(),
                 ),
               );
             },
@@ -1124,7 +1147,7 @@ int _calcDirSize(String dirPath) {
           children: [
             Icon(Icons.home, color: Colors.deepPurple),
             SizedBox(width: 8),
-            Text('Real Estate App'),
+            Text('Dwelly'),
           ],
         ),
         content: const Column(
@@ -1138,12 +1161,12 @@ int _calcDirSize(String dirPath) {
             ),
             SizedBox(height: 12),
             Text(
-              'RealEstate does not process rent or in-app payments.',
+              'Dwelly does not process rent or in-app payments.',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             SizedBox(height: 16),
             Text(
-              '© 2026 Real Estate App. All rights reserved.',
+              '© 2026 Dwelly. All rights reserved.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],

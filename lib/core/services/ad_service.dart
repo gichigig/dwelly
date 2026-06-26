@@ -172,7 +172,7 @@ class AdService {
   AdService._(this._prefs);
 
   bool _adsDisabledForPremium() {
-    return PremiumService.isPremiumActive();
+    return PremiumService.shouldHideAds();
   }
 
   /// Get singleton instance
@@ -260,6 +260,7 @@ class AdService {
 
   /// Record an ad impression
   Future<void> recordImpression(int adId) async {
+    if (!(_prefs.getBool('pref_analytics_sharing') ?? true)) return;
     try {
       await http
           .post(Uri.parse('$_baseUrl/ads/$adId/impression'))
@@ -271,6 +272,7 @@ class AdService {
 
   /// Record an ad click
   Future<void> recordClick(int adId) async {
+    if (!(_prefs.getBool('pref_analytics_sharing') ?? true)) return;
     try {
       await http
           .post(Uri.parse('$_baseUrl/ads/$adId/click'))
@@ -282,6 +284,7 @@ class AdService {
 
   /// Record video view start
   Future<void> recordVideoView(int adId) async {
+    if (!(_prefs.getBool('pref_analytics_sharing') ?? true)) return;
     try {
       await http
           .post(Uri.parse('$_baseUrl/ads/$adId/video-view'))
@@ -293,6 +296,7 @@ class AdService {
 
   /// Record video completion
   Future<void> recordVideoCompletion(int adId) async {
+    if (!(_prefs.getBool('pref_analytics_sharing') ?? true)) return;
     try {
       await http
           .post(Uri.parse('$_baseUrl/ads/$adId/video-complete'))
@@ -304,6 +308,7 @@ class AdService {
 
   /// Record ad skip
   Future<void> recordSkip(int adId) async {
+    if (!(_prefs.getBool('pref_analytics_sharing') ?? true)) return;
     try {
       await http
           .post(Uri.parse('$_baseUrl/ads/$adId/skip'))
@@ -324,6 +329,7 @@ class AdService {
     String? breakId,
     int? breakStepIndex,
   }) async {
+    if (!(_prefs.getBool('pref_analytics_sharing') ?? true)) return;
     try {
       final deviceType = Platform.isAndroid
           ? 'ANDROID'
@@ -1052,8 +1058,18 @@ class AdService {
     await _prefs.setInt(timestampKey, DateTime.now().millisecondsSinceEpoch);
   }
 
-  /// Clear all ad caches
+  /// Clear all ad caches (both in-memory and persistent)
   Future<void> clearCache() async {
+    // Clear in-memory caches
+    _memoryAdsCache.clear();
+    _memoryAdsCacheTimestamp.clear();
+    _memoryTargetedAdCache.clear();
+    _memoryTargetedAdTimestamp.clear();
+    _memoryBreakCache.clear();
+    _memoryBreakTimestamp.clear();
+    _cachedConfig = null;
+
+    // Clear persistent SharedPreferences caches
     final keys = _prefs.getKeys().where(
       (k) =>
           k.startsWith(_cacheKeyPrefix) ||

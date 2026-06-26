@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:realestate/core/models/rental.dart';
 import 'package:realestate/core/di/providers.dart';
 import 'package:realestate/core/errors/ui_error.dart';
-import 'package:realestate/features/rentals/presentation/hashtag_search_page.dart';
+import 'package:realestate/core/services/api_service.dart';
 
 class RentalDetailsPage extends ConsumerStatefulWidget {
   final String id;
@@ -55,7 +55,7 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
       if (!mounted) {
         return;
       }
-      await precacheImage(CachedNetworkImageProvider(url), context);
+      await precacheImage(CachedNetworkImageProvider(ApiService.resolveMediaUrl(url) ?? url), context);
     }
   }
 
@@ -121,8 +121,9 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                             setState(() => _currentImageIndex = index);
                           },
                           itemBuilder: (context, index) {
+                            final url = rental!.imageUrls[index];
                             return CachedNetworkImage(
-                              imageUrl: rental!.imageUrls[index],
+                              imageUrl: ApiService.resolveMediaUrl(url) ?? url,
                               fit: BoxFit.cover,
                               placeholder: (context, url) => Container(
                                 color: Colors.grey[200],
@@ -344,8 +345,10 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                   ),
                   const SizedBox(height: 16),
                   // Features
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  Wrap(
+                    alignment: WrapAlignment.spaceEvenly,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       _buildFeatureCard(
                         Icons.bed,
@@ -362,6 +365,12 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                         '${rental!.squareFeet}',
                         'Sq Ft',
                       ),
+                      if (rental!.floor != null)
+                        _buildFeatureCard(
+                          Icons.layers,
+                          '${rental!.floor}',
+                          'Floor',
+                        ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -390,14 +399,15 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                       ),
                       child: Row(
                         children: [
-                          CircleAvatar(
+                          FullScreenImageAvatar(
                             radius: 24,
                             backgroundColor: rental!.ownerIsVerified
                                 ? (rental!.isVerifiedAgent
                                       ? const Color(0xFFFFB800).withOpacity(0.2)
                                       : Colors.blue.withOpacity(0.2))
                                 : Colors.grey[300],
-                            child: Icon(
+                            avatarUrl: rental!.ownerAvatarUrl,
+                            fallbackWidget: Icon(
                               Icons.person,
                               color: rental!.ownerIsVerified
                                   ? (rental!.isVerifiedAgent
@@ -538,37 +548,6 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                         return _AmenityChip(
                           icon: _getAmenityIcon(amenity),
                           label: amenity,
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  // Hashtags
-                  if (rental!.hashtags.isNotEmpty) ...[
-                    Text(
-                      'Tags',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: rental!.hashtags.map((tag) {
-                        return ActionChip(
-                          avatar: const Icon(Icons.tag, size: 16),
-                          label: Text(tag),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => HashtagSearchPage(hashtag: tag),
-                              ),
-                            );
-                          },
-                          backgroundColor: Colors.blue.withOpacity(0.1),
-                          labelStyle: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
-                          side: BorderSide.none,
-                          visualDensity: VisualDensity.compact,
                         );
                       }).toList(),
                     ),

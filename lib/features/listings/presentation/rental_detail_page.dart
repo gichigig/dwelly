@@ -4,6 +4,8 @@ import '../../../core/models/rental.dart';
 import '../../../core/models/advertisement.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/ad_service.dart';
+import '../../../core/services/google_ad_service.dart';
+import '../../../core/services/chat_service.dart';
 import '../../../core/services/rental_service.dart';
 import '../../../core/services/saved_rental_service.dart';
 import '../../../core/services/report_service.dart';
@@ -12,7 +14,9 @@ import '../../../core/errors/ui_error.dart';
 import '../../../core/navigation/app_tab_navigator.dart';
 import 'chat_page.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/widgets/app_launch_ad_screen.dart';
+import '../../../core/widgets/full_screen_gallery.dart';
 
 class RentalDetailPage extends StatefulWidget {
   final Rental rental;
@@ -30,6 +34,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   AdService? _adService;
   Advertisement? _listingDetailAd;
   VideoPlayerController? _videoController;
+  final PageController _pageController = PageController();
 
   @override
   void initState() {
@@ -61,53 +66,18 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   }
 
   Future<void> _unlockVideoWithAd() async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+    await GoogleRewardedAdManager.showRewardedAd(
+      context,
+      onReward: () {
+        if (mounted) _initializeVideoPlayer();
+      },
     );
-
-    try {
-      final adService = await AdService.getInstance();
-      final ad = await adService.getTargetedAd(
-        AdPlacement.INTERSTITIAL,
-        county: widget.rental.county,
-        constituency: widget.rental.constituency,
-      );
-
-      if (!mounted) return;
-      Navigator.pop(context); // Remove loading
-
-      if (ad != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AppLaunchAdScreen(
-              ad: ad,
-              adService: adService,
-              placement: AdPlacement.INTERSTITIAL,
-              markLaunchAdShownOnComplete: false,
-              onComplete: () {
-                Navigator.pop(context); // Close ad screen
-                _initializeVideoPlayer();
-              },
-            ),
-          ),
-        );
-      } else {
-        // No ad available, just unlock video
-        _initializeVideoPlayer();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context); // Remove loading
-      _initializeVideoPlayer(); // Fallback unlock
-    }
   }
 
   @override
   void dispose() {
     _videoController?.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -313,92 +283,112 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: (rental.imageUrls.isNotEmpty || rental.hasVideo)
-                  ? PageView.builder(
-                      itemCount: rental.imageUrls.length + (rental.hasVideo ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (rental.hasVideo && index == 0) {
-                          if (_videoController != null && _videoController!.value.isInitialized) {
-                            return Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Container(
-                                  color: Colors.black,
-                                  child: Center(
-                                    child: AspectRatio(
-                                      aspectRatio: _videoController!.value.aspectRatio,
-                                      child: VideoPlayer(_videoController!),
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  bottom: 16,
-                                  right: 16,
-                                  child: FloatingActionButton.small(
-                                    backgroundColor: Colors.black54,
-                                    onPressed: () {
-                                      setState(() {
-                                        _videoController!.value.volume > 0
-                                            ? _videoController!.setVolume(0)
-                                            : _videoController!.setVolume(1);
-                                      });
-                                    },
-                                    child: Icon(
-                                      _videoController!.value.volume > 0
-                                          ? Icons.volume_up
-                                          : Icons.volume_off,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            return Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                Container(color: Colors.black87),
-                                Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        'Watch Ad to Unlock Video',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 24),
-                                      ElevatedButton.icon(
-                                        onPressed: _unlockVideoWithAd,
-                                        icon: const Icon(Icons.play_circle_fill),
-                                        label: const Text('Unlock Video'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Theme.of(context).primaryColor,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                        }
-
-                        final imageIndex = rental.hasVideo ? index - 1 : index;
-                        return Image.network(
-                          rental.imageUrls[imageIndex],
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildPlaceholder();
-                          },
+                  ? GestureDetector(
+                      onTap: () {
+                        final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FullScreenGallery(
+                              imageUrls: rental.imageUrls,
+                              videoUrl: rental.videoUrl,
+                              showVideoFirst: isPremium,
+                            ),
+                          ),
                         );
                       },
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: rental.imageUrls.length + (rental.hasVideo ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
+                          final videoIndex = isPremium ? 0 : rental.imageUrls.length;
+
+                          if (rental.hasVideo && index == videoIndex) {
+                            if (_videoController != null && _videoController!.value.isInitialized) {
+                              return Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Container(
+                                    color: Colors.black,
+                                    child: Center(
+                                      child: AspectRatio(
+                                        aspectRatio: _videoController!.value.aspectRatio,
+                                        child: VideoPlayer(_videoController!),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    bottom: 16,
+                                    right: 16,
+                                    child: FloatingActionButton.small(
+                                      backgroundColor: Colors.black54,
+                                      onPressed: () {
+                                        setState(() {
+                                          _videoController!.value.volume > 0
+                                              ? _videoController!.setVolume(0)
+                                              : _videoController!.setVolume(1);
+                                        });
+                                      },
+                                      child: Icon(
+                                        _videoController!.value.volume > 0
+                                            ? Icons.volume_up
+                                            : Icons.volume_off,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            } else {
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Container(color: Colors.black87),
+                                  Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+                                        const SizedBox(height: 16),
+                                        const Text(
+                                          'Watch Ad to Unlock Video',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 24),
+                                        ElevatedButton.icon(
+                                          onPressed: _unlockVideoWithAd,
+                                          icon: const Icon(Icons.play_circle_fill),
+                                          label: const Text('Unlock Video'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Theme.of(context).primaryColor,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                          }
+
+                          final imageIndex = (rental.hasVideo && index > videoIndex) ? index - 1 : (rental.hasVideo && index < videoIndex) ? index : index;
+                          return CachedNetworkImage(
+                            imageUrl: rental.imageUrls[imageIndex],
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) {
+                              return _buildPlaceholder();
+                            },
+                            placeholder: (context, url) => Container(color: Colors.grey[200]),
+                          );
+                        },
+                      ),
                     )
                   : _buildPlaceholder(),
             ),
@@ -416,14 +406,40 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          rental.title,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              rental.title,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (rental.hasVideo && !(AuthService.currentUser?.isPremiumActive ?? false))
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    _pageController.animateToPage(
+                                      rental.imageUrls.length,
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeInOut,
+                                    );
+                                  },
+                                  icon: const Icon(Icons.play_circle_outline, size: 18),
+                                  label: const Text('Watch Video'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Theme.of(context).primaryColor,
+                                    side: BorderSide(color: Theme.of(context).primaryColor),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
                         rental.formattedPrice,
                         style: TextStyle(
@@ -486,26 +502,37 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  Wrap(
+                    alignment: WrapAlignment.spaceEvenly,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       _buildFeatureBox(
                         Icons.bed,
                         '${rental.bedrooms}',
-                        'Bedrooms',
+                        'Beds',
                       ),
                       _buildFeatureBox(
                         Icons.bathtub,
                         '${rental.bathrooms}',
-                        'Bathrooms',
+                        'Baths',
                       ),
                       _buildFeatureBox(
                         Icons.square_foot,
                         '${rental.squareFeet}',
                         'Sq Ft',
                       ),
+                      if (rental.floor != null)
+                        _buildFeatureBox(
+                          Icons.layers,
+                          '${rental.floor}',
+                          'Floor',
+                        ),
                     ],
                   ),
+                  const SizedBox(height: 24),
+
+                  const Center(child: GoogleAdMediumRectangleWidget()),
                   const SizedBox(height: 24),
 
                   // Description
@@ -617,7 +644,8 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
 
   Widget _buildFeatureBox(IconData icon, String value, String label) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: 80,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
@@ -630,7 +658,11 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
             value,
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -753,12 +785,29 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(color: Colors.grey[200]!),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => ChatPage(rental: rental)),
-                  );
+                  try {
+                    final conversation = await ChatService.startConversation(
+                      rentalId: rental.id,
+                    );
+                    if (!context.mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatPage(
+                          rental: rental,
+                          existingConversation: conversation,
+                        ),
+                      ),
+                    );
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => ChatPage(rental: rental)),
+                    );
+                  }
                 },
               ),
 

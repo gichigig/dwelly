@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "452516814543-f38bkasc8nuaprs92nfjrmlarpuc80s5.apps.googleusercontent.com",
+          "client_id": "452516814543-gtl00nfqkkqg0rihitou31c3mi35d6g6.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.java",
-            "certificate_hash": "70f2c038290f3c702e73647452db269edb2898c0"
+            "certificate_hash": "3b0cc40dabc24ac853f0be6299217b6904c49c28"
           }
         },
         {
@@ -58,11 +58,55 @@
       },
       "oauth_client": [
         {
-          "client_id": "452516814543-ue6f40q84qia4t9rtrjn9gdpnlragh4k.apps.googleusercontent.com",
+          "client_id": "452516814543-c0j8fjua5f5eh55qbh9skb0ns3ng342e.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.realestate",
-            "certificate_hash": "70f2c038290f3c702e73647452db269edb2898c0"
+            "certificate_hash": "3b0cc40dabc24ac853f0be6299217b6904c49c28"
+          }
+        },
+        {
+          "client_id": "452516814543-4jltg8psfbeb00f31kk71jtas50tifpd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAPY1sfluAtJtb525bYFdwLuGK0nwIr6U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "452516814543-4jltg8psfbeb00f31kk71jtas50tifpd.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "452516814543-ej8db49plp6ae32rhj2btm95pc71bns0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.realestate"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:452516814543:android:98f0e516eb38a08e6f21ba",
+        "android_client_info": {
+          "package_name": "com.ishinadwelly.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "452516814543-s994bf9ukc5dqg11emosi7qbcqp5lcmc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ishinadwelly.app",
+            "certificate_hash": "3b0cc40dabc24ac853f0be6299217b6904c49c28"
           }
         },
         {

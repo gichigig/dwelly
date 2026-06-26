@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../data/id_scanner_service.dart';
+import '../../../core/services/google_ad_service.dart';
 
 /// Page for searching for a lost ID
 class SearchLostIdPage extends StatefulWidget {
@@ -284,6 +285,9 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 const SizedBox(height: 24),
                 _buildSearchResult(_searchResult!),
               ],
+              const SizedBox(height: 32),
+              const Center(child: GoogleAdMediumRectangleWidget()),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -291,6 +295,21 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
     );
   }
   
+  void _showRegisterAlertAlert() {
+    final name = _nameController.text.trim();
+    final idNumber = _idNumberController.text.trim();
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        return _RegisterAlertDialog(
+          idNumber: idNumber,
+          fullName: name,
+        );
+      },
+    );
+  }
+
   Widget _buildSearchResult(SearchLostIdResponse result) {
     if (result.found) {
       return Card(
@@ -455,6 +474,20 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _showRegisterAlertAlert,
+                icon: const Icon(Icons.notifications_active),
+                label: const Text('Notify Me When Found'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -464,5 +497,152 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+}
+
+class _RegisterAlertDialog extends StatefulWidget {
+  final String idNumber;
+  final String fullName;
+
+  const _RegisterAlertDialog({
+    required this.idNumber,
+    required this.fullName,
+  });
+
+  @override
+  State<_RegisterAlertDialog> createState() => _RegisterAlertDialogState();
+}
+
+class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
+  final _phoneController = TextEditingController();
+  bool _whatsappEnabled = false;
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitAlert() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final whatsappNum = _whatsappEnabled ? _phoneController.text.trim() : null;
+      if (_whatsappEnabled && (whatsappNum == null || whatsappNum.isEmpty)) {
+        throw Exception('Please enter your WhatsApp phone number.');
+      }
+
+      await IdScannerService.createLostIdAlert(
+        idNumber: widget.idNumber,
+        fullName: widget.fullName,
+        whatsappAlertsEnabled: _whatsappEnabled,
+        whatsappNumber: whatsappNum,
+      );
+
+      if (mounted) {
+        Navigator.pop(context, true); // Return success
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🔔 Watchlist alert registered! We will notify you when found.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _error = e.toString().replaceAll('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.add_alert, color: Colors.blue.shade700),
+          const SizedBox(width: 10),
+          const Text('Notify Me When Found'),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Register this ID card on your watchlist. When a finder registers a matching ID, you will receive an instant notification.',
+              style: TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Name: ${widget.fullName}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'ID Number: ${widget.idNumber}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            SwitchListTile(
+              title: const Text('WhatsApp Notifications'),
+              subtitle: const Text('Receive a message when your ID is found'),
+              value: _whatsappEnabled,
+              contentPadding: EdgeInsets.zero,
+              onChanged: (val) {
+                setState(() {
+                  _whatsappEnabled = val;
+                });
+              },
+            ),
+            if (_whatsappEnabled) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: 'WhatsApp Phone Number',
+                  hintText: 'e.g., +254700000000',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _isLoading ? null : _submitAlert,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Notify Me'),
+        ),
+      ],
+    );
   }
 }

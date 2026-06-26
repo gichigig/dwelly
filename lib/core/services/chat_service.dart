@@ -8,6 +8,8 @@ import '../errors/app_error.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
 import 'cache_service.dart';
+import 'offline_queue_service.dart';
+import 'sqlite_cache_service.dart';
 
 class PaginatedConversations {
   final List<Conversation> conversations;
@@ -114,7 +116,10 @@ class ChatService {
 
   static Future<void> _handleAuthError(int statusCode) async {
     if (_isAuthError(statusCode)) {
-      await AuthService.logout();
+      // Don't call logout() here — the intercepted HTTP client already
+      // attempted a token refresh on the 401 and calls logout() if refresh
+      // failed.  Calling logout() again races with concurrent requests
+      // that may still be retrying with the refreshed token.
       throw const AppError(
         code: AppErrorCode.sessionExpired,
         message: 'Your session expired. Please sign in again.',
@@ -217,6 +222,43 @@ class ChatService {
     }
   }
 
+  static void markConversationAsReadLocal(int conversationId) {
+    final cached = CacheManager.conversations.value;
+    if (cached != null) {
+      final conversations = List<Conversation>.from(cached);
+      final index = conversations.indexWhere((c) => c.id == conversationId);
+      if (index >= 0) {
+        final existing = conversations[index];
+        if (existing.unreadCount > 0) {
+          conversations[index] = Conversation(
+            id: existing.id,
+            listingType: existing.listingType,
+            listingId: existing.listingId,
+            listingTitle: existing.listingTitle,
+            listingImageUrl: existing.listingImageUrl,
+            rentalId: existing.rentalId,
+            rentalTitle: existing.rentalTitle,
+            userId: existing.userId,
+            userName: existing.userName,
+            userUsername: existing.userUsername,
+            ownerId: existing.ownerId,
+            ownerName: existing.ownerName,
+            ownerUsername: existing.ownerUsername,
+            mutedByMe: existing.mutedByMe,
+            blockedByMe: existing.blockedByMe,
+            blockedMe: existing.blockedMe,
+            lastMessage: existing.lastMessage,
+            lastMessageAt: existing.lastMessageAt,
+            unreadCount: 0,
+            createdAt: existing.createdAt,
+          );
+          CacheManager.conversations.set(conversations);
+          _updateUnreadMessageCount(conversations);
+        }
+      }
+    }
+  }
+
   static Future<PaginatedConversations> getConversationsPaginated({
     int page = 0,
     int size = 10,
@@ -231,19 +273,32 @@ class ChatService {
       );
     }
 
-    try {
+    final cacheKey = 'conversations_${listingType ?? 'all'}_page_$page';
+
+    PaginatedConversations parseData(Map<String, dynamic> data) {
+      final conversationsJson = data['conversations'] as List<dynamic>? ?? [];
+      final conversations = conversationsJson
+          .map((json) => Conversation.fromJson(json as Map<String, dynamic>))
+          .toList();
+      return PaginatedConversations(
+        conversations: conversations,
+        hasMore: data['hasMore'] as bool? ?? false,
+        page: (data['page'] as num?)?.toInt() ?? page,
+        size: (data['size'] as num?)?.toInt() ?? size,
+        totalConversations: (data['totalConversations'] as num?)?.toInt() ?? 0,
+      );
+    }
+
+    Future<Map<String, dynamic>> fetchNetwork() async {
       final queryParams = <String, String>{
         'page': '$page',
         'size': '$size',
-        if (listingType != null && listingType.isNotEmpty)
-          'listingType': listingType,
+        if (listingType != null && listingType.isNotEmpty) 'listingType': listingType,
       };
       final isAdmin = _isAdminUser();
       final path = isAdmin ? '/conversations/all/paged' : '/conversations/paged';
       final response = await ApiService.timedGet(
-        Uri.parse(
-          '${ApiService.baseUrl}$path',
-        ).replace(queryParameters: queryParams),
+        Uri.parse('${ApiService.baseUrl}$path').replace(queryParameters: queryParams),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer ${AuthService.token}',
@@ -254,96 +309,38 @@ class ChatService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) {
-          final conversationsJson =
-              data['conversations'] as List<dynamic>? ?? [];
-          final conversations = conversationsJson
-              .map(
-                (json) => Conversation.fromJson(json as Map<String, dynamic>),
-              )
-              .toList();
-
-          final hasMore = data['hasMore'] as bool? ?? false;
-          final pageNumber = (data['page'] as num?)?.toInt() ?? page;
-          final pageSize = (data['size'] as num?)?.toInt() ?? size;
-          final totalConversations =
-              (data['totalConversations'] as num?)?.toInt() ?? 0;
-
-          return PaginatedConversations(
-            conversations: conversations,
-            hasMore: hasMore,
-            page: pageNumber,
-            size: pageSize,
-            totalConversations: totalConversations,
-          );
+          await SqliteCacheService.instance.saveChatCache(cacheKey, data);
+          return data;
         }
       }
-
-      // Fallback when paginated endpoint is unavailable.
-      if (response.statusCode == 404 || response.statusCode == 405) {
-        if (isAdmin) {
-          final all = await getConversations(
-            forceRefresh: forceRefresh || page > 0,
-            listingType: listingType,
-          );
-          final start = page * size;
-          if (start >= all.length) {
-            return PaginatedConversations(
-              conversations: const [],
-              hasMore: false,
-              page: page,
-              size: size,
-              totalConversations: all.length,
-            );
-          }
-
-          final end = (start + size).clamp(0, all.length);
-          return PaginatedConversations(
-            conversations: all.sublist(start, end),
-            hasMore: end < all.length,
-            page: page,
-            size: size,
-            totalConversations: all.length,
-          );
-        }
-        final all = await getConversations(
-          forceRefresh: forceRefresh || page > 0,
-          listingType: listingType,
-        );
-        final start = page * size;
-        if (start >= all.length) {
-          return PaginatedConversations(
-            conversations: const [],
-            hasMore: false,
-            page: page,
-            size: size,
-            totalConversations: all.length,
-          );
-        }
-
-        final end = (start + size).clamp(0, all.length);
-        return PaginatedConversations(
-          conversations: all.sublist(start, end),
-          hasMore: end < all.length,
-          page: page,
-          size: size,
-          totalConversations: all.length,
-        );
-      }
-
+      
+      // Fallback for 404 handled minimally here, assuming backend works
       await _handleAuthError(response.statusCode);
-      throw ApiService.parseHttpError(
-        response,
-        fallbackMessage: 'Failed to load conversations.',
-      );
+      throw ApiService.parseHttpError(response, fallbackMessage: 'Failed to load conversations.');
+    }
+
+    if (page == 0 && !forceRefresh) {
+      final localData = await SqliteCacheService.instance.getChatCache(cacheKey);
+      if (localData != null) {
+        unawaited(() async {
+          try {
+            await fetchNetwork();
+          } catch (_) {}
+        }());
+        return parseData(localData);
+      }
+    }
+
+    try {
+      final data = await fetchNetwork();
+      return parseData(data);
     } catch (e) {
-      final appError = ApiService.parseException(
-        e,
-        fallbackMessage: 'Failed to load conversations.',
-      );
-      _logDebug(
-        'Error fetching paginated conversations',
-        appError.technicalMessage ?? e,
-      );
+      final localData = await SqliteCacheService.instance.getChatCache(cacheKey);
+      if (localData != null) {
+        return parseData(localData);
+      }
+      final appError = ApiService.parseException(e, fallbackMessage: 'Failed to load conversations.');
+      _logDebug('Error fetching paginated conversations', appError.technicalMessage ?? e);
       throw appError;
     }
   }
@@ -351,6 +348,7 @@ class ChatService {
   static Future<Conversation> startConversation({
     int? rentalId,
     int? productId,
+    int? targetUserId,
     String initialMessage = '',
   }) async {
     if (!AuthService.isLoggedIn) {
@@ -359,8 +357,10 @@ class ChatService {
         message: 'Please sign in to continue.',
       );
     }
-    if ((rentalId == null && productId == null) ||
-        (rentalId != null && productId != null)) {
+    int targets = (rentalId != null ? 1 : 0) +
+        (productId != null ? 1 : 0) +
+        (targetUserId != null ? 1 : 0);
+    if (targets != 1) {
       throw const AppError(
         code: AppErrorCode.validation,
         message: 'Invalid conversation request.',
@@ -371,6 +371,7 @@ class ChatService {
       final payload = <String, dynamic>{
         if (rentalId != null) 'rentalId': rentalId,
         if (productId != null) 'productId': productId,
+        if (targetUserId != null) 'targetUserId': targetUserId,
         if (initialMessage.trim().isNotEmpty) 'initialMessage': initialMessage,
       };
       final response = await ApiService.timedPost(
@@ -406,8 +407,11 @@ class ChatService {
   startConversationAndSendMessageQueued({
     int? rentalId,
     int? productId,
+    int? targetUserId,
     required String content,
     required String clientMessageId,
+    String messageType = 'TEXT',
+    String? mediaUrl,
   }) async {
     if (!AuthService.isLoggedIn) {
       throw const AppError(
@@ -415,8 +419,10 @@ class ChatService {
         message: 'Please sign in to continue.',
       );
     }
-    if ((rentalId == null && productId == null) ||
-        (rentalId != null && productId != null)) {
+    int targets = (rentalId != null ? 1 : 0) +
+        (productId != null ? 1 : 0) +
+        (targetUserId != null ? 1 : 0);
+    if (targets != 1) {
       throw const AppError(
         code: AppErrorCode.validation,
         message: 'Invalid conversation request.',
@@ -433,7 +439,10 @@ class ChatService {
         body: jsonEncode({
           if (rentalId != null) 'rentalId': rentalId,
           if (productId != null) 'productId': productId,
+          if (targetUserId != null) 'targetUserId': targetUserId,
           'content': content,
+          'messageType': messageType,
+          if (mediaUrl != null) 'mediaUrl': mediaUrl,
           'clientMessageId': clientMessageId,
         }),
       );
@@ -451,10 +460,13 @@ class ChatService {
         final conversation = await startConversation(
           rentalId: rentalId,
           productId: productId,
+          targetUserId: targetUserId,
         );
         final messageResult = await sendMessageQueued(
           conversationId: conversation.id!,
           content: content,
+          messageType: messageType,
+          mediaUrl: mediaUrl,
           clientMessageId: clientMessageId,
         );
         return QueuedConversationSendResult(
@@ -473,10 +485,13 @@ class ChatService {
           final conversation = await startConversation(
             rentalId: rentalId,
             productId: productId,
+            targetUserId: targetUserId,
           );
           final messageResult = await sendMessageQueued(
             conversationId: conversation.id!,
             content: content,
+            messageType: messageType,
+            mediaUrl: mediaUrl,
             clientMessageId: clientMessageId,
           );
           return QueuedConversationSendResult(
@@ -491,10 +506,85 @@ class ChatService {
         e,
         fallbackMessage: 'Failed to start conversation.',
       );
+      if (appError.code == AppErrorCode.network || appError.code == AppErrorCode.timeout) {
+        await OfflineQueueService.enqueueMessage(OfflineMessage(
+          rentalId: rentalId,
+          targetUserId: targetUserId,
+          content: content,
+          messageType: messageType,
+          mediaUrl: mediaUrl,
+          clientMessageId: clientMessageId,
+          createdAt: DateTime.now(),
+        ));
+        return QueuedConversationSendResult(
+          conversation: Conversation(
+            rentalId: rentalId ?? 0,
+            rentalTitle: '',
+            userId: AuthService.currentUser?.id ?? 0,
+            userName: AuthService.currentUser?.fullName ?? '',
+            ownerId: targetUserId ?? 0,
+            ownerName: '',
+            createdAt: DateTime.now(),
+          ),
+          messageResult: QueuedSendResult(
+            status: 'OFFLINE_QUEUED',
+            clientMessageId: clientMessageId,
+          ),
+        );
+      }
       _logDebug(
         'Error queue-starting conversation',
         appError.technicalMessage ?? e,
       );
+      throw appError;
+    }
+  }
+
+  static Future<void> deleteMessage(int messageId) async {
+    final response = await ApiService.timedDelete(
+      Uri.parse('${ApiService.baseUrl}/conversations/messages/$messageId'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ${AuthService.token}',
+      },
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Failed to delete message: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> deleteConversation(int conversationId) async {
+    if (!AuthService.isLoggedIn) {
+      throw const AppError(
+        code: AppErrorCode.sessionExpired,
+        message: 'Please sign in to continue.',
+      );
+    }
+
+    try {
+      final response = await ApiService.timedDelete(
+        Uri.parse('${ApiService.baseUrl}/conversations/$conversationId'),
+        headers: {
+          'Authorization': 'Bearer ${AuthService.token}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        CacheManager.conversations.clear();
+      } else {
+        await _handleAuthError(response.statusCode);
+        throw ApiService.parseHttpError(
+          response,
+          fallbackMessage: 'Failed to delete conversation.',
+        );
+      }
+    } catch (e) {
+      final appError = ApiService.parseException(
+        e,
+        fallbackMessage: 'Failed to delete conversation.',
+      );
+      _logDebug('Error deleting conversation', appError.technicalMessage ?? e);
       throw appError;
     }
   }
@@ -564,11 +654,22 @@ class ChatService {
       );
     }
 
-    try {
+    final cacheKey = 'messages_${conversationId}_page_$page';
+
+    Map<String, dynamic> parseData(Map<String, dynamic> data) {
+      final List<dynamic> messagesJson = data['messages'] ?? [];
+      final messages = messagesJson.map((json) => ChatMessage.fromJson(json)).toList();
+      return {
+        'messages': messages,
+        'hasMore': data['hasMore'] ?? false,
+        'totalMessages': data['totalMessages'] ?? 0,
+        'page': data['page'] ?? 0,
+      };
+    }
+
+    Future<Map<String, dynamic>> fetchNetwork() async {
       final response = await ApiService.timedGet(
-        Uri.parse(
-          '${ApiService.baseUrl}/conversations/$conversationId/messages?page=$page&limit=$limit',
-        ),
+        Uri.parse('${ApiService.baseUrl}/conversations/$conversationId/messages?page=$page&limit=$limit'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer ${AuthService.token}',
@@ -578,48 +679,47 @@ class ChatService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is Map) {
-          final List<dynamic> messagesJson = data['messages'] ?? [];
-          final messages = messagesJson
-              .map((json) => ChatMessage.fromJson(json))
-              .toList();
-          return {
-            'messages': messages,
-            'hasMore': data['hasMore'] ?? false,
-            'totalMessages': data['totalMessages'] ?? 0,
-            'page': data['page'] ?? 0,
-          };
-        }
-        // Fallback for old format
-        if (data is List) {
-          return {
-            'messages': data.map((json) => ChatMessage.fromJson(json)).toList(),
+          final Map<String, dynamic> mapData = Map<String, dynamic>.from(data);
+          await SqliteCacheService.instance.saveChatCache(cacheKey, mapData);
+          return mapData;
+        } else if (data is List) {
+          final mapData = {
+            'messages': data,
             'hasMore': false,
             'totalMessages': data.length,
             'page': 0,
           };
+          await SqliteCacheService.instance.saveChatCache(cacheKey, mapData);
+          return mapData;
         }
-        return {
-          'messages': [],
-          'hasMore': false,
-          'totalMessages': 0,
-          'page': 0,
-        };
-      } else {
-        await _handleAuthError(response.statusCode);
-        throw ApiService.parseHttpError(
-          response,
-          fallbackMessage: 'Failed to load messages.',
-        );
+        return {'messages': [], 'hasMore': false, 'totalMessages': 0, 'page': 0};
       }
+      await _handleAuthError(response.statusCode);
+      throw ApiService.parseHttpError(response, fallbackMessage: 'Failed to load messages.');
+    }
+
+    if (page == 0) {
+      final localData = await SqliteCacheService.instance.getChatCache(cacheKey);
+      if (localData != null) {
+        unawaited(() async {
+          try {
+            await fetchNetwork();
+          } catch (_) {}
+        }());
+        return parseData(localData);
+      }
+    }
+
+    try {
+      final data = await fetchNetwork();
+      return parseData(data);
     } catch (e) {
-      final appError = ApiService.parseException(
-        e,
-        fallbackMessage: 'Failed to load messages.',
-      );
-      _logDebug(
-        'Error fetching paginated messages',
-        appError.technicalMessage ?? e,
-      );
+      final localData = await SqliteCacheService.instance.getChatCache(cacheKey);
+      if (localData != null) {
+        return parseData(localData);
+      }
+      final appError = ApiService.parseException(e, fallbackMessage: 'Failed to load messages.');
+      _logDebug('Error fetching messages', appError.technicalMessage ?? e);
       throw appError;
     }
   }
@@ -627,6 +727,9 @@ class ChatService {
   static Future<ChatMessage> sendMessage({
     required int conversationId,
     required String content,
+    String? clientMessageId,
+    String messageType = 'TEXT',
+    String? mediaUrl,
   }) async {
     if (!AuthService.isLoggedIn) {
       throw const AppError(
@@ -644,7 +747,12 @@ class ChatService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${AuthService.token}',
         },
-        body: jsonEncode({'content': content}),
+        body: jsonEncode({
+          'content': content,
+          'messageType': messageType,
+          if (mediaUrl != null) 'mediaUrl': mediaUrl,
+          if (clientMessageId != null) 'clientMessageId': clientMessageId,
+        }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -670,6 +778,8 @@ class ChatService {
     required int conversationId,
     required String content,
     required String clientMessageId,
+    String messageType = 'TEXT',
+    String? mediaUrl,
   }) async {
     if (!AuthService.isLoggedIn) {
       throw const AppError(
@@ -689,7 +799,8 @@ class ChatService {
         },
         body: jsonEncode({
           'content': content,
-          'messageType': 'TEXT',
+          'messageType': messageType,
+          if (mediaUrl != null) 'mediaUrl': mediaUrl,
           'clientMessageId': clientMessageId,
         }),
       );
@@ -707,6 +818,9 @@ class ChatService {
         final sent = await sendMessage(
           conversationId: conversationId,
           content: content,
+          clientMessageId: clientMessageId,
+          messageType: messageType,
+          mediaUrl: mediaUrl,
         );
         return QueuedSendResult(
           status: 'SENT',
@@ -728,6 +842,8 @@ class ChatService {
           final sent = await sendMessage(
             conversationId: conversationId,
             content: content,
+            messageType: messageType,
+            mediaUrl: mediaUrl,
           );
           return QueuedSendResult(
             status: 'SENT',
@@ -744,6 +860,20 @@ class ChatService {
         e,
         fallbackMessage: 'Failed to send message.',
       );
+      if (appError.code == AppErrorCode.network || appError.code == AppErrorCode.timeout) {
+        await OfflineQueueService.enqueueMessage(OfflineMessage(
+          conversationId: conversationId,
+          content: content,
+          messageType: messageType,
+          mediaUrl: mediaUrl,
+          clientMessageId: clientMessageId,
+          createdAt: DateTime.now(),
+        ));
+        return QueuedSendResult(
+          status: 'OFFLINE_QUEUED',
+          clientMessageId: clientMessageId,
+        );
+      }
       _logDebug('Error sending queued message', appError.technicalMessage ?? e);
       throw appError;
     }

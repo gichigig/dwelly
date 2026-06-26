@@ -556,7 +556,7 @@ class NotificationService {
   }
 
   /// Unregister device token
-  static Future<bool> unregisterDevice() async {
+  static Future<bool> unregisterDevice({String? token}) async {
     if (_fcmToken == null) return true;
 
     try {
@@ -564,11 +564,13 @@ class NotificationService {
         Uri.parse('${ApiService.baseUrl}/notifications/device'),
         headers: {
           'Content-Type': 'application/json',
-          if (AuthService.token != null)
+          if (token != null)
+            'Authorization': 'Bearer $token'
+          else if (AuthService.token != null)
             'Authorization': 'Bearer ${AuthService.token}',
         },
         body: jsonEncode({'fcmToken': _fcmToken}),
-      );
+      ).timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
         _fcmToken = null;

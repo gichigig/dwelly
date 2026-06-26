@@ -12,6 +12,8 @@ import 'core/services/crash_reporting_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/theme_service.dart';
 import 'core/services/network_service.dart';
+import 'core/services/offline_queue_service.dart';
+import 'core/services/google_ad_service.dart';
 import 'core/widgets/network_banner.dart';
 import 'features/onboarding/welcome_onboarding_page.dart';
 import 'features/splash/splash_screen.dart';
@@ -21,6 +23,32 @@ class DwellyHttpOverrides extends HttpOverrides {
   HttpClient createHttpClient(SecurityContext? context) {
     return super.createHttpClient(context)
       ..connectionTimeout = const Duration(seconds: 5);
+  }
+}
+
+class AppLifecycleReactor extends WidgetsBindingObserver {
+  DateTime? _backgroundTime;
+  
+  AppLifecycleReactor() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _backgroundTime ??= DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_backgroundTime != null) {
+        final backgroundDuration = DateTime.now().difference(_backgroundTime!);
+        // Only show App Open Ad if the app was in the background for more than 15 seconds.
+        // This prevents the ad from overriding the screen during micro-interruptions 
+        // like pulling down the notification tray, toggling Wi-Fi, or system dialogs.
+        if (backgroundDuration.inSeconds > 15) {
+          AppOpenAdManager.instance.showAdIfAvailable();
+        }
+        _backgroundTime = null;
+      }
+    }
   }
 }
 
@@ -49,8 +77,13 @@ void main() async {
         ThemeService.init(),
         AppNotificationCenter.init(),
       ]);
+      unawaited(OfflineQueueService.init());
+      AppLifecycleReactor? lifecycleReactor;
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
-        unawaited(MobileAds.instance.initialize());
+        unawaited(MobileAds.instance.initialize().then((_) {
+          AppOpenAdManager.instance.loadAd();
+          lifecycleReactor = AppLifecycleReactor();
+        }));
       }
       final onboardingDone = await onboardingFuture;
 

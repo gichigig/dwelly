@@ -13,7 +13,32 @@ class PremiumPage extends StatefulWidget {
   State<PremiumPage> createState() => _PremiumPageState();
 }
 
-class _PremiumPageState extends State<PremiumPage> {
+class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshStatus();
+    }
+  }
+
+  Future<void> _refreshStatus() async {
+    await AuthService.refreshCurrentUser();
+    if (mounted) setState(() {});
+  }
+
 
   String _resolvePaymentUrl(String amount) {
     String baseUrl = 'https://billygichigdev.me/payments/mpesa';
@@ -118,41 +143,28 @@ class _PremiumPageState extends State<PremiumPage> {
                 ),
               )
             else if (!isActive)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade700,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'KES 300 / 30 DAYS',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade700,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'KES 300 / 30 DAYS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade600,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'KES 600 / 60 DAYS',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             const SizedBox(height: 32),
             _buildFeatureRow(Icons.block, '🚫 ZERO Ads Interruption'),
@@ -180,30 +192,6 @@ class _PremiumPageState extends State<PremiumPage> {
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.amber, // High contrast button
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 8,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 64,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openWebPortal('600'),
-                      icon: const Icon(Icons.star, size: 28, color: Colors.white),
-                      label: const Text(
-                        'PAY 600 KSH (60 DAYS)',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade600,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),

@@ -5,6 +5,7 @@ import '../../../core/services/saved_rental_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/telegram/telegram_section_state.dart';
 import '../../../core/widgets/telegram/telegram_top_bar.dart';
+import '../../../core/services/google_ad_service.dart';
 import 'rental_detail_page.dart';
 
 class SavedPage extends StatefulWidget {
@@ -216,10 +217,21 @@ class SavedPageState extends State<SavedPage> {
           }
 
           final savedRental = _savedRentals[index];
-          return _SavedRentalCard(
-            savedRental: savedRental,
-            onTap: () => _navigateToDetail(savedRental.rental),
-            onUnsave: () => _unsaveRental(savedRental.rentalId),
+          final isAdIndex = (index + 1) % 4 == 0;
+
+          return Column(
+            children: [
+              _SavedRentalCard(
+                savedRental: savedRental,
+                onTap: () => _navigateToDetail(savedRental.rental),
+                onUnsave: () => _unsaveRental(savedRental.rentalId),
+              ),
+              if (isAdIndex)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8.0),
+                  child: Center(child: GoogleAdBannerWidget()),
+                ),
+            ],
           );
         },
       ),
@@ -227,25 +239,49 @@ class SavedPageState extends State<SavedPage> {
   }
 
   Widget _buildLoginPrompt() {
-    return const TelegramSectionState.empty(
-      title: 'Save your favorites',
-      subtitle: 'Sign in to save listings and view them later.',
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: const TelegramSectionState.empty(
+            title: 'Save your favorites',
+            subtitle: 'Sign in to save listings and view them later.',
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildEmptyState() {
-    return const TelegramSectionState.empty(
-      title: 'No saved listings',
-      subtitle: 'Tap bookmark on any listing to save it here.',
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: const TelegramSectionState.empty(
+            title: 'No saved listings',
+            subtitle: 'Tap bookmark on any listing to save it here.',
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildError() {
-    return TelegramSectionState.error(
-      title: 'Something went wrong',
-      subtitle: _error ?? 'Failed to load saved listings',
-      actionLabel: 'Try again',
-      onAction: () => _loadSavedRentals(forceRefresh: true),
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: TelegramSectionState.error(
+            title: 'Something went wrong',
+            subtitle: _error ?? 'Failed to load saved listings',
+            actionLabel: 'Try again',
+            onAction: () => _loadSavedRentals(forceRefresh: true),
+          ),
+        ),
+      ],
     );
   }
 
@@ -277,76 +313,96 @@ class _SavedRentalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rental = savedRental.rental;
     final details =
-        '${rental.bedrooms} bed ? ${rental.bathrooms} bath ? ${rental.squareFeet} sq ft';
+        '${rental.bedrooms} bed • ${rental.bathrooms} bath • ${rental.squareFeet} sq ft${rental.floor != null ? ' • Floor ${rental.floor}' : ''}';
 
     return Card(
-      margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      child: InkWell(
         onTap: onTap,
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: rental.imageUrls.isNotEmpty
-              ? Image.network(
-                  rental.imageUrls.first,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const _SavedPlaceholder(),
-                )
-              : const _SavedPlaceholder(),
-        ),
-        title: Text(
-          rental.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 2),
-            Text(details, maxLines: 1, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
-            Text(
-              rental.fullAddress,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Theme.of(context).colorScheme.primary),
-            ),
-            if (savedRental.notes != null &&
-                savedRental.notes!.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  savedRental.notes!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.amber[900], fontSize: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: rental.imageUrls.isNotEmpty
+                    ? Image.network(
+                        rental.imageUrls.first,
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const _SavedPlaceholder(),
+                      )
+                    : const _SavedPlaceholder(),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      rental.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      details, 
+                      maxLines: 1, 
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      rental.fullAddress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13),
+                    ),
+                    if (savedRental.notes != null &&
+                        savedRental.notes!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          savedRental.notes!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.amber[900], fontSize: 12, fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-          ],
-        ),
-        trailing: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              rental.formattedPrice,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w700,
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    rental.formattedPrice,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  IconButton(
+                    icon: const Icon(Icons.bookmark, color: Colors.deepPurple),
+                    onPressed: onUnsave,
+                    tooltip: 'Remove from saved',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 6),
-            IconButton(
-              icon: const Icon(Icons.bookmark, color: Colors.deepPurple),
-              onPressed: onUnsave,
-              tooltip: 'Remove from saved',
-              visualDensity: VisualDensity.compact,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -359,9 +415,12 @@ class _SavedPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 56,
-      height: 56,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Icon(
         Icons.home_work_outlined,
         color: Theme.of(context).colorScheme.onSurfaceVariant,

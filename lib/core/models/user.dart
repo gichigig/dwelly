@@ -23,11 +23,13 @@ class User {
   final int? id;
   final String email;
   final String? password;
+  final String? username;
   final String firstName;
   final String lastName;
   final String? phone;
   final String? avatarUrl;
   final String role;
+  final String? primaryRole;
   final bool enabled;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -49,15 +51,30 @@ class User {
   final DateTime? premiumStartedAt;
   final DateTime? premiumExpiresAt;
 
+  // RealAdmin Pro (only removes ads in Dwelly)
+  final DateTime? realadminPremiumStartedAt;
+  final DateTime? realadminPremiumExpiresAt;
+
+  // Helper data
+  final String? helperCoverageLevel;
+  final String? helperCounty;
+  final List<String> helperConstituencies;
+  final List<String> helperWards;
+  final double? helperPrice;
+  final double? helperBalance;
+  final double? helperTotalEarned;
+
   User({
     this.id,
     required this.email,
     this.password,
+    this.username,
     required this.firstName,
     required this.lastName,
     this.phone,
     this.avatarUrl,
     this.role = 'USER',
+    this.primaryRole,
     this.enabled = true,
     this.authProvider = 'LOCAL',
     this.createdAt,
@@ -72,19 +89,30 @@ class User {
     this.fypNicknames = const [],
     this.premiumStartedAt,
     this.premiumExpiresAt,
+    this.realadminPremiumStartedAt,
+    this.realadminPremiumExpiresAt,
+    this.helperCoverageLevel,
+    this.helperCounty,
+    this.helperConstituencies = const [],
+    this.helperWards = const [],
+    this.helperPrice,
+    this.helperBalance,
+    this.helperTotalEarned,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: _toInt(json['id']),
       email: json['email'] ?? '',
+      username: json['username'],
       firstName: json['firstName'] ?? '',
       lastName: json['lastName'] ?? '',
       phone: json['phone'],
       avatarUrl: json['avatarUrl'],
       role: json['role'] ?? 'USER',
+      primaryRole: json['primaryRole'],
       enabled: json['enabled'] ?? true,
-        authProvider: json['authProvider']?.toString() ?? 'LOCAL',
+      authProvider: json['authProvider']?.toString() ?? 'LOCAL',
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'])
           : null,
@@ -105,6 +133,19 @@ class User {
       premiumExpiresAt: json['premiumExpiresAt'] != null
           ? DateTime.tryParse(json['premiumExpiresAt'].toString())
           : null,
+      realadminPremiumStartedAt: json['realadminPremiumStartedAt'] != null
+          ? DateTime.tryParse(json['realadminPremiumStartedAt'].toString())
+          : null,
+      realadminPremiumExpiresAt: json['realadminPremiumExpiresAt'] != null
+          ? DateTime.tryParse(json['realadminPremiumExpiresAt'].toString())
+          : null,
+      helperCoverageLevel: json['helperCoverageLevel']?.toString(),
+      helperCounty: json['helperCounty']?.toString(),
+      helperConstituencies: _toStringList(json['helperConstituencies']),
+      helperWards: _toStringList(json['helperWards']),
+      helperPrice: _toDouble(json['helperPrice']),
+      helperBalance: _toDouble(json['helperBalance']),
+      helperTotalEarned: _toDouble(json['helperTotalEarned']),
     );
   }
 
@@ -112,11 +153,14 @@ class User {
     return {
       if (id != null) 'id': id,
       'email': email,
+      if (username != null) 'username': username,
       if (password != null) 'password': password,
       'firstName': firstName,
       'lastName': lastName,
       if (phone != null) 'phone': phone,
       if (avatarUrl != null) 'avatarUrl': avatarUrl,
+      'role': role,
+      if (primaryRole != null) 'primaryRole': primaryRole,
       'authProvider': authProvider,
       if (locationWard != null) 'locationWard': locationWard,
       if (locationConstituency != null)
@@ -131,6 +175,17 @@ class User {
         'premiumStartedAt': premiumStartedAt!.toIso8601String(),
       if (premiumExpiresAt != null)
         'premiumExpiresAt': premiumExpiresAt!.toIso8601String(),
+      if (realadminPremiumStartedAt != null)
+        'realadminPremiumStartedAt': realadminPremiumStartedAt!.toIso8601String(),
+      if (realadminPremiumExpiresAt != null)
+        'realadminPremiumExpiresAt': realadminPremiumExpiresAt!.toIso8601String(),
+      if (helperCoverageLevel != null) 'helperCoverageLevel': helperCoverageLevel,
+      if (helperCounty != null) 'helperCounty': helperCounty,
+      'helperConstituencies': helperConstituencies,
+      'helperWards': helperWards,
+      if (helperPrice != null) 'helperPrice': helperPrice,
+      if (helperBalance != null) 'helperBalance': helperBalance,
+      if (helperTotalEarned != null) 'helperTotalEarned': helperTotalEarned,
     };
   }
 
@@ -163,15 +218,23 @@ class User {
   bool get isPremiumActive =>
       premiumExpiresAt != null && premiumExpiresAt!.isAfter(DateTime.now());
 
+  bool get isRealadminPremiumActive =>
+      realadminPremiumExpiresAt != null &&
+      realadminPremiumExpiresAt!.isAfter(DateTime.now());
+
+  bool get shouldHideAds => isPremiumActive || isRealadminPremiumActive;
+
   User copyWith({
     int? id,
     String? email,
     String? password,
+    String? username,
     String? firstName,
     String? lastName,
     String? phone,
     String? avatarUrl,
     String? role,
+    String? primaryRole,
     bool? enabled,
     String? authProvider,
     String? locationWard,
@@ -184,16 +247,27 @@ class User {
     List<String>? fypNicknames,
     DateTime? premiumStartedAt,
     DateTime? premiumExpiresAt,
+    DateTime? realadminPremiumStartedAt,
+    DateTime? realadminPremiumExpiresAt,
+    String? helperCoverageLevel,
+    String? helperCounty,
+    List<String>? helperConstituencies,
+    List<String>? helperWards,
+    double? helperPrice,
+    double? helperBalance,
+    double? helperTotalEarned,
   }) {
     return User(
       id: id ?? this.id,
       email: email ?? this.email,
       password: password ?? this.password,
+      username: username ?? this.username,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       phone: phone ?? this.phone,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       role: role ?? this.role,
+      primaryRole: primaryRole ?? this.primaryRole,
       enabled: enabled ?? this.enabled,
       authProvider: authProvider ?? this.authProvider,
       createdAt: createdAt,
@@ -208,6 +282,15 @@ class User {
       fypNicknames: fypNicknames ?? this.fypNicknames,
       premiumStartedAt: premiumStartedAt ?? this.premiumStartedAt,
       premiumExpiresAt: premiumExpiresAt ?? this.premiumExpiresAt,
+      realadminPremiumStartedAt: realadminPremiumStartedAt ?? this.realadminPremiumStartedAt,
+      realadminPremiumExpiresAt: realadminPremiumExpiresAt ?? this.realadminPremiumExpiresAt,
+      helperCoverageLevel: helperCoverageLevel ?? this.helperCoverageLevel,
+      helperCounty: helperCounty ?? this.helperCounty,
+      helperConstituencies: helperConstituencies ?? this.helperConstituencies,
+      helperWards: helperWards ?? this.helperWards,
+      helperPrice: helperPrice ?? this.helperPrice,
+      helperBalance: helperBalance ?? this.helperBalance,
+      helperTotalEarned: helperTotalEarned ?? this.helperTotalEarned,
     );
   }
 }
@@ -218,10 +301,13 @@ class AuthResponse {
   final String type;
   final int id;
   final String email;
+  final String? username;
   final String firstName;
   final String lastName;
   final String? phone;
+  final String? avatarUrl;
   final String role;
+  final String? primaryRole;
   final String authProvider;
 
   // Location fields
@@ -240,16 +326,23 @@ class AuthResponse {
   final DateTime? premiumStartedAt;
   final DateTime? premiumExpiresAt;
 
+  // RealAdmin Pro
+  final DateTime? realadminPremiumStartedAt;
+  final DateTime? realadminPremiumExpiresAt;
+
   AuthResponse({
     required this.token,
     this.refreshToken,
     required this.type,
     required this.id,
     required this.email,
+    this.username,
     required this.firstName,
     required this.lastName,
     this.phone,
+    this.avatarUrl,
     required this.role,
+    this.primaryRole,
     this.authProvider = 'LOCAL',
     this.locationWard,
     this.locationConstituency,
@@ -261,6 +354,8 @@ class AuthResponse {
     this.fypNicknames = const [],
     this.premiumStartedAt,
     this.premiumExpiresAt,
+    this.realadminPremiumStartedAt,
+    this.realadminPremiumExpiresAt,
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
@@ -270,10 +365,13 @@ class AuthResponse {
       type: json['type'] ?? 'Bearer',
       id: _toInt(json['id']) ?? 0,
       email: json['email'] ?? '',
+      username: json['username'],
       firstName: json['firstName'] ?? '',
       lastName: json['lastName'] ?? '',
       phone: json['phone'],
+      avatarUrl: json['avatarUrl'],
       role: json['role'] ?? 'USER',
+      primaryRole: json['primaryRole'],
       authProvider: json['authProvider']?.toString() ?? 'LOCAL',
       locationWard: json['locationWard'],
       locationConstituency: json['locationConstituency'],
@@ -289,6 +387,12 @@ class AuthResponse {
       premiumExpiresAt: json['premiumExpiresAt'] != null
           ? DateTime.tryParse(json['premiumExpiresAt'].toString())
           : null,
+      realadminPremiumStartedAt: json['realadminPremiumStartedAt'] != null
+          ? DateTime.tryParse(json['realadminPremiumStartedAt'].toString())
+          : null,
+      realadminPremiumExpiresAt: json['realadminPremiumExpiresAt'] != null
+          ? DateTime.tryParse(json['realadminPremiumExpiresAt'].toString())
+          : null,
     );
   }
 
@@ -296,10 +400,13 @@ class AuthResponse {
     return User(
       id: id,
       email: email,
+      username: username,
       firstName: firstName,
       lastName: lastName,
       phone: phone,
+      avatarUrl: avatarUrl,
       role: role,
+      primaryRole: primaryRole,
       authProvider: authProvider,
       locationWard: locationWard,
       locationConstituency: locationConstituency,
@@ -311,6 +418,8 @@ class AuthResponse {
       fypNicknames: fypNicknames,
       premiumStartedAt: premiumStartedAt,
       premiumExpiresAt: premiumExpiresAt,
+      realadminPremiumStartedAt: realadminPremiumStartedAt,
+      realadminPremiumExpiresAt: realadminPremiumExpiresAt,
     );
   }
 }
