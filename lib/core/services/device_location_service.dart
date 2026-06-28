@@ -255,33 +255,33 @@ class DeviceLocationService {
       if (position == null) {
         try {
           print(
-            '[Location] Getting fresh GPS position (low accuracy first)...',
+            '[Location] Getting fresh GPS position (high accuracy first)...',
           );
           position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.low,
-              timeLimit: Duration(seconds: 5),
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 8),
             ),
-          ).timeout(const Duration(seconds: 5));
+          ).timeout(const Duration(seconds: 8));
           print(
-            '[Location] Got low-accuracy position: ${position.latitude}, ${position.longitude}',
+            '[Location] Got high-accuracy position: ${position.latitude}, ${position.longitude}',
           );
         } catch (e) {
-          print('[Location] Low-accuracy GPS failed: $e');
-          // Try medium accuracy as fallback
+          print('[Location] High-accuracy GPS failed: $e');
+          // Try low accuracy as fallback if high accuracy times out
           try {
-            print('[Location] Retrying with medium accuracy...');
+            print('[Location] Retrying with low accuracy...');
             position = await Geolocator.getCurrentPosition(
               locationSettings: const LocationSettings(
-                accuracy: LocationAccuracy.medium,
+                accuracy: LocationAccuracy.low,
                 timeLimit: Duration(seconds: 5),
               ),
             ).timeout(const Duration(seconds: 5));
             print(
-              '[Location] Got medium-accuracy position: ${position.latitude}, ${position.longitude}',
+              '[Location] Got low-accuracy position: ${position.latitude}, ${position.longitude}',
             );
           } catch (e2) {
-            print('[Location] Medium-accuracy GPS also failed: $e2');
+            print('[Location] Low-accuracy GPS also failed: $e2');
           }
         }
       }
