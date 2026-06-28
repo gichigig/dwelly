@@ -232,56 +232,53 @@ class DeviceLocationService {
       // Permission granted — clear any stale denied flag
       await setUserDeniedLocation(false);
 
-      // Strategy: try last known position first (instant), then fresh GPS
+      // Strategy: try fresh GPS position first, then fallback to last known position
       Position? position;
 
-      // Step 1: Try last known position (instant, no GPS needed)
       try {
-        print('[Location] Trying getLastKnownPosition...');
-        position = await Geolocator.getLastKnownPosition()
-            .timeout(const Duration(seconds: 2));
-        if (position != null) {
-          print(
-            '[Location] Got last known position: ${position.latitude}, ${position.longitude}',
-          );
-        } else {
-          print('[Location] No last known position available');
-        }
+        print(
+          '[Location] Getting fresh GPS position (best accuracy first)...',
+        );
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.best,
+            timeLimit: Duration(seconds: 10),
+          ),
+        ).timeout(const Duration(seconds: 10));
+        print(
+          '[Location] Got best-accuracy position: ${position.latitude}, ${position.longitude}',
+        );
       } catch (e) {
-        print('[Location] getLastKnownPosition error: $e');
-      }
-
-      // Step 2: If no last known position, get a fresh GPS fix
-      if (position == null) {
+        print('[Location] Best-accuracy GPS failed: $e');
+        // Try low accuracy as fallback if high accuracy times out
         try {
-          print(
-            '[Location] Getting fresh GPS position (high accuracy first)...',
-          );
+          print('[Location] Retrying with low accuracy...');
           position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 8),
+              accuracy: LocationAccuracy.low,
+              timeLimit: Duration(seconds: 5),
             ),
-          ).timeout(const Duration(seconds: 8));
+          ).timeout(const Duration(seconds: 5));
           print(
-            '[Location] Got high-accuracy position: ${position.latitude}, ${position.longitude}',
+            '[Location] Got low-accuracy position: ${position.latitude}, ${position.longitude}',
           );
-        } catch (e) {
-          print('[Location] High-accuracy GPS failed: $e');
-          // Try low accuracy as fallback if high accuracy times out
+        } catch (e2) {
+          print('[Location] Low-accuracy GPS also failed: $e2');
+          
+          // Final fallback: Try last known position (instant, no GPS needed)
           try {
-            print('[Location] Retrying with low accuracy...');
-            position = await Geolocator.getCurrentPosition(
-              locationSettings: const LocationSettings(
-                accuracy: LocationAccuracy.low,
-                timeLimit: Duration(seconds: 5),
-              ),
-            ).timeout(const Duration(seconds: 5));
-            print(
-              '[Location] Got low-accuracy position: ${position.latitude}, ${position.longitude}',
-            );
-          } catch (e2) {
-            print('[Location] Low-accuracy GPS also failed: $e2');
+            print('[Location] Trying getLastKnownPosition as final fallback...');
+            position = await Geolocator.getLastKnownPosition()
+                .timeout(const Duration(seconds: 2));
+            if (position != null) {
+              print(
+                '[Location] Got last known position: ${position.latitude}, ${position.longitude}',
+              );
+            } else {
+              print('[Location] No last known position available');
+            }
+          } catch (e3) {
+            print('[Location] getLastKnownPosition error: $e3');
           }
         }
       }
