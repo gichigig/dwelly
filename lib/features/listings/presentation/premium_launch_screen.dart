@@ -41,11 +41,14 @@ class _PremiumLaunchScreenState extends State<PremiumLaunchScreen> {
   }
 
   void _close() {
+    _timer?.cancel();
     if (!mounted) return;
     Navigator.of(context).pop();
   }
 
   Future<void> _openPremium() async {
+    _timer?.cancel();
+    
     if (PremiumService.isPremiumActive()) {
       _close();
       return;
@@ -189,10 +192,13 @@ class _PremiumLaunchScreenState extends State<PremiumLaunchScreen> {
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    );
-  }
+    ],
+  ),
+),
+);
+}
 }
