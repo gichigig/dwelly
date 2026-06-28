@@ -15,10 +15,7 @@ class ApiService {
   static final Map<String, String> _etagByKey = {};
   static const Duration defaultRequestTimeout = Duration(seconds: 5);
 
-  static const Map<String, String> _hostAliases = {
-    // Common typo fallback to keep app usable if the wrong host is provided.
-    'api.billygichidev.me': 'api.billygichigidev.me',
-  };
+  static const Map<String, String> _hostAliases = {};
 
   // Optional Cloudflare tunnel URL passed via --dart-define.
   // Example: flutter run --dart-define=CLOUDFLARE_URL=https://xxxx.trycloudflare.com
@@ -118,7 +115,7 @@ class ApiService {
 
   static String get _defaultBaseUrl {
     // Using permanent Cloudflare Tunnel for physical device testing
-    return 'https://api.billygichigidev.me/api';
+    return 'https://api.ishinadwelly.com/api';
   }
 
   /// Helper method to get HTTP headers for API requests
