@@ -336,6 +336,23 @@ class _MapExplorePageState extends State<MapExplorePage> {
             options: MapOptions(
               initialCenter: LatLng(_deviceLocation!.latitude, _deviceLocation!.longitude),
               initialZoom: 14.0,
+              onLongPress: (tapPosition, point) {
+                setState(() {
+                  _deviceLocation = DeviceLocationResult(
+                    latitude: point.latitude,
+                    longitude: point.longitude,
+                    success: true,
+                  );
+                });
+                _loadRentals(point.latitude, point.longitude);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Radar origin manually adjusted!'),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
             ),
             children: [
               TileLayer(
@@ -387,7 +404,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Radar Active: Heading ${_currentHeading!.toStringAsFixed(0)}°\nRevealing nearby rentals in your direction.',
+                        'Radar Active: Heading ${_currentHeading!.toStringAsFixed(0)}°\nRevealing nearby rentals in your direction.\nTip: Long-press anywhere on map to manually adjust radar center.',
                         style: const TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ),
