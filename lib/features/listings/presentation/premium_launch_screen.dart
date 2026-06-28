@@ -43,7 +43,15 @@ class _PremiumLaunchScreenState extends State<PremiumLaunchScreen> {
   void _close() {
     _timer?.cancel();
     if (!mounted) return;
-    Navigator.of(context).pop();
+    
+    final route = ModalRoute.of(context);
+    if (route != null && route.isActive) {
+      if (route.isCurrent) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).removeRoute(route);
+      }
+    }
   }
 
   Future<void> _openPremium() async {
