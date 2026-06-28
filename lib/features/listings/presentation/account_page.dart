@@ -1092,7 +1092,7 @@ int _calcDirSize(String dirPath) {
                 onTap: () {
                   Navigator.pop(context);
                   launchUrl(
-                    Uri.parse('https://www.billygichigidev.me/faqs'),
+                    Uri.parse('https://www.ishinadwelly.com/faqs'),
                     mode: LaunchMode.externalApplication,
                   );
                 },
@@ -1104,7 +1104,7 @@ int _calcDirSize(String dirPath) {
                 onTap: () {
                   Navigator.pop(context);
                   launchUrl(
-                    Uri.parse('https://www.billygichigidev.me/privacy-policy'),
+                    Uri.parse('https://www.ishinadwelly.com/privacy-policy'),
                     mode: LaunchMode.externalApplication,
                   );
                 },
@@ -1117,7 +1117,7 @@ int _calcDirSize(String dirPath) {
                   Navigator.pop(context);
                   launchUrl(
                     Uri.parse(
-                      'https://www.billygichigidev.me/terms-and-conditions',
+                      'https://www.ishinadwelly.com/terms-and-conditions',
                     ),
                     mode: LaunchMode.externalApplication,
                   );
