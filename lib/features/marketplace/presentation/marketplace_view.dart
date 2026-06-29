@@ -13,6 +13,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/marketplace_service.dart';
 import '../../../core/theme/marketplace_theme.dart';
 import '../../../core/widgets/feed_ad_widget.dart';
+import '../../../core/widgets/auth_bottom_sheets.dart';
 import 'marketplace_cart_page.dart';
 import 'post_product_page.dart';
 import 'product_detail_page.dart';
@@ -965,9 +966,12 @@ class _MarketplaceViewState extends State<MarketplaceView>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
+        duration: const Duration(seconds: 3),
         action: SnackBarAction(
           label: 'Sign in',
-          onPressed: AppTabNavigator.openAccount,
+          onPressed: () {
+            showLoginBottomSheet(context, onSuccess: () => setState(() {}));
+          },
         ),
       ),
     );

@@ -155,6 +155,12 @@ class DwellyApp extends StatelessWidget {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      textTheme: isDark
+          ? ThemeData.dark().textTheme.apply(
+              bodyColor: Colors.white,
+              displayColor: Colors.white,
+            )
+          : null,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: fieldFill,

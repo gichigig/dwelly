@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/navigation/app_tab_navigator.dart';
 import 'core/models/advertisement.dart';
@@ -34,9 +35,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Timer? _unreadBadgeTimer;
   bool _premiumLaunchShown = false;
   final _savedPageKey = GlobalKey<SavedPageState>();
+  final _explorePageKey = GlobalKey<ExplorePageState>();
+  final _inboxPageKey = GlobalKey<InboxPageState>();
   final List<Widget?> _pages = List<Widget?>.filled(4, null);
   
   bool _showBottomNav = true;
+
+  // Navigation history for back button
+  final List<int> _tabHistory = [0];
+  DateTime? _lastBackPressTime;
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis == Axis.vertical) {
@@ -205,6 +212,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     switch (index) {
       case 0:
         _pages[index] = ExplorePage(
+          key: _explorePageKey,
           onMarketplaceModeChanged: (active) =>
               setState(() => _isMarketplaceMode = active),
         );
@@ -213,7 +221,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _pages[index] = SavedPage(key: _savedPageKey);
         break;
       case 2:
-        _pages[index] = const InboxPage();
+        _pages[index] = InboxPage(key: _inboxPageKey);
         break;
       case 3:
         _pages[index] = AccountPage(
@@ -235,6 +243,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _navigateToTab(int index, {bool refreshSaved = false}) {
     setState(() {
       _index = index;
+      if (_tabHistory.isEmpty || _tabHistory.last != index) {
+        // Remove previous occurrence to avoid loops if needed, 
+        // or just add to history stack
+        _tabHistory.remove(index);
+        _tabHistory.add(index);
+      }
       _ensurePageLoaded(index);
     });
 
@@ -288,10 +302,47 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // On Account tab, require auth for donation
-    final isAccountTab = _index == 3;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
 
-    return Scaffold(
+        if (_tabHistory.length > 1) {
+          // Go back to previous tab
+          setState(() {
+            _tabHistory.removeLast();
+            final previousIndex = _tabHistory.last;
+            _index = previousIndex;
+            _ensurePageLoaded(previousIndex);
+          });
+        } else {
+          // We are at the root tab (Home/Inbox)
+          final now = DateTime.now();
+          if (_lastBackPressTime == null ||
+              now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+            _lastBackPressTime = now;
+            
+            // Refresh the current tab
+            if (_index == 0) {
+              _explorePageKey.currentState?.refresh();
+            } else if (_index == 2) {
+              _inboxPageKey.currentState?.refresh();
+            }
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Press back again to exit'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          } else {
+            // Double tap within 2 seconds
+            SystemNavigator.pop();
+          }
+        }
+      },
+      child: Scaffold(
       body: NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: IndexedStack(
@@ -308,27 +359,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const GoogleAdBannerWidget(),
-                AnimatedSlide(
+                AnimatedSize(
                   duration: const Duration(milliseconds: 250),
-                  offset: _showBottomNav ? Offset.zero : const Offset(0, 1.2),
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: ChatService.unreadMessageCount,
-                    builder: (context, unreadInboxCount, _) {
-                      return TelegramBottomPillNav(
-                        items: _buildHomeTabs(unreadInboxCount),
-                        selectedIndex: _index,
-                        onSelected: (i) {
-                          _navigateToTab(i);
-                          if (i == 1 && _savedPageKey.currentState != null) {
-                            _savedPageKey.currentState?.refresh();
-                          }
-                        },
-                      );
-                    },
-                  ),
+                  curve: Curves.easeInOut,
+                  alignment: Alignment.topCenter,
+                  child: _showBottomNav
+                      ? ValueListenableBuilder<int>(
+                          valueListenable: ChatService.unreadMessageCount,
+                          builder: (context, unreadInboxCount, _) {
+                            return TelegramBottomPillNav(
+                              items: _buildHomeTabs(unreadInboxCount),
+                              selectedIndex: _index,
+                              onSelected: (i) {
+                                _navigateToTab(i);
+                                if (i == 1 && _savedPageKey.currentState != null) {
+                                  _savedPageKey.currentState?.refresh();
+                                }
+                              },
+                            );
+                          },
+                        )
+                      : const SizedBox(width: double.infinity, height: 0),
                 ),
               ],
             ),
+      ),
     );
   }
 }

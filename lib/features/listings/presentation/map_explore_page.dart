@@ -33,7 +33,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
   StreamSubscription<CompassEvent>? _compassSubscription;
   
   // Constants for the radar cone
-  static const double radarDistanceMeters = 5000; // 5km
+  static const double radarDistanceMeters = 1500; // 1.5km
   static const double radarAngleDegrees = 60; // 30 degrees left/right
 
   @override
@@ -64,18 +64,14 @@ class _MapExplorePageState extends State<MapExplorePage> {
     }
   }
 
+  Timer? _debounceTimer;
+
   Future<void> _loadRentals(double lat, double lng) async {
     try {
-      final result = await RentalService.smartLocationSearch(
-        latitude: lat,
-        longitude: lng,
-        sortByDistance: true,
-        page: 0,
-        size: 50,
-      );
+      final results = await RentalService.getMapRadarListings(lat, lng, radiusMeters: 1500);
       if (mounted) {
         setState(() {
-          _rentals = result.rentals.rentals;
+          _rentals = results;
           _isLoading = false;
         });
       }
@@ -163,7 +159,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
     var diff = (b1 - b2).abs();
     if (diff > 180) diff = 360 - diff;
 
-    return diff <= (radarAngleDegrees / 2);
+    return true; // Show all dots in the circular radar
   }
 
   List<Polygon> _buildPolygons() {
@@ -216,13 +212,25 @@ class _MapExplorePageState extends State<MapExplorePage> {
     }
   }
 
-  void _showRentalPreview(Rental r) {
+  void _showRentalPreview(Rental lightweightRental) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
+        return FutureBuilder<Rental?>(
+          future: RentalService.getById(lightweightRental.id!),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 200,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final r = snapshot.data ?? lightweightRental;
+            
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -284,6 +292,8 @@ class _MapExplorePageState extends State<MapExplorePage> {
             ),
           ),
         );
+          },
+        );
       },
     );
   }
@@ -319,7 +329,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
       );
     }
 
-    if (_deviceLocation == null || !_deviceLocation!.hasLocationData) {
+    if (_deviceLocation == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Map Explore')),
         body: const Center(
@@ -336,6 +346,23 @@ class _MapExplorePageState extends State<MapExplorePage> {
             options: MapOptions(
               initialCenter: LatLng(_deviceLocation!.latitude, _deviceLocation!.longitude),
               initialZoom: 14.0,
+              onPositionChanged: (position, hasGesture) {
+                if (hasGesture && position.center != null) {
+                  _debounceTimer?.cancel();
+                  _debounceTimer = Timer(const Duration(milliseconds: 600), () {
+                    if (mounted) {
+                      setState(() {
+                        _deviceLocation = DeviceLocationResult(
+                          latitude: position.center.latitude,
+                          longitude: position.center.longitude,
+                          success: true,
+                        );
+                      });
+                      _loadRentals(position.center.latitude, position.center.longitude);
+                    }
+                  });
+                }
+              },
               onLongPress: (tapPosition, point) {
                 setState(() {
                   _deviceLocation = DeviceLocationResult(
@@ -361,6 +388,18 @@ class _MapExplorePageState extends State<MapExplorePage> {
               ),
               PolygonLayer(
                 polygons: _buildPolygons(),
+              ),
+                            CircleLayer(
+                circles: _deviceLocation != null && _isRadarActive ? <CircleMarker>[
+                  CircleMarker(
+                    point: LatLng(_deviceLocation!.latitude, _deviceLocation!.longitude),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    borderStrokeWidth: 2,
+                    borderColor: Theme.of(context).colorScheme.primary,
+                    useRadiusInMeter: true,
+                    radius: radarDistanceMeters,
+                  )
+                ] : const <CircleMarker>[],
               ),
               MarkerClusterLayerWidget(
                 options: MarkerClusterLayerOptions(

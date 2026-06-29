@@ -620,7 +620,7 @@ int _calcDirSize(String dirPath) {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(Icons.delete_sweep, color: Colors.grey[700]),
+            Icon(Icons.delete_sweep, color: Theme.of(context).iconTheme.color ?? Colors.grey[700]),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -638,7 +638,7 @@ int _calcDirSize(String dirPath) {
                     child: LinearProgressIndicator(
                       value: progress,
                       minHeight: 6,
-                      backgroundColor: Colors.grey[300]?.withOpacity(0.5),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         progress > 0.8 ? Colors.red : Theme.of(context).primaryColor,
                       ),

@@ -728,7 +728,25 @@ class RentalService {
 
   /// Smart location search that calls backend with nickname/ward
   /// Returns rentals in tiered order: target ward, neighbors, then expanded nearby areas
-  static Future<SmartLocationSearchResult> smartLocationSearch({
+    static Future<List<Rental>> getMapRadarListings(double latitude, double longitude, {double radiusMeters = 1500}) async {
+    try {
+      final response = await ApiService.timedGet(
+        Uri.parse('${ApiService.baseUrl}/rentals/search/map-radar?latitude=$latitude&longitude=$longitude&radiusMeters=$radiusMeters'),
+        headers: _jsonHeadersWithAuth(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Rental.fromJson(json)).toList();
+      } else {
+        return [];
+      }
+    } catch (e) {
+      _logDebug('Error fetching map radar listings', e);
+      return [];
+    }
+  }
+
+static Future<SmartLocationSearchResult> smartLocationSearch({
     String? nickname,
     String? ward,
     String? constituency,

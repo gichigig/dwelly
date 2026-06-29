@@ -11,6 +11,7 @@ import '../../../core/data/kenya_locations.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/navigation/app_tab_navigator.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/services/device_location_service.dart';
 import '../../../core/services/rental_service.dart';
 import '../../../core/services/report_service.dart';
@@ -45,7 +46,7 @@ class ExplorePage extends StatefulWidget {
   const ExplorePage({super.key, this.onMarketplaceModeChanged});
 
   @override
-  State<ExplorePage> createState() => _ExplorePageState();
+  State<ExplorePage> createState() => ExplorePageState();
 }
 
 class _ExploreSwipeUpHintSheet extends StatelessWidget {
@@ -72,7 +73,7 @@ class _ExploreSwipeUpHintSheet extends StatelessWidget {
   }
 }
 
-class _ExplorePageState extends State<ExplorePage> {
+class ExplorePageState extends State<ExplorePage> {
   static const String _scrollHintSeenKey = 'explore_scroll_hint_seen_v1';
 
   // Mode toggle: false = Find Your Home, true = Marketplace
@@ -618,9 +619,12 @@ class _ExplorePageState extends State<ExplorePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please login to save listings'),
+          duration: const Duration(seconds: 3),
           action: SnackBarAction(
             label: 'Login',
-            onPressed: AppTabNavigator.openAccount,
+            onPressed: () {
+              showLoginBottomSheet(context, onSuccess: () => setState(() {}));
+            },
           ),
         ),
       );
@@ -680,9 +684,12 @@ class _ExplorePageState extends State<ExplorePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please login to report a listing'),
+          duration: const Duration(seconds: 3),
           action: SnackBarAction(
             label: 'Login',
-            onPressed: AppTabNavigator.openAccount,
+            onPressed: () {
+              showLoginBottomSheet(context, onSuccess: () => setState(() {}));
+            },
           ),
         ),
       );
@@ -803,6 +810,10 @@ class _ExplorePageState extends State<ExplorePage> {
       return [...user.fypWards, ...user.fypNicknames];
     }
     return _prefsService?.getPreferredAreas() ?? [];
+  }
+
+  Future<void> refresh() async {
+    return _loadRentals(refresh: true);
   }
 
   Future<void> _loadRentals({bool refresh = false}) async {
@@ -1784,11 +1795,14 @@ class _ExplorePageState extends State<ExplorePage> {
                                         onPressed: _isDetectingLocation
                                             ? null
                                             : () async {
+                                                setState(() => _isDetectingLocation = true);
                                                 final result =
                                                     await DeviceLocationService.getCurrentLocation();
-                                                if (result.success &&
-                                                    result.hasLocationData &&
-                                                    mounted) {
+                                                
+                                                if (!mounted) return;
+                                                setState(() => _isDetectingLocation = false);
+
+                                                if (result.success && result.hasLocationData) {
                                                   setState(() {
                                                     _deviceLocation = result;
                                                     _searchArea =
@@ -1799,6 +1813,13 @@ class _ExplorePageState extends State<ExplorePage> {
                                                   });
                                                   _refreshLocationAwareAds();
                                                   _loadRentals(refresh: true);
+                                                } else {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(result.errorMessage ?? 'Failed to get location. Please check your permissions.'),
+                                                      backgroundColor: Colors.red,
+                                                    ),
+                                                  );
                                                 }
                                               },
                                         tooltip: 'Use my location',
@@ -3634,40 +3655,14 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
               height: 200,
               child: Center(child: CircularProgressIndicator()),
             )
-          : _hasAlreadyReported
-          ? _buildAlreadyReportedView()
           : _buildReportForm(),
     );
   }
 
-  Widget _buildAlreadyReportedView() {
-    return SizedBox(
-      height: 200,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.info_outline, size: 48, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          const Text(
-            'You have already reported this listing',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Our team is reviewing your report',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 24),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildReportForm() {
+    final titleText = _hasAlreadyReported ? 'Add Additional Complaint' : 'Report Listing';
+    final buttonText = _hasAlreadyReported ? 'Submit Additional Complaint' : 'Submit Report';
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -3691,9 +3686,9 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
             children: [
               const Icon(Icons.flag, color: Colors.red),
               const SizedBox(width: 8),
-              const Text(
-                'Report Listing',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              Text(
+                titleText,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -3742,7 +3737,9 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
             maxLines: 4,
             maxLength: 500,
             decoration: InputDecoration(
-              hintText: 'Describe the issue in detail...',
+              hintText: _hasAlreadyReported 
+                  ? 'Add your new complaint here...' 
+                  : 'Describe the issue in detail...',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -3772,9 +3769,9 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : const Text(
-                      'Submit Report',
-                      style: TextStyle(
+                  : Text(
+                      buttonText,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),

@@ -168,7 +168,7 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 16,
-                        backgroundColor: Colors.grey[300]?.withOpacity(0.5),
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           progress > 0.8 ? Colors.red : Theme.of(context).primaryColor,
                         ),
@@ -189,10 +189,10 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                           height: 24, 
                           child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)
                         )
-                      : const Icon(Icons.delete_sweep, size: 28),
+                      : const Icon(Icons.delete_sweep, size: 28, color: Colors.white),
                   label: Text(
                     _isClearing ? 'CLEARING...' : 'CLEAR DEVICE CACHE',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.red.shade600,

@@ -31,10 +31,10 @@ class InboxPage extends StatefulWidget {
   const InboxPage({super.key});
 
   @override
-  State<InboxPage> createState() => _InboxPageState();
+  State<InboxPage> createState() => InboxPageState();
 }
 
-class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
+class InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   static const int _pageSize = 10;
 
   final ScrollController _scrollController = ScrollController();
@@ -258,6 +258,10 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     if (_isLoadingMore || !_hasMore) return;
 
     _loadConversations(loadMore: true);
+  }
+
+  Future<void> refresh() async {
+    return _loadConversations(forceRefresh: true);
   }
 
   Future<void> _loadConversations({

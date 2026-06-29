@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../data/id_scanner_service.dart';
 import '../../../core/services/google_ad_service.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/auth_bottom_sheets.dart';
 
 /// Page for searching for a lost ID
 class SearchLostIdPage extends StatefulWidget {
@@ -82,6 +84,47 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   
   @override
   Widget build(BuildContext context) {
+    if (!AuthService.isLoggedIn) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Find My Lost ID'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline, size: 64, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                const Text(
+                  'Authentication Required',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'To protect user privacy and prevent spam, you must be logged in to search the Lost IDs database.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () {
+                    showLoginBottomSheet(
+                      context,
+                      onSuccess: () => setState(() {}),
+                    );
+                  },
+                  icon: const Icon(Icons.login),
+                  label: const Text('Login or Create Account'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Find My Lost ID'),
@@ -435,9 +478,21 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 ),
               ),
               
+              if (result.foundIdId != null) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () => _confirmDelete(result.foundIdId!),
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  label: const Text('Delete This Record', style: TextStyle(color: Colors.red)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.red.shade200),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               Text(
-                'Note: This record will be automatically removed after 7 days.',
+                '🔒 Privacy Guarantee: Your ID data is securely encrypted at rest. '
+                'This record will be automatically removed after 7 days to protect your privacy.',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
                 textAlign: TextAlign.center,
               ),
@@ -495,6 +550,56 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
     }
   }
   
+  void _confirmDelete(int id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Record?'),
+        content: const Text(
+            'Are you sure you want to delete this ID record from our system? '
+            'This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteRecord(id);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteRecord(int id) async {
+    setState(() {
+      _isSearching = true;
+    });
+    try {
+      await IdScannerService.deleteFoundId(id);
+      setState(() {
+        _isSearching = false;
+        _searchResult = null;
+        _errorMessage = 'Record deleted successfully.';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ID record has been securely deleted.')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isSearching = false;
+        _errorMessage = 'Failed to delete: $e';
+      });
+    }
+  }
+
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }

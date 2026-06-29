@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/rental.dart';
 import '../../../core/models/advertisement.dart';
-import '../../../core/services/auth_service.dart';
 import '../../../core/services/ad_service.dart';
 import '../../../core/services/google_ad_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../core/services/rental_service.dart';
 import '../../../core/services/saved_rental_service.dart';
 import '../../../core/services/report_service.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/widgets/banner_ad_widget.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/navigation/app_tab_navigator.dart';
@@ -134,11 +135,11 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please login to save listings'),
+          duration: const Duration(seconds: 3),
           action: SnackBarAction(
             label: 'Login',
             onPressed: () {
-              AppTabNavigator.openAccount();
-              Navigator.of(context).popUntil((route) => route.isFirst);
+              showLoginBottomSheet(context, onSuccess: () => setState(() {}));
             },
           ),
         ),
@@ -193,11 +194,11 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please login to report a listing'),
+          duration: const Duration(seconds: 3),
           action: SnackBarAction(
             label: 'Login',
             onPressed: () {
-              AppTabNavigator.openAccount();
-              Navigator.of(context).popUntil((route) => route.isFirst);
+              showLoginBottomSheet(context, onSuccess: () => setState(() {}));
             },
           ),
         ),
@@ -693,10 +694,11 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please login to contact the owner'),
+          duration: const Duration(seconds: 3),
           action: SnackBarAction(
             label: 'Login',
             onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
+              showLoginBottomSheet(context, onSuccess: () => setState(() {}));
             },
           ),
         ),
@@ -929,40 +931,14 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
               height: 200,
               child: Center(child: CircularProgressIndicator()),
             )
-          : _hasAlreadyReported
-          ? _buildAlreadyReportedView()
           : _buildReportForm(),
     );
   }
 
-  Widget _buildAlreadyReportedView() {
-    return SizedBox(
-      height: 200,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.info_outline, size: 48, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          const Text(
-            'You have already reported this listing',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Our team is reviewing your report',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 24),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildReportForm() {
+    final titleText = _hasAlreadyReported ? 'Add Additional Complaint' : 'Report Listing';
+    final buttonText = _hasAlreadyReported ? 'Submit Additional Complaint' : 'Submit Report';
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -986,9 +962,9 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
             children: [
               const Icon(Icons.flag, color: Colors.red),
               const SizedBox(width: 8),
-              const Text(
-                'Report Listing',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              Text(
+                titleText,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1037,7 +1013,9 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
             maxLines: 4,
             maxLength: 500,
             decoration: InputDecoration(
-              hintText: 'Describe the issue in detail...',
+              hintText: _hasAlreadyReported 
+                  ? 'Add your new complaint here...' 
+                  : 'Describe the issue in detail...',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1067,9 +1045,9 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : const Text(
-                      'Submit Report',
-                      style: TextStyle(
+                  : Text(
+                      buttonText,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),

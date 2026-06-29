@@ -323,7 +323,7 @@ class IdScannerService {
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/found-ids/search'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiService.getHeaders(token: AuthService.token),
         body: jsonEncode({
           'fullName': fullName,
           'idNumber': idNumber,
@@ -343,6 +343,14 @@ class IdScannerService {
           foundLocation: data['foundLocation'],
           collectionPlace: data['collectionPlace'],
           foundAt: data['foundAt'] != null ? DateTime.parse(data['foundAt']) : null,
+          foundIdId: data['foundId'],
+        );
+      } else if (response.statusCode == 429) {
+        throw Exception(data['error'] ?? 'Too many search requests. Please try again later.');
+      } else if (response.statusCode == 401) {
+        return SearchLostIdResponse(
+          found: false,
+          message: 'Please login to search for lost IDs.',
         );
       } else {
         return SearchLostIdResponse(
@@ -355,6 +363,23 @@ class IdScannerService {
         found: false,
         message: 'Network error. Please check your connection.',
       );
+    }
+  }
+
+  /// Delete a found ID record
+  static Future<void> deleteFoundId(int foundId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${ApiService.baseUrl}/found-ids/$foundId'),
+        headers: ApiService.getHeaders(token: AuthService.token),
+      );
+
+      if (response.statusCode != 200) {
+        final data = jsonDecode(response.body);
+        throw Exception(data['error'] ?? 'Failed to delete data');
+      }
+    } catch (e) {
+      rethrow;
     }
   }
 
@@ -508,6 +533,7 @@ class SearchLostIdResponse {
   final String? foundLocation;
   final String? collectionPlace;
   final DateTime? foundAt;
+  final int? foundIdId;
   
   SearchLostIdResponse({
     required this.found,
@@ -517,5 +543,6 @@ class SearchLostIdResponse {
     this.foundLocation,
     this.collectionPlace,
     this.foundAt,
+    this.foundIdId,
   });
 }
