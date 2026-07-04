@@ -29,6 +29,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   bool _isSearching = false;
   SearchLostIdResponse? _searchResult;
   String? _errorMessage;
+  bool _agreedToPolicy = false;
   
   @override
   void initState() {
@@ -53,6 +54,17 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   
   Future<void> _searchLostId() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    if (!_agreedToPolicy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please check the box to agree to the Safety & Data Handling Policy.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     
     setState(() {
       _isSearching = true;
@@ -86,7 +98,10 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   Widget build(BuildContext context) {
     if (!AuthService.isLoggedIn) {
       return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          surfaceTintColor: Colors.transparent,
           title: const Text('Find My Lost ID'),
         ),
         body: Center(
@@ -126,7 +141,10 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
         title: const Text('Find My Lost ID'),
       ),
       body: SingleChildScrollView(
@@ -280,7 +298,84 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                   return null;
                 },
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              
+              // Safety & Data Handling Policy Card
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.shield_outlined, color: Colors.amber.shade900, size: 22),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Safety & Data Handling Policy',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '• Data Handling Before Match: Your search query is securely encrypted and compared against our found database without exposing your personal identity to the public.\n'
+                      '• Data Handling After Match: If your ID is found, the finder\'s contact or collection location is disclosed only to you. Your search inquiry is then purged.\n'
+                      '• Data Deletion Schedule: All unmatched records and alert watchlists are automatically deleted from our servers after 7 days of inactivity or immediately upon a confirmed match.\n'
+                      '• Manual Deletion: You can manually delete any found ID record at any time by clicking the red "Delete This Record" button displayed at the bottom of the result card when your ID is found.\n'
+                      '• How to Verify Deletion: To check manually and confirm that your ID record has been completely erased from our servers, simply search for your ID Number on this page. If the result returns "Not Found", the record and all associated contact details have been permanently deleted.\n'
+                      '• Important Safety Advice: If a finder leaves a personal phone number, NEVER meet in a private, secluded, or unfamiliar location. Always arrange to meet in a busy public place (e.g., bank, shopping mall, or police station) or urge them to leave the ID at a secure facility like a police station or security desk. Beware of anyone demanding money or luring you to unsafe areas!',
+                      style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4),
+                    ),
+                    const Divider(height: 20),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: Checkbox(
+                            value: _agreedToPolicy,
+                            activeColor: Colors.amber.shade900,
+                            onChanged: (val) {
+                              setState(() {
+                                _agreedToPolicy = val ?? false;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _agreedToPolicy = !_agreedToPolicy;
+                              });
+                            },
+                            child: Text(
+                              'I agree to the Data Handling Policy and understand the safety advice when meeting finders.',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
               
               // Search button
               FilledButton.icon(
@@ -391,7 +486,10 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                   children: [
                     const Text(
                       'Contact the finder:',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -404,6 +502,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            color: Colors.black,
                           ),
                         ),
                       ],
@@ -491,7 +590,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
               ],
               const SizedBox(height: 16),
               Text(
-                '🔒 Privacy Guarantee: Your ID data is securely encrypted at rest. '
+                'Privacy Guarantee: Your ID data is securely encrypted at rest. '
                 'This record will be automatically removed after 7 days to protect your privacy.',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
                 textAlign: TextAlign.center,
@@ -653,7 +752,7 @@ class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
         Navigator.pop(context, true); // Return success
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🔔 Watchlist alert registered! We will notify you when found.'),
+            content: Text('Watchlist alert registered! We will notify you when found.'),
             backgroundColor: Colors.green,
           ),
         );

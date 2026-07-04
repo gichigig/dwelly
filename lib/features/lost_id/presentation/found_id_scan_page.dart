@@ -39,6 +39,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   bool _isGettingLocation = false;
   bool _isManualEntry = false;
   String? _errorMessage;
+  bool _agreedToSafetyPolicy = false;
   
   @override
   void initState() {
@@ -236,8 +237,19 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   }
   
   Future<void> _submitFoundId() async {
-    if (_scanResult == null) return;
+    if (_scanResult == null && !_isManualEntry) return;
     if (!_formKey.currentState!.validate()) return;
+    
+    if (!_agreedToSafetyPolicy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please check the box to agree to the Safety & Data Handling Policy.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     
     setState(() {
       _isSubmitting = true;
@@ -305,7 +317,10 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
         title: const Text('Register Found ID'),
       ),
       body: SingleChildScrollView(
@@ -659,7 +674,83 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                     helperText: 'Where can the owner come to collect their ID?',
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                
+                // Safety & Data Handling Policy Card
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade300),
+                  ),
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.shield_outlined, color: Colors.amber.shade900, size: 22),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Safety & Data Handling Policy',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '• Data Privacy: Your contact details are encrypted and shared ONLY with the verified owner searching for this specific ID.\n'
+                        '• Data Deletion Schedule: All found ID records and contact details are automatically deleted from our servers after 7 days or immediately upon collection/match confirmation.\n'
+                        '• Manual Deletion: You or the owner can manually delete this record at any time using the red "Delete This Record" button when searching the ID number on the search screen.\n'
+                        '• How to Verify Deletion: To manually check and verify that this record has been permanently erased, search the ID Number on the "Lost My ID" screen. A result of "Not Found" confirms total deletion from our databases.\n'
+                        '• Safety & Security Advice: For security purposes, we strongly urge you to leave found IDs at a secure public facility (such as a Police Station, bank, or security desk). If meeting the owner in person, ALWAYS meet in a busy, crowded public place. Never lure people to secluded areas or demand a reward/ransom.',
+                        style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4),
+                      ),
+                      const Divider(height: 20),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: Checkbox(
+                              value: _agreedToSafetyPolicy,
+                              activeColor: Colors.amber.shade900,
+                              onChanged: (val) {
+                                setState(() {
+                                  _agreedToSafetyPolicy = val ?? false;
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _agreedToSafetyPolicy = !_agreedToSafetyPolicy;
+                                });
+                              },
+                              child: Text(
+                                'I agree to the Data Handling Policy and will follow safety advice when returning this ID.',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
                 
                 // Submit button
                 FilledButton.icon(
