@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../features/auth/presentation/forgot_password_screen.dart';
 import '../errors/ui_error.dart';
@@ -84,6 +85,23 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
   MfaChallenge? _mfaChallenge;
   String _selectedMfaMethod = 'TOTP';
 
+  @override
+  void initState() {
+    super.initState();
+    _checkDeviceRecordedPasskey();
+  }
+
+  Future<void> _checkDeviceRecordedPasskey() async {
+    final recordedEmail = await AuthService.getDeviceRecordedPasskeyEmail();
+    if (mounted && recordedEmail != null && recordedEmail.isNotEmpty) {
+      if (_emailController.text.trim().isEmpty) {
+        setState(() {
+          _emailController.text = recordedEmail;
+        });
+      }
+    }
+  }
+
   bool _requiresAccountChoice(AuthResponse authResponse) {
     final role = authResponse.role.toUpperCase();
     return role == 'ADMIN' || role == 'SUPER_ADMIN';
@@ -113,9 +131,9 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Use Different Account'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Use Current Account'),
+            child: const Text('Continue as Admin'),
           ),
         ],
       ),
@@ -124,10 +142,18 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
 
   Future<void> _completeAuthenticatedLogin(AuthResponse authResponse) async {
     if (_requiresAccountChoice(authResponse)) {
-      final useCurrent = await _showAdminAccountChoice(authResponse);
-      if (!mounted) return;
-      if (useCurrent != true) {
-        _resetToPrimaryLogin();
+      final continueAsAdmin = await _showAdminAccountChoice(authResponse);
+      if (continueAsAdmin != true) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _isGoogleLoading = false;
+            _isRealAdminLoading = false;
+            _isBluvberryLoading = false;
+            _isMfaLoading = false;
+            _error = null;
+          });
+        }
         return;
       }
     }
@@ -146,30 +172,37 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     super.dispose();
   }
 
-  Future<void> _handleConcurrentLogin(Future<void> Function() retryWithForceLogin) async {
-    final useCurrent = await showDialog<bool>(
+  Future<void> _handleConcurrentLogin(Future<void> Function() retryAction) async {
+    final proceed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Already logged in'),
+        title: const Text('Account currently active'),
         content: const Text(
-          'You are already logged in on another device. '
-          'Do you want to log out of the other device and log in here?',
+          'This account is already logged in on another device or session. '
+          'Continuing will disconnect the other session. Do you want to continue?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Log Out Other Device'),
+            child: const Text('Continue'),
           ),
         ],
       ),
     );
 
-    if (useCurrent == true && mounted) {
-      await retryWithForceLogin();
+    if (proceed == true) {
+      await retryAction();
+    } else if (mounted) {
+      setState(() {
+        _isLoading = false;
+        _isGoogleLoading = false;
+        _isRealAdminLoading = false;
+        _isBluvberryLoading = false;
+      });
     }
   }
 
@@ -317,13 +350,19 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
   }
 
   Future<void> _startPasskeyWithEmailPrompt({bool forceLogin = false}) async {
-    final email = await _showPasskeyEmailPrompt();
-    if (!mounted || email == null) return;
+    String? email = _emailController.text.trim();
+    if (email.isEmpty) {
+      email = await AuthService.getDeviceRecordedPasskeyEmail();
+    }
+    if (email == null || email.isEmpty) {
+      email = await _showPasskeyEmailPrompt();
+    }
+    if (!mounted || email == null || email.isEmpty) return;
 
     setState(() {
       _isMfaLoading = true;
       _error = null;
-      _emailController.text = email;
+      _emailController.text = email!;
     });
 
     try {
@@ -949,6 +988,49 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
     }
   }
 
+  void _launchLegalUrl(String url) {
+    launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  void _showSafetyPolicyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.shield_outlined, color: Colors.blue),
+            SizedBox(width: 8),
+            Expanded(child: Text('Safety & Data Handling Policy')),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '• Data Encryption: All personal data and search queries are securely encrypted at rest and in transit.\n'
+                '• Privacy Guarantee: Your personal identity and contact details are never publicly exposed or sold to advertisers.\n'
+                '• Data Deletion Schedule: Lost & Found ID records and alert watchlists are automatically deleted from our servers after 7 days or upon match confirmation.\n'
+                '• Safety & Security Advice: When arranging meetups for rentals, services, or found items, always meet in busy public places and exercise caution.',
+                style: TextStyle(fontSize: 13, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxSheetHeight = MediaQuery.of(context).size.height * 0.9;
@@ -1178,6 +1260,65 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                             ? null
                             : _googleLogin,
                         isLoading: _isGoogleLoading,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'By creating an account, you agree to our ',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                      ),
+                      GestureDetector(
+                        onTap: () => _launchLegalUrl('https://www.ishinadwelly.com/terms-and-conditions'),
+                        child: Text(
+                          'Terms of Service',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        ', ',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                      ),
+                      GestureDetector(
+                        onTap: () => _launchLegalUrl('https://www.ishinadwelly.com/privacy-policy'),
+                        child: Text(
+                          'Privacy Policy',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        ', and ',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                      ),
+                      GestureDetector(
+                        onTap: () => _showSafetyPolicyDialog(context),
+                        child: Text(
+                          'Safety Policy',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '.',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
                       ),
                     ],
                   ),
