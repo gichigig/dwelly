@@ -41,7 +41,7 @@ class _MapPickerState extends State<MapPicker> {
 
     try {
       final loc = await DeviceLocationService.getCurrentLocation();
-      if (loc.hasLocationData && mounted) {
+      if (loc.success && mounted) {
         setState(() {
           _initialCenter = LatLng(loc.latitude, loc.longitude);
           _selectedPoint = _initialCenter;
@@ -67,7 +67,7 @@ class _MapPickerState extends State<MapPicker> {
     setState(() => _isLoading = true);
     try {
       final loc = await DeviceLocationService.getCurrentLocation();
-      if (loc.hasLocationData && mounted) {
+      if (loc.success && mounted) {
         final point = LatLng(loc.latitude, loc.longitude);
         _mapController.move(point, 15.0);
         setState(() {

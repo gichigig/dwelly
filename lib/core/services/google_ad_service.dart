@@ -3,6 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'premium_service.dart';
+import 'ad_service.dart';
+
+/// Returns true if Google Ads should be suppressed — either because the user
+/// is premium/tenant OR because the super admin has globally suspended ads.
+bool _shouldSuppressGoogleAds() {
+  return PremiumService.shouldHideAds() || AdService.areGoogleAdsSuspended();
+}
 
 class GoogleAdService {
   // Use official test IDs by default
@@ -38,7 +45,7 @@ class GoogleAdService {
 
 class GoogleRewardedAdManager {
   static Future<void> showRewardedAd(BuildContext context, {required VoidCallback onReward}) async {
-    if (PremiumService.isPremiumActive() || kIsWeb || (!Platform.isIOS && !Platform.isAndroid)) {
+    if (_shouldSuppressGoogleAds() || kIsWeb || (!Platform.isIOS && !Platform.isAndroid)) {
       onReward();
       return;
     }
@@ -94,7 +101,7 @@ class AppOpenAdManager {
   AppOpenAdManager._internal();
 
   void loadAd() {
-    if (PremiumService.isPremiumActive() || kIsWeb || (!Platform.isIOS && !Platform.isAndroid)) {
+    if (_shouldSuppressGoogleAds() || kIsWeb || (!Platform.isIOS && !Platform.isAndroid)) {
       return;
     }
 
@@ -129,7 +136,7 @@ class AppOpenAdManager {
       return;
     }
     
-    if (PremiumService.isPremiumActive()) {
+    if (_shouldSuppressGoogleAds()) {
       _appOpenAd?.dispose();
       _appOpenAd = null;
       return;
@@ -184,7 +191,7 @@ class _GoogleAdBannerWidgetState extends State<GoogleAdBannerWidget> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_isAdLoadStarted && !PremiumService.isPremiumActive() && !kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+    if (!_isAdLoadStarted && !_shouldSuppressGoogleAds() && !kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
       _isAdLoadStarted = true;
       _loadAd(MediaQuery.of(context).size.width.truncate());
     }
@@ -216,7 +223,7 @@ class _GoogleAdBannerWidgetState extends State<GoogleAdBannerWidget> {
   }
 
   void _onPremiumChanged() {
-    if (PremiumService.isPremiumActive()) {
+    if (_shouldSuppressGoogleAds()) {
       _bannerAd?.dispose();
       _bannerAd = null;
       if (mounted) {
@@ -234,7 +241,7 @@ class _GoogleAdBannerWidgetState extends State<GoogleAdBannerWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (PremiumService.isPremiumActive() || !_isLoaded || _bannerAd == null) {
+    if (_shouldSuppressGoogleAds() || !_isLoaded || _bannerAd == null) {
       return const SizedBox.shrink(); // Don't show anything for premium users or if not loaded
     }
 
@@ -262,13 +269,13 @@ class _GoogleAdMediumRectangleWidgetState extends State<GoogleAdMediumRectangleW
   void initState() {
     super.initState();
     PremiumService.premiumActive.addListener(_onPremiumChanged);
-    if (!PremiumService.isPremiumActive() && !kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+    if (!_shouldSuppressGoogleAds() && !kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
       _loadAd();
     }
   }
 
   void _onPremiumChanged() {
-    if (PremiumService.isPremiumActive()) {
+    if (_shouldSuppressGoogleAds()) {
       _bannerAd?.dispose();
       _bannerAd = null;
       if (mounted) {
@@ -306,7 +313,7 @@ class _GoogleAdMediumRectangleWidgetState extends State<GoogleAdMediumRectangleW
 
   @override
   Widget build(BuildContext context) {
-    if (PremiumService.isPremiumActive() || !_isLoaded || _bannerAd == null) {
+    if (_shouldSuppressGoogleAds() || !_isLoaded || _bannerAd == null) {
       return const SizedBox.shrink();
     }
 

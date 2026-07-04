@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
@@ -14,6 +15,7 @@ class DeviceLocationResult {
   final String? constituency;
   final String? county;
   final String? areaName;
+  final bool isOutsideKenya;
   final bool success;
   final String? errorMessage;
 
@@ -24,13 +26,14 @@ class DeviceLocationResult {
     this.constituency,
     this.county,
     this.areaName,
+    this.isOutsideKenya = false,
     required this.success,
     this.errorMessage,
   });
 
   /// Check if we have valid location data
   bool get hasLocationData =>
-      ward != null || constituency != null || county != null;
+      ward != null || constituency != null || county != null || isOutsideKenya;
 
   /// Get the best available location name for display
   String get displayName {
@@ -44,6 +47,9 @@ class DeviceLocationResult {
   /// Get a detailed location string combining ward, constituency, county
   /// Format: "Ward, Constituency, County" or best available combination
   String get detailedDisplayName {
+    if (isOutsideKenya && areaName != null && areaName!.isNotEmpty) {
+      return areaName!;
+    }
     final parts = <String>[];
 
     // Prioritize nickname/area name if available
@@ -81,6 +87,7 @@ class DeviceLocationResult {
     return DeviceLocationResult(
       latitude: 0,
       longitude: 0,
+      isOutsideKenya: false,
       success: false,
       errorMessage: message,
     );
@@ -120,6 +127,7 @@ class DeviceLocationService {
           constituency: json['constituency'],
           county: json['county'],
           areaName: json['areaName'],
+          isOutsideKenya: json['isOutsideKenya'] ?? false,
           success: true,
         );
       } catch (e) {
@@ -142,20 +150,19 @@ class DeviceLocationService {
         'constituency': result.constituency,
         'county': result.county,
         'areaName': result.areaName,
+        'isOutsideKenya': result.isOutsideKenya,
       }),
     );
   }
 
   /// Check if location service is enabled on the device
   static Future<bool> isLocationServiceEnabled() async {
-    return await Geolocator.isLocationServiceEnabled()
-        .timeout(const Duration(seconds: 2), onTimeout: () => false);
+    return await Geolocator.isLocationServiceEnabled();
   }
 
   /// Check current permission status (does NOT conflate service-off with denied)
   static Future<LocationPermission> checkPermission() async {
-    return await Geolocator.checkPermission()
-        .timeout(const Duration(seconds: 2), onTimeout: () => LocationPermission.denied);
+    return await Geolocator.checkPermission();
   }
 
   /// Request location permission.
@@ -192,17 +199,22 @@ class DeviceLocationService {
   }
 
   /// Get current device location and resolve to ward
-  static Future<DeviceLocationResult> getCurrentLocation() async {
+  static Future<DeviceLocationResult> getCurrentLocation({bool forcePrompt = false}) async {
     try {
       // First check if location service is enabled
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled()
-          .timeout(const Duration(seconds: 2), onTimeout: () => false);
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('[Location] Location service is disabled — opening settings');
-        await Geolocator.openLocationSettings();
-        // Re-check after user returns from settings
-        final stillDisabled = !(await Geolocator.isLocationServiceEnabled());
-        if (stillDisabled) {
+        if (forcePrompt) {
+          print('[Location] Location service is disabled — opening settings');
+          await Geolocator.openLocationSettings();
+          // Re-check after user returns from settings
+          final stillDisabled = !(await Geolocator.isLocationServiceEnabled());
+          if (stillDisabled) {
+            return DeviceLocationResult.error(
+              'Location services are disabled. Please enable GPS in your device settings.',
+            );
+          }
+        } else {
           return DeviceLocationResult.error(
             'Location services are disabled. Please enable GPS in your device settings.',
           );
@@ -210,8 +222,7 @@ class DeviceLocationService {
       }
 
       // Check permission
-      var permission = await Geolocator.checkPermission()
-          .timeout(const Duration(seconds: 2), onTimeout: () => LocationPermission.denied);
+      var permission = await Geolocator.checkPermission();
       print('[Location] Current permission: $permission');
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -308,13 +319,46 @@ class DeviceLocationService {
         );
       }
 
+      bool isOutsideKenya = false;
+      String? resolvedAreaName = wardResult['areaName'] as String?;
+      if (wardResult['ward'] == null &&
+          wardResult['constituency'] == null &&
+          wardResult['county'] == null) {
+        isOutsideKenya = true;
+        try {
+          final placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          ).timeout(const Duration(seconds: 3));
+          if (placemarks.isNotEmpty) {
+            final p = placemarks.first;
+            final locality = p.locality?.isNotEmpty == true
+                ? p.locality!
+                : (p.subAdministrativeArea?.isNotEmpty == true
+                    ? p.subAdministrativeArea!
+                    : (p.administrativeArea ?? ''));
+            final country = p.country ?? 'Outside Kenya';
+            if (locality.isNotEmpty) {
+              resolvedAreaName = '$locality, $country';
+            } else {
+              resolvedAreaName = country;
+            }
+          } else {
+            resolvedAreaName = 'Outside Kenya';
+          }
+        } catch (_) {
+          resolvedAreaName = 'Outside Kenya';
+        }
+      }
+
       final result = DeviceLocationResult(
         latitude: position.latitude,
         longitude: position.longitude,
         ward: wardResult['ward'] as String?,
         constituency: wardResult['constituency'] as String?,
         county: wardResult['county'] as String?,
-        areaName: wardResult['areaName'] as String?,
+        areaName: resolvedAreaName,
+        isOutsideKenya: isOutsideKenya,
         success: true,
       );
 
@@ -645,6 +689,7 @@ class DeviceLocationService {
         'constituency': result.constituency,
         'county': result.county,
         'areaName': result.areaName,
+        'isOutsideKenya': result.isOutsideKenya,
       }),
     );
   }

@@ -263,6 +263,7 @@ class RentalService {
     if (page == 0) {
       final localData = await SqliteCacheService.instance.getPaginatedFeed(signature, page);
       if (localData != null) {
+        _seedCache(localData.rentals);
         // Fetch in background to update DB for next time
         _networkFetchPaginated(page, size, filters, signature).catchError((_) => localData);
         return localData;
@@ -298,6 +299,8 @@ class RentalService {
         if (filters != null) {
           rentals = _applyLocalFilters(rentals, filters);
         }
+
+        _seedCache(rentals);
 
         final result = PaginatedRentals(
           rentals: rentals,
@@ -338,6 +341,8 @@ class RentalService {
         if (filters != null) {
           allRentals = _applyLocalFilters(allRentals, filters);
         }
+
+        _seedCache(allRentals);
 
         // Sort by creation date (newest first)
         allRentals.sort((a, b) {
@@ -507,6 +512,8 @@ class RentalService {
         final rentals = _filterPubliclyVisibleRentals(
           content.map((json) => Rental.fromJson(json)).toList(),
         );
+
+        _seedCache(rentals);
 
         return PaginatedRentals(
           rentals: rentals,
@@ -797,6 +804,8 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
           content.map((json) => Rental.fromJson(json)).toList(),
         );
 
+        _seedCache(rentals);
+
         return SmartLocationSearchResult(
           rentals: PaginatedRentals(
             rentals: rentals,
@@ -900,14 +909,14 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
   static Future<Rental?> getById(int id, {bool forceRefresh = false}) async {
     // Check cache first
     if (!forceRefresh) {
+      final cached = CacheManager.rentalById.get('$id');
+      if (cached != null) {
+        return cached as Rental;
+      }
       final deviceCached = await DeviceRentalCacheService.getCachedDetail(id);
       if (deviceCached != null) {
         CacheManager.rentalById.set('$id', deviceCached);
         return deviceCached;
-      }
-      final cached = CacheManager.rentalById.get('$id');
-      if (cached != null) {
-        return cached as Rental;
       }
     }
 
@@ -1074,8 +1083,18 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
   }
 
   static void _logDebug(String message, Object? details) {
-    if (!kDebugMode) return;
-    debugPrint('$message: $details');
+    if (kDebugMode) {
+      print('RentalService: $message - $details');
+    }
+  }
+
+  /// Populate memory cache with full rentals when fetched in lists
+  static void _seedCache(List<Rental> rentals) {
+    for (final rental in rentals) {
+      if (rental.id != null) {
+        CacheManager.rentalById.set('${rental.id}', rental);
+      }
+    }
   }
 }
 

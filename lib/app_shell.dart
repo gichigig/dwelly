@@ -40,6 +40,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final List<Widget?> _pages = List<Widget?>.filled(4, null);
   
   bool _showBottomNav = true;
+  Offset? _pointerDownPosition;
 
   // Navigation history for back button
   final List<int> _tabHistory = [0];
@@ -64,10 +65,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AppTabNavigator.requestedTab.addListener(_handleExternalTabRequest);
-    _pages[0] = ExplorePage(
-      onMarketplaceModeChanged: (active) =>
-          setState(() => _isMarketplaceMode = active),
-    );
+    if (AuthService.isTenantMode) {
+      _index = 0;
+      _pages[0] = InboxPage(key: _inboxPageKey);
+    } else {
+      _pages[0] = ExplorePage(
+        onMarketplaceModeChanged: (active) =>
+            setState(() => _isMarketplaceMode = active),
+      );
+    }
     _startUnreadBadgePolling();
     unawaited(_initAdService());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -127,7 +133,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Future<void> _maybeShowPremiumLaunch() async {
     if (!mounted || _premiumLaunchShown) return;
-    if (PremiumService.isPremiumActive()) return;
+    if (PremiumService.isPremiumActive() || !PremiumService.isPremiumPageVisible()) return;
     _premiumLaunchShown = true;
 
     await Navigator.of(context, rootNavigator: true).push(
@@ -209,6 +215,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _ensurePageLoaded(int index) {
     if (_pages[index] != null) return;
 
+    if (AuthService.isTenantMode) {
+      switch (index) {
+        case 0:
+          _pages[index] = InboxPage(key: _inboxPageKey);
+          break;
+        case 1:
+          _pages[index] = AccountPage(
+            onNavigateToSaved: _navigateToSavedTab,
+            onNavigateToInbox: _navigateToInboxTab,
+            onTenantModeChanged: _handleTenantModeChanged,
+          );
+          break;
+      }
+      return;
+    }
+
     switch (index) {
       case 0:
         _pages[index] = ExplorePage(
@@ -227,17 +249,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _pages[index] = AccountPage(
           onNavigateToSaved: _navigateToSavedTab,
           onNavigateToInbox: _navigateToInboxTab,
+          onTenantModeChanged: _handleTenantModeChanged,
         );
         break;
     }
   }
 
   void _navigateToSavedTab() {
-    _navigateToTab(1, refreshSaved: true);
+    if (!AuthService.isTenantMode) {
+      _navigateToTab(1, refreshSaved: true);
+    }
   }
 
   void _navigateToInboxTab() {
-    _navigateToTab(2);
+    _navigateToTab(AuthService.isTenantMode ? 0 : 2);
+  }
+
+  void _handleTenantModeChanged(bool isTenant) {
+    setState(() {
+      _pages.fillRange(0, _pages.length, null);
+      _tabHistory.clear();
+      _tabHistory.add(0);
+      _index = 0;
+      _isMarketplaceMode = false;
+      _ensurePageLoaded(0);
+    });
   }
 
   void _navigateToTab(int index, {bool refreshSaved = false}) {
@@ -252,33 +288,33 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _ensurePageLoaded(index);
     });
 
-    if (index == 2) {
+    if ((AuthService.isTenantMode && index == 0) || (!AuthService.isTenantMode && index == 2)) {
       unawaited(_refreshUnreadBadge());
     }
 
-    if (index == 1 && refreshSaved) {
+    if (!AuthService.isTenantMode && index == 1 && refreshSaved) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _savedPageKey.currentState?.refresh();
       });
     }
   }
 
-  void _showLoginRequiredSnackBar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Please sign in to donate'),
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'Sign In',
-          onPressed: () {
-            setState(() => _index = 3); // Switch to Account tab
-          },
-        ),
-      ),
-    );
-  }
-
   List<TelegramFragmentItem> _buildHomeTabs(int unreadInboxCount) {
+    if (AuthService.isTenantMode) {
+      return [
+        TelegramFragmentItem(
+          id: 'inbox',
+          label: 'Inbox',
+          icon: Icons.chat_bubble_outline,
+          badgeCount: unreadInboxCount,
+        ),
+        const TelegramFragmentItem(
+          id: 'account',
+          label: 'Account',
+          icon: Icons.person_outline,
+        ),
+      ];
+    }
     return [
       const TelegramFragmentItem(id: 'home', label: 'Home', icon: Icons.home),
       const TelegramFragmentItem(
@@ -324,8 +360,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             
             // Refresh the current tab
             if (_index == 0) {
-              _explorePageKey.currentState?.refresh();
-            } else if (_index == 2) {
+              if (AuthService.isTenantMode) {
+                _inboxPageKey.currentState?.refresh();
+              } else {
+                _explorePageKey.currentState?.refresh();
+              }
+            } else if (_index == 2 && !AuthService.isTenantMode) {
               _inboxPageKey.currentState?.refresh();
             }
 
@@ -343,13 +383,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         }
       },
       child: Scaffold(
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _handleScrollNotification,
-        child: IndexedStack(
-          index: _index,
-          children: List<Widget>.generate(
-            _pages.length,
-            (i) => _pages[i] ?? const SizedBox.shrink(),
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) => _pointerDownPosition = event.position,
+        onPointerUp: (event) {
+          if (_pointerDownPosition != null && !_showBottomNav) {
+            final distance = (event.position - _pointerDownPosition!).distance;
+            if (distance < 10.0) {
+              setState(() => _showBottomNav = true);
+            }
+          }
+          _pointerDownPosition = null;
+        },
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _handleScrollNotification,
+          child: IndexedStack(
+            index: _index,
+            children: List<Widget>.generate(
+              _pages.length,
+              (i) => _pages[i] ?? const SizedBox.shrink(),
+            ),
           ),
         ),
       ),

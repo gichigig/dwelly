@@ -8,6 +8,7 @@ import 'package:realestate/core/models/rental.dart';
 import 'package:realestate/core/di/providers.dart';
 import 'package:realestate/core/errors/ui_error.dart';
 import 'package:realestate/core/services/api_service.dart';
+import 'package:realestate/core/widgets/full_screen_image_avatar.dart';
 
 class RentalDetailsPage extends ConsumerStatefulWidget {
   final String id;

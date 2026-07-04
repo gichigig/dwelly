@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../services/google_ad_service.dart';
 
 class FullScreenGallery extends StatefulWidget {
   final List<String> imageUrls;
   final String? videoUrl;
   final int initialIndex;
   final bool showVideoFirst;
+  final bool isPremium;
 
   const FullScreenGallery({
     super.key,
@@ -13,6 +15,7 @@ class FullScreenGallery extends StatefulWidget {
     this.videoUrl,
     this.initialIndex = 0,
     this.showVideoFirst = false,
+    this.isPremium = false,
   });
 
   @override
@@ -23,19 +26,38 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   late PageController _pageController;
   VideoPlayerController? _videoController;
   bool _isPlaying = true;
+  late bool _hasUnlockedVideo;
 
   @override
   void initState() {
     super.initState();
+    _hasUnlockedVideo = widget.isPremium;
     _pageController = PageController(initialPage: widget.initialIndex);
-    if (widget.videoUrl != null) {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
-        ..initialize().then((_) {
-          _videoController!.setLooping(true);
-          _videoController!.play();
-          if (mounted) setState(() {});
-        });
+    if (widget.videoUrl != null && _hasUnlockedVideo) {
+      _initializeVideo();
     }
+  }
+
+  void _initializeVideo() {
+    _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
+      ..initialize().then((_) {
+        _videoController!.setLooping(true);
+        _videoController!.setVolume(0.0); // Mute by default
+        _videoController!.play();
+        if (mounted) setState(() {});
+      });
+  }
+
+  Future<void> _unlockVideoWithAd() async {
+    await GoogleRewardedAdManager.showRewardedAd(
+      context,
+      onReward: () {
+        if (mounted) {
+          setState(() => _hasUnlockedVideo = true);
+          _initializeVideo();
+        }
+      },
+    );
   }
 
   @override
@@ -63,6 +85,43 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
         itemCount: _itemCount,
         itemBuilder: (context, index) {
           if (widget.videoUrl != null && index == _videoIndex) {
+            if (!_hasUnlockedVideo) {
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(color: Colors.black87),
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Watch Ad to Unlock Video',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _unlockVideoWithAd,
+                          icon: const Icon(Icons.play_circle_fill),
+                          label: const Text('Unlock Video'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+
             if (_videoController != null && _videoController!.value.isInitialized) {
               return Center(
                 child: AspectRatio(
@@ -87,6 +146,26 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           child: _isPlaying
                               ? const SizedBox.shrink()
                               : const Icon(Icons.play_circle_fill, color: Colors.white54, size: 80),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 16,
+                        right: 16,
+                        child: FloatingActionButton.small(
+                          backgroundColor: Colors.black54,
+                          onPressed: () {
+                            setState(() {
+                              _videoController!.value.volume > 0
+                                  ? _videoController!.setVolume(0)
+                                  : _videoController!.setVolume(1);
+                            });
+                          },
+                          child: Icon(
+                            _videoController!.value.volume > 0
+                                ? Icons.volume_up
+                                : Icons.volume_off,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ],

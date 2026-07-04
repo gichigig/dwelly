@@ -23,10 +23,13 @@ class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _refreshTokenKey = 'auth_refresh_token';
   static const String _userKey = 'auth_user';
+  static const String _passkeyEmailKey = 'device_recorded_passkey_email';
+  static const String _tenantModeKey = 'is_tenant_mode';
 
   static String? _token;
   static String? _refreshToken;
   static User? _currentUser;
+  static bool _isTenantMode = false;
   static Completer<bool>? _refreshInFlight;
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -42,9 +45,14 @@ class AuthService {
   static String? get token => _token;
   static User? get currentUser => _currentUser;
   static bool get isLoggedIn => _token != null && _currentUser != null;
+  static bool get isTenantMode {
+    if (_currentUser?.primaryRole?.toLowerCase() == 'tenant') return true;
+    return _isTenantMode;
+  }
 
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
+    _isTenantMode = prefs.getBool(_tenantModeKey) ?? false;
     _token = prefs.getString(_tokenKey);
     _refreshToken = prefs.getString(_refreshTokenKey);
     final userJson = prefs.getString(_userKey);
@@ -1056,6 +1064,18 @@ class AuthService {
     }
   }
 
+  static Future<void> setTenantMode(bool enabled) async {
+    _isTenantMode = enabled;
+    PremiumService.notifyPremiumStatusChanged();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_tenantModeKey, enabled);
+    if (isLoggedIn) {
+      try {
+        await setPrimaryRole(enabled ? 'tenant' : 'user');
+      } catch (_) {}
+    }
+  }
+
   static Future<void> logout() async {
     final tokenToUnregister = _token;
 
@@ -1075,6 +1095,7 @@ class AuthService {
     _token = null;
     _refreshToken = null;
     _currentUser = null;
+    _isTenantMode = false;
     PremiumService.notifyPremiumStatusChanged();
     CacheManager.clearAll();
     ApiService.clearCachedGets();
@@ -1082,7 +1103,31 @@ class AuthService {
     await prefs.remove(_tokenKey);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_userKey);
+    await prefs.remove(_tenantModeKey);
     await googleSignOut();
+  }
+
+  static Future<void> saveDeviceRecordedPasskeyEmail(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_passkeyEmailKey, email.trim());
+  }
+
+  static Future<String?> getDeviceRecordedPasskeyEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString(_passkeyEmailKey);
+    if (email != null && email.trim().isNotEmpty) return email.trim();
+    if (_currentUser != null && _currentUser!.email.isNotEmpty) {
+      return _currentUser!.email;
+    }
+    final rawUser = prefs.getString(_userKey);
+    if (rawUser != null && rawUser.isNotEmpty) {
+      try {
+        final map = jsonDecode(rawUser) as Map<String, dynamic>;
+        final e = map['email']?.toString();
+        if (e != null && e.trim().isNotEmpty) return e.trim();
+      } catch (_) {}
+    }
+    return null;
   }
 
   static Future<void> persistAuthResponse(AuthResponse auth) async {
@@ -1095,6 +1140,7 @@ class AuthService {
       _refreshToken = auth.refreshToken;
     }
     _currentUser = auth.toUser();
+    await saveDeviceRecordedPasskeyEmail(_currentUser!.email);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, auth.token);
     if (auth.refreshToken != null) {

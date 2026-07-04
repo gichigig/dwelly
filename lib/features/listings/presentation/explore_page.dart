@@ -21,6 +21,7 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/ad_service.dart';
 import '../../../core/services/google_ad_service.dart';
 import '../../../core/services/chat_service.dart';
+import '../../helper/presentation/services_list_page.dart';
 import '../../../core/widgets/app_launch_ad_screen.dart';
 import '../../../core/widgets/ad_break_screen.dart';
 import '../../../core/widgets/banner_ad_widget.dart';
@@ -746,6 +747,20 @@ class ExplorePageState extends State<ExplorePage> {
           _deviceLocation = cached;
           _isDetectingLocation = false;
         });
+        if (cached.isOutsideKenya) {
+          if (!_useFYP && !_hasSearchContext && !_filters.hasFilters) {
+            setState(() {
+              _searchArea = cached.displayName;
+              _searchController.text = cached.displayName;
+              _rentals = [];
+              _isLoading = false;
+              _error = null;
+              _hasMore = false;
+            });
+            return true;
+          }
+          return false;
+        }
         unawaited(_refreshLocationAwareAds());
         if (!_useFYP && !_hasSearchContext && !_filters.hasFilters) {
           unawaited(_loadRentals(refresh: true));
@@ -775,6 +790,19 @@ class ExplorePageState extends State<ExplorePage> {
       setState(() {
         _deviceLocation = result;
       });
+      if (result.isOutsideKenya) {
+        if (!_useFYP && !_hasSearchContext && !_filters.hasFilters) {
+          setState(() {
+            _searchArea = result.displayName;
+            _searchController.text = result.displayName;
+            _rentals = [];
+            _isLoading = false;
+            _error = null;
+            _hasMore = false;
+          });
+        }
+        return false;
+      }
       unawaited(_refreshLocationAwareAds());
     }
     return false;
@@ -868,6 +896,23 @@ class ExplorePageState extends State<ExplorePage> {
       _anchorCounty = null;
       _searchExhausted = false;
       _nextAction = null;
+
+      if (_deviceLocation != null &&
+          _deviceLocation!.isOutsideKenya &&
+          (_searchArea == null ||
+              _searchArea!.isEmpty ||
+              _searchArea == _deviceLocation!.displayName ||
+              _searchArea == _deviceLocation!.areaName ||
+              _searchArea == _deviceLocation!.detailedDisplayName)) {
+        // Silently don't request for listings when location is outside Kenya
+        return PaginatedRentals(
+          rentals: [],
+          totalElements: 0,
+          totalPages: 0,
+          currentPage: 0,
+          hasMore: false,
+        );
+      }
 
       if (_searchArea != null && _searchArea!.isNotEmpty) {
         // Use backend smart location search with filters
@@ -1811,6 +1856,15 @@ class ExplorePageState extends State<ExplorePage> {
                                                         result.displayName;
                                                     _useFYP = false;
                                                   });
+                                                  if (result.isOutsideKenya) {
+                                                    setState(() {
+                                                      _rentals = [];
+                                                      _isLoading = false;
+                                                      _error = null;
+                                                      _hasMore = false;
+                                                    });
+                                                    return;
+                                                  }
                                                   _refreshLocationAwareAds();
                                                   _loadRentals(refresh: true);
                                                 } else {
@@ -1969,6 +2023,7 @@ class ExplorePageState extends State<ExplorePage> {
                     )
                   : const SizedBox.shrink(),
             ), // end AnimatedSize for header
+            _buildServicesRow(),
             // Location info banner + filter chips — also hide on scroll
             AnimatedSize(
               duration: const Duration(milliseconds: 300),
@@ -2707,6 +2762,164 @@ class ExplorePageState extends State<ExplorePage> {
 
     items.add(_ListItemInfo(isAd: true, ad: ad, adPlacement: placement));
   }
+
+  Widget _buildServicesRow() {
+    final theme = Theme.of(context);
+    final categoriesToShow = kServiceCategoriesList.where((c) => c.name != "All").toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.handyman_rounded, color: theme.colorScheme.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Specialized Services',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ServicesListPage(initialCategory: "All"),
+                    ),
+                  );
+                },
+                child: const Text('View All'),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 100,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            itemCount: categoriesToShow.length + 1,
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              if (index == categoriesToShow.length) {
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ServicesListPage(initialCategory: "All"),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 80,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: theme.colorScheme.primary,
+                          child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'View All',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final cat = categoriesToShow[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ServicesListPage(initialCategory: cat.name),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 85,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.asset(
+                            cat.imageAsset,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(cat.icon, color: theme.colorScheme.primary, size: 22),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        cat.name,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
 }
 
 class _HouseSearchHelpBanner extends StatelessWidget {
@@ -2798,6 +3011,7 @@ class _ListItemInfo {
   final bool isAd;
   final bool isGoogleAd;
   final bool isLoadingIndicator;
+  final bool isServicesRow;
   final Advertisement? ad;
   final String? adPlacement;
   final Rental? rental;
@@ -2806,6 +3020,7 @@ class _ListItemInfo {
     this.isAd = false,
     this.isGoogleAd = false,
     this.isLoadingIndicator = false,
+    this.isServicesRow = false,
     this.ad,
     this.adPlacement,
     this.rental,

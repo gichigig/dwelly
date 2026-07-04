@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links
   connectivity_plus
   desktop_webview_window
   emoji_picker_flutter
@@ -11,6 +12,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   geolocator_windows
   passkeys_windows
   permission_handler_windows
+  share_plus
   url_launcher_windows
   window_to_front
 )

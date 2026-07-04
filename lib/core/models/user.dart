@@ -63,6 +63,10 @@ class User {
   final double? helperPrice;
   final double? helperBalance;
   final double? helperTotalEarned;
+  final String? serviceCategory;
+  final double? serviceRadiusKm;
+  final String? serviceAreaMode;
+  final List<String> offeredServices;
 
   User({
     this.id,
@@ -98,6 +102,10 @@ class User {
     this.helperPrice,
     this.helperBalance,
     this.helperTotalEarned,
+    this.serviceCategory,
+    this.serviceRadiusKm,
+    this.serviceAreaMode,
+    this.offeredServices = const [],
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -146,6 +154,10 @@ class User {
       helperPrice: _toDouble(json['helperPrice']),
       helperBalance: _toDouble(json['helperBalance']),
       helperTotalEarned: _toDouble(json['helperTotalEarned']),
+      serviceCategory: json['serviceCategory']?.toString(),
+      serviceRadiusKm: _toDouble(json['serviceRadiusKm']),
+      serviceAreaMode: json['serviceAreaMode']?.toString(),
+      offeredServices: _toStringList(json['offeredServices']),
     );
   }
 
@@ -186,6 +198,10 @@ class User {
       if (helperPrice != null) 'helperPrice': helperPrice,
       if (helperBalance != null) 'helperBalance': helperBalance,
       if (helperTotalEarned != null) 'helperTotalEarned': helperTotalEarned,
+      if (serviceCategory != null) 'serviceCategory': serviceCategory,
+      if (serviceRadiusKm != null) 'serviceRadiusKm': serviceRadiusKm,
+      if (serviceAreaMode != null) 'serviceAreaMode': serviceAreaMode,
+      'offeredServices': offeredServices,
     };
   }
 
@@ -256,6 +272,10 @@ class User {
     double? helperPrice,
     double? helperBalance,
     double? helperTotalEarned,
+    String? serviceCategory,
+    double? serviceRadiusKm,
+    String? serviceAreaMode,
+    List<String>? offeredServices,
   }) {
     return User(
       id: id ?? this.id,
@@ -291,6 +311,10 @@ class User {
       helperPrice: helperPrice ?? this.helperPrice,
       helperBalance: helperBalance ?? this.helperBalance,
       helperTotalEarned: helperTotalEarned ?? this.helperTotalEarned,
+      serviceCategory: serviceCategory ?? this.serviceCategory,
+      serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
+      serviceAreaMode: serviceAreaMode ?? this.serviceAreaMode,
+      offeredServices: offeredServices ?? this.offeredServices,
     );
   }
 }
@@ -330,6 +354,19 @@ class AuthResponse {
   final DateTime? realadminPremiumStartedAt;
   final DateTime? realadminPremiumExpiresAt;
 
+  // Helper & Service fields
+  final String? helperCoverageLevel;
+  final String? helperCounty;
+  final List<String> helperConstituencies;
+  final List<String> helperWards;
+  final double? helperPrice;
+  final double? helperBalance;
+  final double? helperTotalEarned;
+  final String? serviceCategory;
+  final double? serviceRadiusKm;
+  final String? serviceAreaMode;
+  final List<String> offeredServices;
+
   AuthResponse({
     required this.token,
     this.refreshToken,
@@ -356,6 +393,17 @@ class AuthResponse {
     this.premiumExpiresAt,
     this.realadminPremiumStartedAt,
     this.realadminPremiumExpiresAt,
+    this.helperCoverageLevel,
+    this.helperCounty,
+    this.helperConstituencies = const [],
+    this.helperWards = const [],
+    this.helperPrice,
+    this.helperBalance,
+    this.helperTotalEarned,
+    this.serviceCategory,
+    this.serviceRadiusKm,
+    this.serviceAreaMode,
+    this.offeredServices = const [],
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
@@ -393,6 +441,17 @@ class AuthResponse {
       realadminPremiumExpiresAt: json['realadminPremiumExpiresAt'] != null
           ? DateTime.tryParse(json['realadminPremiumExpiresAt'].toString())
           : null,
+      helperCoverageLevel: json['helperCoverageLevel']?.toString(),
+      helperCounty: json['helperCounty']?.toString(),
+      helperConstituencies: _toStringList(json['helperConstituencies']),
+      helperWards: _toStringList(json['helperWards']),
+      helperPrice: _toDouble(json['helperPrice']),
+      helperBalance: _toDouble(json['helperBalance']),
+      helperTotalEarned: _toDouble(json['helperTotalEarned']),
+      serviceCategory: json['serviceCategory']?.toString(),
+      serviceRadiusKm: _toDouble(json['serviceRadiusKm']),
+      serviceAreaMode: json['serviceAreaMode']?.toString(),
+      offeredServices: _toStringList(json['offeredServices']),
     );
   }
 
@@ -420,6 +479,17 @@ class AuthResponse {
       premiumExpiresAt: premiumExpiresAt,
       realadminPremiumStartedAt: realadminPremiumStartedAt,
       realadminPremiumExpiresAt: realadminPremiumExpiresAt,
+      helperCoverageLevel: helperCoverageLevel,
+      helperCounty: helperCounty,
+      helperConstituencies: helperConstituencies,
+      helperWards: helperWards,
+      helperPrice: helperPrice,
+      helperBalance: helperBalance,
+      helperTotalEarned: helperTotalEarned,
+      serviceCategory: serviceCategory,
+      serviceRadiusKm: serviceRadiusKm,
+      serviceAreaMode: serviceAreaMode,
+      offeredServices: offeredServices,
     );
   }
 }

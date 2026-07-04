@@ -10,6 +10,10 @@ class HelperProfile {
   final String? helperCounty;
   final List<String> helperWards;
   final List<String> helperConstituencies;
+  final String? serviceCategory;
+  final double? serviceRadiusKm;
+  final String? serviceAreaMode;
+  final List<String> offeredServices;
   final double averageRating;
   final int reviewCount;
   final int totalHires;
@@ -27,6 +31,10 @@ class HelperProfile {
     this.helperCounty,
     this.helperWards = const [],
     this.helperConstituencies = const [],
+    this.serviceCategory,
+    this.serviceRadiusKm,
+    this.serviceAreaMode,
+    this.offeredServices = const [],
     this.averageRating = 0.0,
     this.reviewCount = 0,
     this.totalHires = 0,
@@ -46,6 +54,10 @@ class HelperProfile {
       helperCounty: json['helperCounty'],
       helperWards: List<String>.from(json['helperWards'] ?? []),
       helperConstituencies: List<String>.from(json['helperConstituencies'] ?? []),
+      serviceCategory: json['serviceCategory'],
+      serviceRadiusKm: json['serviceRadiusKm'] != null ? (json['serviceRadiusKm'] as num).toDouble() : null,
+      serviceAreaMode: json['serviceAreaMode'],
+      offeredServices: List<String>.from(json['offeredServices'] ?? []),
       averageRating: (json['averageRating'] ?? 0).toDouble(),
       reviewCount: json['reviewCount'] ?? 0,
       totalHires: json['totalHires'] ?? 0,

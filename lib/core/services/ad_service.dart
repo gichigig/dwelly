@@ -24,6 +24,8 @@ class AdDisplayConfig {
   final bool marketplaceDetailAdEnabled;
   final bool marketplaceSearchAdEnabled;
   final String marketplaceFeedIntervals;
+  final bool allAdsSuspended;
+  final bool premiumPageEnabled;
 
   AdDisplayConfig({
     this.rentalFeedIntervals = '5,10,15,20',
@@ -41,6 +43,8 @@ class AdDisplayConfig {
     this.marketplaceDetailAdEnabled = true,
     this.marketplaceSearchAdEnabled = true,
     this.marketplaceFeedIntervals = '4,9,14',
+    this.allAdsSuspended = false,
+    this.premiumPageEnabled = true,
   });
 
   factory AdDisplayConfig.fromJson(Map<String, dynamic> json) {
@@ -62,6 +66,8 @@ class AdDisplayConfig {
       marketplaceDetailAdEnabled: json['marketplaceDetailAdEnabled'] ?? true,
       marketplaceSearchAdEnabled: json['marketplaceSearchAdEnabled'] ?? true,
       marketplaceFeedIntervals: json['marketplaceFeedIntervals'] ?? '4,9,14',
+      allAdsSuspended: json['allAdsSuspended'] ?? false,
+      premiumPageEnabled: json['premiumPageEnabled'] ?? true,
     );
   }
 
@@ -174,6 +180,9 @@ class AdService {
   bool _adsDisabledForPremium() {
     return PremiumService.shouldHideAds();
   }
+
+  /// Whether Google Ads are globally suspended by super admin.
+  bool get allAdsSuspended => _cachedConfig?.allAdsSuspended ?? false;
 
   /// Get singleton instance
   static Future<AdService> getInstance() async {
@@ -529,6 +538,7 @@ class AdService {
       if (cached != null) {
         try {
           _cachedConfig = AdDisplayConfig.fromJson(jsonDecode(cached));
+          PremiumService.notifyPremiumPageEnabled(_cachedConfig!.premiumPageEnabled);
           return _cachedConfig!;
         } catch (e) {
           // Invalid cache, continue to fetch
@@ -546,6 +556,7 @@ class AdService {
         _cachedConfig = AdDisplayConfig.fromJson(data);
         await _prefs.setString(_configCacheKey, response.body);
         _markAdNetworkSuccess();
+        PremiumService.notifyPremiumPageEnabled(_cachedConfig!.premiumPageEnabled);
         return _cachedConfig!;
       }
     } catch (e) {
@@ -553,7 +564,19 @@ class AdService {
       _markAdNetworkFailure();
     }
 
-    return _cachedConfig ?? AdDisplayConfig();
+    final res = _cachedConfig ?? AdDisplayConfig();
+    PremiumService.notifyPremiumPageEnabled(res.premiumPageEnabled);
+    return res;
+  }
+
+  /// Synchronously return whether all Google Ads are suspended.
+  static bool areGoogleAdsSuspended() {
+    return _instance?._cachedConfig?.allAdsSuspended ?? false;
+  }
+
+  /// Synchronously return whether premium page is enabled.
+  static bool isPremiumPageEnabled() {
+    return _instance?._cachedConfig?.premiumPageEnabled ?? true;
   }
 
   /// Check if app launch ad should be shown (respects cooldown)

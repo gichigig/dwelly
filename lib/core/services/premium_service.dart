@@ -10,11 +10,15 @@ class PremiumService {
   /// (e.g., Google Ad widgets dispose loaded ads when premium activates).
   static final ValueNotifier<bool> premiumActive = ValueNotifier(false);
 
+  /// Reactive notifier for whether the premium subscription page is enabled app-wide by super admin.
+  static final ValueNotifier<bool> premiumPageEnabled = ValueNotifier(true);
+
   static bool isPremiumActive() {
     return AuthService.currentUser?.isPremiumActive ?? false;
   }
 
   static bool shouldHideAds() {
+    if (AuthService.isTenantMode) return true;
     return AuthService.currentUser?.shouldHideAds ?? false;
   }
 
@@ -25,6 +29,16 @@ class PremiumService {
     if (premiumActive.value != newValue) {
       premiumActive.value = newValue;
     }
+  }
+
+  static void notifyPremiumPageEnabled(bool enabled) {
+    if (premiumPageEnabled.value != enabled) {
+      premiumPageEnabled.value = enabled;
+    }
+  }
+
+  static bool isPremiumPageVisible() {
+    return premiumPageEnabled.value;
   }
 
   static Future<bool> canUseLocationFilter() async {

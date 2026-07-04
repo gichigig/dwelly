@@ -25,6 +25,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
   
   List<Rental> _rentals = [];
   bool _isLoading = true;
+  bool _isRefreshingLocation = false;
   DeviceLocationResult? _deviceLocation;
   
   // Radar state
@@ -51,16 +52,66 @@ class _MapExplorePageState extends State<MapExplorePage> {
   Future<void> _initMap() async {
     try {
       final loc = await DeviceLocationService.getCurrentLocation();
-      if (loc.hasLocationData && mounted) {
+      if (mounted) {
         setState(() {
           _deviceLocation = loc;
+          _isLoading = false;
         });
+      }
+      if (loc.success && mounted) {
         await _loadRentals(loc.latitude, loc.longitude);
-      } else {
-        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _refreshLocation() async {
+    if (_isRefreshingLocation) return;
+    setState(() {
+      _isRefreshingLocation = true;
+    });
+    
+    try {
+      final loc = await DeviceLocationService.getCurrentLocation();
+      if (mounted) {
+        setState(() {
+          _deviceLocation = loc;
+          _isRefreshingLocation = false;
+        });
+        if (loc.success) {
+          _mapController.move(LatLng(loc.latitude, loc.longitude), 14.0);
+          await _loadRentals(loc.latitude, loc.longitude);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('📍 Location & nearby rentals refreshed!'),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Could not detect location: ${loc.errorMessage ?? "Unknown error"}'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRefreshingLocation = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to refresh location. Please check your GPS permissions.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -94,7 +145,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
   void _startCompass() {
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (!mounted) return;
-      if (event.heading != null) {
+      if (event.heading != null && !event.heading!.isNaN) {
         setState(() {
           _currentHeading = event.heading;
         });
@@ -132,11 +183,11 @@ class _MapExplorePageState extends State<MapExplorePage> {
   }
 
   bool _isRentalInCone(Rental rental) {
-    if (!_isRadarActive || _currentHeading == null || _deviceLocation == null) return true;
+    if (!_isRadarActive || _currentHeading == null || _currentHeading!.isNaN || _deviceLocation == null) return true;
     if (rental.latitude == null || rental.longitude == null) return false;
 
-    final devLat = _deviceLocation!.latitude;
-    final devLng = _deviceLocation!.longitude;
+    final devLat = _deviceLocation!.latitude!;
+    final devLng = _deviceLocation!.longitude!;
 
     final distance = Geolocator.distanceBetween(
       devLat, devLng,
@@ -163,10 +214,10 @@ class _MapExplorePageState extends State<MapExplorePage> {
   }
 
   List<Polygon> _buildPolygons() {
-    if (!_isRadarActive || _currentHeading == null || _deviceLocation == null) return [];
+    if (!_isRadarActive || _currentHeading == null || _currentHeading!.isNaN || _deviceLocation == null) return [];
 
-    final lat = _deviceLocation!.latitude;
-    final lng = _deviceLocation!.longitude;
+    final lat = _deviceLocation!.latitude!;
+    final lng = _deviceLocation!.longitude!;
     
     final leftBearing = _currentHeading! - (radarAngleDegrees / 2);
     final rightBearing = _currentHeading! + (radarAngleDegrees / 2);
@@ -220,36 +271,17 @@ class _MapExplorePageState extends State<MapExplorePage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return FutureBuilder<Rental?>(
-          future: RentalService.getById(lightweightRental.id!),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(
-                height: 200,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final r = snapshot.data ?? lightweightRental;
-            
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (r.imageUrls.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      height: 150,
-                      width: double.infinity,
-                      child: Image.network(
-                        r.imageUrls.first,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
+        final r = lightweightRental;
+        bool isNavigating = false;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 const SizedBox(height: 16),
                 Text(
                   r.title,
@@ -265,14 +297,31 @@ class _MapExplorePageState extends State<MapExplorePage> {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => RentalDetailPage(rental: r))
-                          );
+                        onPressed: isNavigating ? null : () async {
+                          setState(() => isNavigating = true);
+                          try {
+                            final fullRental = await RentalService.getById(r.id!)
+                                .timeout(const Duration(seconds: 10));
+                            if (!context.mounted) return;
+                            Navigator.pop(context); // pop bottom sheet
+                            if (fullRental != null) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => RentalDetailPage(rental: fullRental))
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              setState(() => isNavigating = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Failed to load details. Please try again.')),
+                              );
+                            }
+                          }
                         },
-                        icon: const Icon(Icons.info_outline),
-                        label: const Text('Details'),
+                        icon: isNavigating 
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.info_outline),
+                        label: Text(isNavigating ? 'Loading...' : 'Details'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -292,29 +341,59 @@ class _MapExplorePageState extends State<MapExplorePage> {
             ),
           ),
         );
-          },
-        );
       },
     );
-  }
+    },
+  );
+}
 
   List<Marker> _buildMarkers() {
     return _rentals
-        .where((r) => r.latitude != null && r.longitude != null)
+        .where((r) => r.latitude != null && r.longitude != null && !r.latitude!.isNaN && !r.longitude!.isNaN)
         .where(_isRentalInCone)
         .map((r) {
           final isPremium = r.hasVideo == true; 
+          String labelText = r.propertyType;
+          if ((r.propertyType.toUpperCase() == 'APARTMENT' || r.propertyType.toUpperCase() == 'HOUSE') && r.bedrooms > 0) {
+             labelText = '${r.bedrooms} bedroom';
+          } else if (r.bedrooms == 0 && r.propertyType.toUpperCase() == 'APARTMENT') {
+             labelText = 'Bedsitter';
+          }
           
           return Marker(
             point: LatLng(r.latitude!, r.longitude!),
-            width: 40,
-            height: 40,
+            width: 120,
+            height: 60,
+            alignment: Alignment.topCenter,
             child: GestureDetector(
               onTap: () => _showRentalPreview(r),
-              child: Icon(
-                Icons.location_on,
-                size: 40,
-                color: isPremium ? Colors.yellow : Colors.red,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isPremium ? Colors.yellow : Colors.red,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      labelText,
+                      style: TextStyle(
+                        color: isPremium ? Colors.black : Colors.white, 
+                        fontSize: 10, 
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    Icons.location_on,
+                    size: 30,
+                    color: isPremium ? Colors.yellow : Colors.red,
+                  ),
+                ],
               ),
             ),
           );
@@ -329,11 +408,37 @@ class _MapExplorePageState extends State<MapExplorePage> {
       );
     }
 
-    if (_deviceLocation == null) {
+    if (_deviceLocation == null || !_deviceLocation!.success) {
       return Scaffold(
         appBar: AppBar(title: const Text('Map Explore')),
-        body: const Center(
-          child: Text('Location permission is required to use the map.'),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.location_off, size: 48, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  _deviceLocation?.errorMessage ?? 'Location access is required to use the map.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _isLoading = true;
+                      _deviceLocation = null;
+                    });
+                    _initMap();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                )
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -344,20 +449,17 @@ class _MapExplorePageState extends State<MapExplorePage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: LatLng(_deviceLocation!.latitude, _deviceLocation!.longitude),
+              initialCenter: LatLng(_deviceLocation!.latitude!, _deviceLocation!.longitude!),
               initialZoom: 14.0,
               onPositionChanged: (position, hasGesture) {
                 if (hasGesture && position.center != null) {
                   _debounceTimer?.cancel();
                   _debounceTimer = Timer(const Duration(milliseconds: 600), () {
                     if (mounted) {
-                      setState(() {
-                        _deviceLocation = DeviceLocationResult(
-                          latitude: position.center.latitude,
-                          longitude: position.center.longitude,
-                          success: true,
-                        );
-                      });
+                      // Only reload rentals for the new center — do NOT
+                      // overwrite _deviceLocation with setState, because
+                      // that triggers a full FlutterMap rebuild which
+                      // causes the map to lose its camera position.
                       _loadRentals(position.center.latitude, position.center.longitude);
                     }
                   });
@@ -392,7 +494,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
                             CircleLayer(
                 circles: _deviceLocation != null && _isRadarActive ? <CircleMarker>[
                   CircleMarker(
-                    point: LatLng(_deviceLocation!.latitude, _deviceLocation!.longitude),
+                    point: LatLng(_deviceLocation!.latitude!, _deviceLocation!.longitude!),
                     color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                     borderStrokeWidth: 2,
                     borderColor: Theme.of(context).colorScheme.primary,
@@ -428,7 +530,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
           // Radar Overlay UI
           if (_isRadarActive && _currentHeading != null)
             Positioned(
-              top: 60,
+              top: 110,
               left: 20,
               right: 20,
               child: Container(
@@ -452,7 +554,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
               ),
             ),
             
-          // Back Button
+          // Back Button (Top Left)
           Positioned(
             top: 50,
             left: 16,
@@ -461,6 +563,42 @@ class _MapExplorePageState extends State<MapExplorePage> {
               child: IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.black),
                 onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ),
+          
+          // Refresh GPS Location Button (Top Right opposite of arrow)
+          Positioned(
+            top: 50,
+            right: 16,
+            child: Material(
+              color: Colors.white,
+              elevation: 4,
+              borderRadius: BorderRadius.circular(25),
+              child: InkWell(
+                onTap: _isRefreshingLocation ? null : _refreshLocation,
+                borderRadius: BorderRadius.circular(25),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_isRefreshingLocation)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
+                        )
+                      else
+                        const Icon(Icons.refresh, size: 18, color: Colors.blue),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isRefreshingLocation ? 'Locating...' : 'Refresh GPS',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

@@ -1,3 +1,5 @@
+import 'package:share_plus/share_plus.dart';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/rental.dart';
@@ -18,6 +20,8 @@ import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/widgets/app_launch_ad_screen.dart';
 import '../../../core/widgets/full_screen_gallery.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
 
 class RentalDetailPage extends StatefulWidget {
   final Rental rental;
@@ -36,6 +40,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   Advertisement? _listingDetailAd;
   VideoPlayerController? _videoController;
   final PageController _pageController = PageController();
+  Timer? _autoScrollTimer;
 
   @override
   void initState() {
@@ -44,6 +49,27 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
     _checkSaveStatus();
     _loadListingDetailAd();
     _initVideo();
+    _startAutoScroll();
+  }
+
+  void _startAutoScroll() {
+    _autoScrollTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (!_pageController.hasClients) return;
+      
+      final pageCount = widget.rental.imageUrls.length + (widget.rental.hasVideo ? 1 : 0);
+      if (pageCount <= 1) return;
+      
+      int nextIndex = _pageController.page!.round() + 1;
+      if (nextIndex >= pageCount) {
+        nextIndex = 0;
+      }
+      
+      _pageController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   void _initVideo() {
@@ -59,7 +85,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
         Uri.parse(widget.rental.videoUrl!),
       )..initialize().then((_) {
           _videoController!.setLooping(true);
-          _videoController!.setVolume(1.0); // Allow sound in detail page
+          _videoController!.setVolume(0.0); // Mute by default
           _videoController!.play();
           if (mounted) setState(() {});
         });
@@ -77,6 +103,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
 
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
     _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -254,12 +281,19 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                         color: _isSaved ? Colors.amber : Colors.white,
                       ),
               ),
-              IconButton(
-                onPressed: () {
-                  // Share functionality
-                },
-                icon: const Icon(Icons.share),
+              /*
+              Builder(
+                builder: (BuildContext innerContext) {
+                  return IconButton(
+                    onPressed: () {
+                      final text = '${rental.title} - ${rental.formattedPrice}\nLocation: ${rental.fullAddress}\nCheck it out on Dwelly!';
+                      _showCustomShareMenu(context, text, rental.title);
+                    },
+                    icon: const Icon(Icons.share),
+                  );
+                }
               ),
+              */
               // More options menu
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
@@ -294,6 +328,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                               imageUrls: rental.imageUrls,
                               videoUrl: rental.videoUrl,
                               showVideoFirst: isPremium,
+                              isPremium: isPremium,
                             ),
                           ),
                         );
@@ -452,6 +487,19 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
+
+                  if (rental.latitude != null && rental.longitude != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: OutlinedButton.icon(
+                        onPressed: () => _getDirections(context, rental),
+                        icon: const Icon(Icons.directions, size: 18),
+                        label: const Text('Get Directions'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
 
                   // Location
                   Row(
@@ -689,6 +737,35 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
     );
   }
 
+  Future<void> _getDirections(BuildContext context, Rental r) async {
+    if (r.latitude == null || r.longitude == null) return;
+    final lat = r.latitude!;
+    final lng = r.longitude!;
+    
+    final appleMapsUrl = Uri.parse('http://maps.apple.com/?daddr=$lat,$lng');
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+
+    try {
+      if (Platform.isIOS) {
+        if (await canLaunchUrl(appleMapsUrl)) {
+          await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
+        } else if (await canLaunchUrl(googleMapsUrl)) {
+          await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+        }
+      } else {
+        if (await canLaunchUrl(googleMapsUrl)) {
+          await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open map application')),
+        );
+      }
+    }
+  }
+
   void _contactOwner(BuildContext context) {
     if (!AuthService.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -814,6 +891,92 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
               ),
 
               const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCustomShareMenu(BuildContext context, String text, String subject) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Share Listing',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.grey[200],
+                  child: const Icon(Icons.copy, color: Colors.black87),
+                ),
+                title: const Text('Copy to Clipboard'),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: text));
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Copied to clipboard!')),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green[50],
+                  child: const Icon(Icons.message, color: Colors.green),
+                ),
+                title: const Text('WhatsApp'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final encodedText = Uri.encodeComponent(text);
+                  final uri = Uri.parse('https://wa.me/?text=$encodedText');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } else {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WhatsApp not installed')));
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blue[50],
+                  child: const Icon(Icons.sms, color: Colors.blue),
+                ),
+                title: const Text('SMS'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final encodedText = Uri.encodeComponent(text);
+                  final uri = Uri.parse('sms:?body=$encodedText');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
             ],
           ),
         ),

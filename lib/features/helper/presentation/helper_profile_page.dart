@@ -319,13 +319,36 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
               children: [
                 const Text('Details', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
-                _buildDetailRow(Icons.payments, 'Price', 'KES ${profile.helperPrice.toStringAsFixed(2)}'),
-                if (profile.helperCoverageLevel != null)
-                  _buildDetailRow(Icons.map, 'Coverage Level', profile.helperCoverageLevel!),
-                if (profile.helperCounty != null)
-                  _buildDetailRow(Icons.location_city, 'County', profile.helperCounty!),
-                if (profile.helperWards.isNotEmpty)
-                  _buildDetailRow(Icons.location_on, 'Wards', profile.helperWards.join(', ')),
+                if (profile.serviceCategory != null && profile.serviceCategory!.isNotEmpty)
+                  _buildDetailRow(Icons.handyman, 'Service Category', profile.serviceCategory!),
+                _buildDetailRow(Icons.payments, 'Base Price', 'KES ${profile.helperPrice.toStringAsFixed(2)}'),
+                if (profile.serviceAreaMode == 'RADIUS' && profile.serviceRadiusKm != null && profile.serviceRadiusKm! > 0) ...[
+                  _buildDetailRow(Icons.my_location, 'Service Area', 'Within ${profile.serviceRadiusKm!.toStringAsFixed(0)} km radius of pinned location'),
+                ] else ...[
+                  if (profile.helperCoverageLevel != null)
+                    _buildDetailRow(Icons.map, 'Coverage Level', profile.helperCoverageLevel!),
+                  if (profile.helperCounty != null)
+                    _buildDetailRow(Icons.location_city, 'County', profile.helperCounty!),
+                  if (profile.helperConstituencies.isNotEmpty)
+                    _buildDetailRow(Icons.holiday_village, 'Constituencies', profile.helperConstituencies.join(', ')),
+                  if (profile.helperWards.isNotEmpty)
+                    _buildDetailRow(Icons.location_on, 'Wards', profile.helperWards.join(', ')),
+                ],
+                if (profile.offeredServices.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text('Offered Products & Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ...profile.offeredServices.map((service) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(service, style: const TextStyle(fontSize: 15))),
+                      ],
+                    ),
+                  )),
+                ],
               ],
             ),
           ),

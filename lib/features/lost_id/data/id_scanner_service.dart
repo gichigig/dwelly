@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:realestate/core/services/api_service.dart';
 import 'package:realestate/core/services/auth_service.dart';
@@ -286,6 +287,7 @@ class IdScannerService {
           'finderPhone': finderPhone,
           'finderWhatsApp': finderWhatsApp,
           'foundLocation': foundLocation,
+          'collectionLocation': collectionPlace,
           'collectionPlace': collectionPlace,
         }),
       );
@@ -299,13 +301,17 @@ class IdScannerService {
           id: data['id'],
         );
       } else {
+        final detail = data['detail'] ?? '';
+        final errorMsg = data['error'] ?? 'Failed to register ID';
+        debugPrint('[FoundID] Registration error: $errorMsg ($detail) [${response.statusCode}]');
         return RegisterFoundIdResponse(
           success: false,
-          message: data['error'] ?? 'Failed to register ID',
+          message: detail.isNotEmpty ? '$errorMsg ($detail)' : errorMsg,
           errorCode: data['code'],
         );
       }
     } catch (e) {
+      debugPrint('[FoundID] Network exception during registration: $e');
       return RegisterFoundIdResponse(
         success: false,
         message: 'Network error. Please check your connection.',
@@ -341,7 +347,7 @@ class IdScannerService {
           finderPhone: data['finderPhone'],
           finderWhatsApp: data['finderWhatsApp'],
           foundLocation: data['foundLocation'],
-          collectionPlace: data['collectionPlace'],
+          collectionPlace: data['collectionPlace'] ?? data['collectionLocation'],
           foundAt: data['foundAt'] != null ? DateTime.parse(data['foundAt']) : null,
           foundIdId: data['foundId'],
         );
@@ -353,16 +359,10 @@ class IdScannerService {
           message: 'Please login to search for lost IDs.',
         );
       } else {
-        return SearchLostIdResponse(
-          found: false,
-          message: data['error'] ?? 'Search failed',
-        );
+        throw Exception(data['error'] ?? 'Search failed');
       }
     } catch (e) {
-      return SearchLostIdResponse(
-        found: false,
-        message: 'Network error. Please check your connection.',
-      );
+      rethrow;
     }
   }
 

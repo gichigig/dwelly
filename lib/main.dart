@@ -124,6 +124,7 @@ class DwellyApp extends StatelessWidget {
         final darkTheme = _buildTheme(Brightness.dark);
 
         return MaterialApp(
+          navigatorKey: NotificationService.navigatorKey,
           debugShowCheckedModeBanner: false,
           title: 'Dwelly',
           theme: lightTheme,

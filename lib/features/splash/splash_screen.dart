@@ -134,7 +134,7 @@ class _SplashScreenState extends State<SplashScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
+            colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
           ),
         ),
         child: AnimatedBuilder(
@@ -199,7 +199,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   fit: BoxFit.contain,
                                   errorBuilder: (context, error, stackTrace) {
                                     return Container(
-                                      color: Colors.white,
+                                      color: Colors.transparent,
                                       child: CustomPaint(painter: DwellyLogoPainter()),
                                     );
                                   },
@@ -233,7 +233,7 @@ class _SplashScreenState extends State<SplashScreen>
                           'Real Estate App',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.grey[600],
+                            color: Colors.grey[400],
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.5,
                           ),
@@ -265,7 +265,7 @@ class _SplashScreenState extends State<SplashScreen>
                                 'by',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey[500],
+                                  color: Colors.grey[400],
                                   fontWeight: FontWeight.w400,
                                 ),
                               ),
@@ -309,7 +309,7 @@ class _SplashScreenState extends State<SplashScreen>
       width: 180,
       height: 180,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(24),
       ),
       child: CustomPaint(painter: DwellyLogoPainter()),

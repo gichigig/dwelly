@@ -33,6 +33,7 @@ import 'privacy_personalization_page.dart';
 import 'reports_safety_center_page.dart';
 import 'cache_management_page.dart';
 import '../../helper/presentation/helper_hub_page.dart';
+import '../../helper/presentation/services_list_page.dart';
 import '../../landlord/presentation/landlord_page.dart';
 
 enum _SecurityWizardPromptAction { setupNow, remindLater }
@@ -40,11 +41,13 @@ enum _SecurityWizardPromptAction { setupNow, remindLater }
 class AccountPage extends StatefulWidget {
   final VoidCallback? onNavigateToSaved;
   final VoidCallback? onNavigateToInbox;
+  final ValueChanged<bool>? onTenantModeChanged;
 
   const AccountPage({
     super.key,
     this.onNavigateToSaved,
     this.onNavigateToInbox,
+    this.onTenantModeChanged,
   });
 
   @override
@@ -114,6 +117,17 @@ class _AccountPageState extends State<AccountPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoOpenSecurityWizard();
     });
+    PremiumService.premiumPageEnabled.addListener(_onPremiumPageEnabledChanged);
+  }
+
+  @override
+  void dispose() {
+    PremiumService.premiumPageEnabled.removeListener(_onPremiumPageEnabledChanged);
+    super.dispose();
+  }
+
+  void _onPremiumPageEnabledChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadLocalLocationFallback() async {
@@ -430,24 +444,62 @@ int _calcDirSize(String dirPath) {
             title: 'Edit Profile',
             onTap: () => _showEditProfileDialog(context),
           ),
+          if (PremiumService.isPremiumPageVisible())
+            _buildMenuItem(
+              icon: Icons.workspace_premium,
+              title: 'Dwelly Premium',
+              subtitle: _premiumSubtitle(user),
+              onTap: () {
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
+              },
+            ),
+          if (!AuthService.isTenantMode)
+            _buildMenuItem(
+              icon: Icons.bookmark,
+              title: 'Saved Listings',
+              onTap: () {
+                widget.onNavigateToSaved?.call();
+              },
+            ),
+
           _buildMenuItem(
-            icon: Icons.workspace_premium,
-            title: 'Dwelly Premium',
-            subtitle: _premiumSubtitle(user),
-            onTap: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
-            },
-          ),
-          _buildMenuItem(
-            icon: Icons.bookmark,
-            title: 'Saved Listings',
-            onTap: () {
-              widget.onNavigateToSaved?.call();
+            icon: AuthService.isTenantMode ? Icons.home_work : Icons.home_work_outlined,
+            title: AuthService.isTenantMode ? 'Exit Tenant Mode' : 'Tenant Mode',
+            subtitle: AuthService.isTenantMode
+                ? 'Restore full navigation, explore rentals and ads'
+                : 'Simplified view for active tenants (Inbox & Account only, ad-free)',
+            onTap: () async {
+              final newMode = !AuthService.isTenantMode;
+              await AuthService.setTenantMode(newMode);
+              if (mounted) {
+                setState(() {});
+                widget.onTenantModeChanged?.call(newMode);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      newMode
+                          ? 'Tenant Mode enabled: showing Inbox & Account only (no ads)'
+                          : 'Standard Mode restored',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
           ),
 
+          _buildMenuItem(
+            icon: Icons.cleaning_services_rounded,
+            title: 'Services Tab',
+            subtitle: 'Movers, gas delivery, water delivery, mama fua & more',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ServicesListPage(initialCategory: "All")),
+              );
+            },
+          ),
           _buildMenuItem(
             icon: Icons.handyman,
             title: 'Helper Hub',
@@ -533,19 +585,20 @@ int _calcDirSize(String dirPath) {
               );
             },
           ),
-          _buildMenuItem(
-            icon: Icons.workspace_premium,
-            title: user.isPremiumActive ? 'Premium Active' : 'Go Premium',
-            subtitle: user.isPremiumActive
-                ? 'Expires ${_formatDate(user.premiumExpiresAt)}'
-                : 'KES 300 for 30 days',
-            color: const Color(0xFF7C4DFF),
-            onTap: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
-            },
-          ),
+          if (PremiumService.isPremiumPageVisible())
+            _buildMenuItem(
+              icon: Icons.workspace_premium,
+              title: user.isPremiumActive ? 'Premium Active' : 'Go Premium',
+              subtitle: user.isPremiumActive
+                  ? 'Expires ${_formatDate(user.premiumExpiresAt)}'
+                  : 'KES 300 for 30 days',
+              color: const Color(0xFF7C4DFF),
+              onTap: () {
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
+              },
+            ),
           _buildCacheStorageItem(),
           _buildMenuItem(
             icon: Icons.dark_mode_outlined,

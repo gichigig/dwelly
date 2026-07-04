@@ -6,6 +6,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:realestate/features/rentals/presentation/rental_details_page.dart';
 import 'app_notification_center.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
@@ -238,6 +241,7 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
 }
 
 class NotificationService {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   static String? _fcmToken;
   static bool _initialized = false;
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -593,23 +597,48 @@ class NotificationService {
   static void handleNotification(Map<String, dynamic> data) {
     final type = data['type'] as String?;
     final referenceId = data['referenceId'] as String?;
+    final link = (data['link'] ?? data['url']) as String?;
+
+    if (link != null && link.isNotEmpty) {
+      print('Launch external link: $link');
+      try {
+        final uri = Uri.parse(link);
+        launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        print('Failed to launch URL: $link, error: $e');
+      }
+      return;
+    }
 
     switch (type) {
       case 'RENTAL_ALERT':
+      case 'RENTAL':
+      case 'LISTING':
         if (referenceId != null) {
-          // Navigate to rental detail
-          // You can use a GlobalKey<NavigatorState> or a navigation service
           print('Navigate to rental: $referenceId');
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => RentalDetailsPage(id: referenceId),
+            ),
+          );
         }
         break;
       case 'MESSAGE':
         if (referenceId != null) {
-          // Navigate to conversation
           print('Navigate to conversation: $referenceId');
         }
         break;
       default:
-        print('Unknown notification type: $type');
+        if (referenceId != null) {
+          print('Navigate to rental by default if referenceId present: $referenceId');
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => RentalDetailsPage(id: referenceId),
+            ),
+          );
+        } else {
+          print('Unknown notification type: $type');
+        }
     }
   }
 

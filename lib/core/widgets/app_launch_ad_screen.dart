@@ -290,7 +290,7 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFF0F172A),
       body: SafeArea(
         child: Column(
           children: [
@@ -352,7 +352,7 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
+                    colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
                   ),
                 ),
                 child: Column(
@@ -382,7 +382,7 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
                               fit: BoxFit.contain,
                               errorBuilder: (context, error, stackTrace) {
                                 return Container(
-                                  color: Colors.white,
+                                  color: Colors.transparent,
                                   child: CustomPaint(
                                     painter: DwellyLogoPainter(),
                                   ),
@@ -418,7 +418,7 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
                       'Real Estate App',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: Colors.grey[400],
                         fontWeight: FontWeight.w500,
                         letterSpacing: 0.5,
                       ),

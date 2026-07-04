@@ -8,11 +8,12 @@ import 'api_service.dart';
 import 'auth_service.dart';
 
 class HelperService {
-  static Future<List<User>> getAvailableHelpers({String? county}) async {
+  static Future<List<User>> getAvailableHelpers({String? county, String? category}) async {
     try {
       final uri = Uri.parse('${ApiService.baseUrl}/helper/available').replace(
         queryParameters: {
           if (county != null && county.isNotEmpty) 'county': county,
+          if (category != null && category.isNotEmpty) 'category': category,
         },
       );
 
@@ -43,6 +44,10 @@ class HelperService {
     String? county,
     List<String>? constituencies,
     List<String>? wards,
+    String? serviceCategory,
+    double? serviceRadiusKm,
+    String? serviceAreaMode,
+    List<String>? offeredServices,
   }) async {
     try {
       final token = AuthService.token;
@@ -59,6 +64,10 @@ class HelperService {
         if (county != null) 'county': county,
         if (constituencies != null && constituencies.isNotEmpty) 'constituencies': constituencies,
         if (wards != null && wards.isNotEmpty) 'wards': wards,
+        if (serviceCategory != null) 'serviceCategory': serviceCategory,
+        if (serviceRadiusKm != null) 'serviceRadiusKm': serviceRadiusKm,
+        if (serviceAreaMode != null) 'serviceAreaMode': serviceAreaMode,
+        if (offeredServices != null) 'offeredServices': offeredServices,
       };
 
       final response = await http.post(

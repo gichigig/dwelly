@@ -94,7 +94,7 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Your payment of KES ${widget.helper.helperPrice.toStringAsFixed(0)} will be held securely in escrow until you approve the job.',
+                      'Your booking payment of KES ${widget.helper.helperPrice.toStringAsFixed(0)} will be securely processed to confirm the job.',
                       style: TextStyle(color: Colors.blue.shade900, fontSize: 13),
                     ),
                   ),
