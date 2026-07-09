@@ -59,7 +59,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
       }
 
       final contacts = await FlutterContacts.getAll(
-        properties: {ContactProperty.phone, ContactProperty.email},
+        properties: {ContactProperty.phone},
       );
 
       final identifiers = <String>{};
@@ -71,11 +71,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
           identifiers.add(normalized);
           identifierToContact[normalized] = contact;
         }
-        for (var email in contact.emails) {
-          final normalized = email.address.trim().toLowerCase();
-          identifiers.add(normalized);
-          identifierToContact[normalized] = contact;
-        }
+
       }
 
       if (identifiers.isEmpty) {
@@ -315,6 +311,10 @@ class _ContactsListPageState extends State<ContactsListPage> {
               )
             : null,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadAndSyncContacts,
+          ),
           if (!_isLoading && _error == null && _dwellyMatches.isNotEmpty)
             if (_isSelectionMode)
               IconButton(

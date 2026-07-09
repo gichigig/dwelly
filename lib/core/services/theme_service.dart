@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ThemeService extends ChangeNotifier {
   static const String _themeModeKey = 'theme_mode';
 
-  ThemeMode _mode = ThemeMode.system;
+  ThemeMode _mode = ThemeMode.light;
   late SharedPreferences _prefs;
 
   ThemeService._();
@@ -35,10 +35,10 @@ class ThemeService extends ChangeNotifier {
     switch (value) {
       case 'dark':
         return ThemeMode.dark;
-      case 'light':
-        return ThemeMode.light;
-      default:
+      case 'system':
         return ThemeMode.system;
+      default:
+        return ThemeMode.light;
     }
   }
 }

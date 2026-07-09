@@ -124,19 +124,19 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Offline listings, images, and search history use storage space on your device. Clearing it frees up space but may briefly increase data usage the next time you browse.',
-                style: TextStyle(color: Colors.grey, height: 1.5, fontSize: 16),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5, fontSize: 16),
               ),
               const SizedBox(height: 40),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
+                  color: Theme.of(context).colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -148,16 +148,16 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Total Used',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
                         ),
                         Text(
                           _cacheSizeStr,
                           style: TextStyle(
                             fontSize: 18, 
                             fontWeight: FontWeight.bold,
-                            color: progress > 0.8 ? Colors.red : Theme.of(context).primaryColor,
+                            color: progress > 0.8 ? Colors.red : Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ],
@@ -170,7 +170,7 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                         minHeight: 16,
                         backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          progress > 0.8 ? Colors.red : Theme.of(context).primaryColor,
+                          progress > 0.8 ? Colors.red : Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     ),

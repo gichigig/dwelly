@@ -9,7 +9,6 @@ import '../../../core/models/rental.dart';
 import '../../../core/models/advertisement.dart';
 import '../../../core/data/kenya_locations.dart';
 import '../../../core/errors/ui_error.dart';
-import '../../../core/navigation/app_tab_navigator.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/services/device_location_service.dart';
@@ -25,16 +24,16 @@ import '../../helper/presentation/services_list_page.dart';
 import '../../../core/widgets/app_launch_ad_screen.dart';
 import '../../../core/widgets/ad_break_screen.dart';
 import '../../../core/widgets/banner_ad_widget.dart';
-import '../../../core/services/api_service.dart';
 import '../../../core/services/network_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/widgets/shimmer_placeholder.dart';
 import '../../helper/presentation/helper_hub_page.dart';
 import '../../../core/widgets/top_notification_bell.dart';
 import '../../../core/widgets/telegram/telegram_top_bar.dart';
 import '../../lost_id/presentation/found_id_scan_page.dart';
 import '../../lost_id/presentation/search_lost_id_page.dart';
 import '../../rentals/domain/rental_filters.dart' show UnitType, UnitTypeLabel;
-import '../../marketplace/presentation/marketplace_shell_page.dart';
+
 import 'rental_detail_page.dart';
 import 'map_explore_page.dart';
 import '../../../core/widgets/tutorial_overlay.dart';
@@ -42,9 +41,7 @@ import 'package:realestate/features/user_profile/presentation/user_public_profil
 import '../../../core/widgets/full_screen_image_avatar.dart';
 
 class ExplorePage extends StatefulWidget {
-  final ValueChanged<bool>? onMarketplaceModeChanged;
-
-  const ExplorePage({super.key, this.onMarketplaceModeChanged});
+  const ExplorePage({super.key});
 
   @override
   State<ExplorePage> createState() => ExplorePageState();
@@ -77,8 +74,7 @@ class _ExploreSwipeUpHintSheet extends StatelessWidget {
 class ExplorePageState extends State<ExplorePage> {
   static const String _scrollHintSeenKey = 'explore_scroll_hint_seen_v1';
 
-  // Mode toggle: false = Find Your Home, true = Marketplace
-  bool _isMarketplaceMode = false;
+
   bool _isScrollHintCheckInProgress = false;
   bool _hasCheckedScrollHint = false;
 
@@ -142,6 +138,7 @@ class ExplorePageState extends State<ExplorePage> {
 
   // Scroll-aware header visibility
   bool _isHeaderVisible = true;
+  bool _isServicesCompact = false;
   double _lastScrollOffset = 0;
 
   // Search autocomplete
@@ -157,7 +154,6 @@ class ExplorePageState extends State<ExplorePage> {
   final _filterButtonKey = GlobalKey();
   final _locationButtonKey = GlobalKey();
   final _radarButtonKey = GlobalKey();
-  final _marketplaceButtonKey = GlobalKey();
   final _lostIdButtonKey = GlobalKey();
   TutorialOverlayController? _tutorialController;
 
@@ -242,13 +238,7 @@ class ExplorePageState extends State<ExplorePage> {
             'Open the interactive map to explore listings around you visually.',
         icon: Icons.radar,
       ),
-      TutorialStep(
-        targetKey: _marketplaceButtonKey,
-        title: 'Marketplace',
-        description:
-            'Switch to the marketplace to buy and sell household items.',
-        icon: Icons.swap_horiz,
-      ),
+
       TutorialStep(
         targetKey: _lostIdButtonKey,
         title: 'Lost & Found ID',
@@ -288,7 +278,7 @@ class ExplorePageState extends State<ExplorePage> {
   }
 
   void _onSafetyVisibilityChanged() {
-    if (!mounted || _isMarketplaceMode) return;
+    if (!mounted) return;
     unawaited(_loadRentals(refresh: true));
   }
 
@@ -491,8 +481,7 @@ class ExplorePageState extends State<ExplorePage> {
   }
 
   Future<void> _maybeShowScrollHint() async {
-    if (_isMarketplaceMode ||
-        _isScrollHintCheckInProgress ||
+    if (_isScrollHintCheckInProgress ||
         _hasCheckedScrollHint) {
       return;
     }
@@ -502,7 +491,7 @@ class ExplorePageState extends State<ExplorePage> {
       final prefs = await SharedPreferences.getInstance();
       final seen = prefs.getBool(_scrollHintSeenKey) ?? false;
       _hasCheckedScrollHint = true;
-      if (seen || !mounted || _isMarketplaceMode) {
+      if (seen || !mounted) {
         return;
       }
 
@@ -785,7 +774,7 @@ class ExplorePageState extends State<ExplorePage> {
       }
     }
 
-    final result = await DeviceLocationService.getCurrentLocation();
+    final result = await DeviceLocationService.getCurrentLocation(allowCachedFallback: true);
     if (result.success && result.hasLocationData && mounted) {
       setState(() {
         _deviceLocation = result;
@@ -810,6 +799,9 @@ class ExplorePageState extends State<ExplorePage> {
 
   void _onScroll() {
     final offset = _scrollController.position.pixels;
+    if (offset > 40 && !_isServicesCompact) {
+      setState(() => _isServicesCompact = true);
+    }
     // Hide header on scroll up (finger moves up = offset increases)
     // Show header on scroll down (finger moves down = offset decreases)
     if ((offset - _lastScrollOffset).abs() > 5) {
@@ -847,6 +839,7 @@ class ExplorePageState extends State<ExplorePage> {
   Future<void> _loadRentals({bool refresh = false}) async {
     if (refresh) {
       setState(() {
+        _isServicesCompact = false;
         _currentPage = 0;
         _hasMore = true;
         _rentals.clear();
@@ -1649,18 +1642,7 @@ class ExplorePageState extends State<ExplorePage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    // When marketplace mode is active, show the full independent marketplace mini-app
-    if (_isMarketplaceMode) {
-      return Scaffold(
-        body: MarketplaceShellPage(
-          onBackToHome: () {
-            setState(() => _isMarketplaceMode = false);
-            widget.onMarketplaceModeChanged?.call(false);
-            unawaited(_maybeShowScrollHint());
-          },
-        ),
-      );
-    }
+
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -1668,231 +1650,170 @@ class ExplorePageState extends State<ExplorePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header and Search — hides on scroll up, shows on scroll down
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: _isHeaderVisible
-                  ? AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: 1.0,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TelegramTopBar(
-                              title: 'Find Your Home',
-                              actions: [
-                                IconButton(
-                                  key: _radarButtonKey,
-                                  tooltip: 'Premium Map Radar',
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => const MapExplorePage(),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.radar, color: Colors.green),
-                                ),
-                                const TopNotificationBell(),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            // Search Bar
-                            Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Row(
+            // Top scrollable header section when space is constrained (e.g. keyboard open or landscape)
+            Flexible(
+              flex: 3,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header and Search — hides on scroll up, shows on scroll down
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      child: _isHeaderVisible
+                          ? AnimatedOpacity(
+                              duration: const Duration(milliseconds: 200),
+                              opacity: 1.0,
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 2),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      key: _searchBarKey,
-                                      child: TextField(
-                                        controller: _searchController,
-                                        focusNode: _searchFocusNode,
-                                        decoration: InputDecoration(
-                                          hintText: _isDetectingLocation
-                                              ? 'Getting your location...'
-                                              : _searchController.text.isEmpty
-                                              ? (_searchFocusNode.hasFocus
-                                                    ? 'Search ward, area or constituency...'
-                                                    : (_typewriterText
-                                                              .isNotEmpty
-                                                          ? _typewriterText
-                                                          : 'Search location...'))
-                                              : null,
-                                          prefixIcon: _isDetectingLocation
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(12),
-                                                  child: SizedBox(
-                                                    width: 20,
-                                                    height: 20,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                        ),
-                                                  ),
-                                                )
-                                              : IconButton(
-                                                  icon: Icon(
-                                                    Icons.search,
-                                                    color: Theme.of(
-                                                      context,
-                                                    ).colorScheme.primary,
-                                                  ),
-                                                  tooltip: 'Search locations',
-                                                  onPressed: () =>
-                                                      _searchFocusNode
-                                                          .requestFocus(),
-                                                ),
-                                          suffixIcon:
-                                              _searchController.text.isNotEmpty
-                                              ? IconButton(
-                                                  icon: const Icon(Icons.clear),
-                                                  onPressed: () {
-                                                    _searchController.clear();
-                                                    setState(
-                                                      () => _searchResults = [],
-                                                    );
-                                                    _onSearch('');
-                                                  },
-                                                )
-                                              : IconButton(
-                                                  key: _lostIdButtonKey,
-                                                  icon: const Icon(
-                                                    Icons.camera_alt_outlined,
-                                                  ),
-                                                  tooltip: 'Lost & Found ID',
-                                                  onPressed:
-                                                      _showIdOptionsDialog,
-                                                ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          filled: true,
-                                          fillColor:
-                                              Theme.of(context).brightness ==
-                                                  Brightness.dark
-                                              ? Theme.of(context)
-                                                    .colorScheme
-                                                    .surfaceContainerHighest
-                                                    .withOpacity(0.55)
-                                              : Colors.grey[100],
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 12,
+                                    TelegramTopBar(
+                                      title: 'Find Your Home',
+                                      actions: [
+                                        IconButton(
+                                          key: _radarButtonKey,
+                                          tooltip: 'Premium Map Radar',
+                                          onPressed: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => const MapExplorePage(),
                                               ),
+                                            );
+                                          },
+                                          icon: const Icon(Icons.radar, color: Colors.green),
                                         ),
-                                        onChanged: _onSearchTextChanged,
-                                        onSubmitted: _onSearch,
-                                      ),
+                                        const TopNotificationBell(),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    // Filter Button
-                                    Container(
-                                      key: _filterButtonKey,
-                                      decoration: BoxDecoration(
-                                        color: _filters.hasFilters
-                                            ? Theme.of(context).primaryColor
-                                            : Theme.of(context)
-                                                  .colorScheme
-                                                  .surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: IconButton(
-                                        icon: Icon(
-                                          Icons.tune,
-                                          color: _filters.hasFilters
-                                              ? Colors.white
-                                              : Theme.of(
-                                                  context,
-                                                ).colorScheme.onSurfaceVariant,
-                                        ),
-                                        onPressed: () => setState(() {
-                                          _showFilters = !_showFilters;
-                                        }),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    // My Location Button
-                                    Container(
-                                      key: _locationButtonKey,
-                                      decoration: BoxDecoration(
-                                        color:
-                                            (_deviceLocation != null &&
-                                                _searchArea ==
-                                                    _deviceLocation!
-                                                        .displayName)
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.primaryContainer
-                                            : Theme.of(context)
-                                                  .colorScheme
-                                                  .surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: IconButton(
-                                        onPressed: _isDetectingLocation
-                                            ? null
-                                            : () async {
-                                                setState(() => _isDetectingLocation = true);
-                                                final result =
-                                                    await DeviceLocationService.getCurrentLocation();
-                                                
-                                                if (!mounted) return;
-                                                setState(() => _isDetectingLocation = false);
-
-                                                if (result.success && result.hasLocationData) {
-                                                  setState(() {
-                                                    _deviceLocation = result;
-                                                    _searchArea =
-                                                        result.displayName;
-                                                    _searchController.text =
-                                                        result.displayName;
-                                                    _useFYP = false;
-                                                  });
-                                                  if (result.isOutsideKenya) {
-                                                    setState(() {
-                                                      _rentals = [];
-                                                      _isLoading = false;
-                                                      _error = null;
-                                                      _hasMore = false;
-                                                    });
-                                                    return;
-                                                  }
-                                                  _refreshLocationAwareAds();
-                                                  _loadRentals(refresh: true);
-                                                } else {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(result.errorMessage ?? 'Failed to get location. Please check your permissions.'),
-                                                      backgroundColor: Colors.red,
+                                    const SizedBox(height: 10),
+                                    // Search Bar
+                                    Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              key: _searchBarKey,
+                                              child: TextField(
+                                                controller: _searchController,
+                                                focusNode: _searchFocusNode,
+                                                decoration: InputDecoration(
+                                                  hintText: _isDetectingLocation
+                                                      ? 'Getting your location...'
+                                                      : _searchController.text.isEmpty
+                                                      ? (_searchFocusNode.hasFocus
+                                                            ? 'Search ward, area or constituency...'
+                                                            : (_typewriterText
+                                                                      .isNotEmpty
+                                                                  ? _typewriterText
+                                                                  : 'Search location...'))
+                                                      : null,
+                                                  prefixIcon: _isDetectingLocation
+                                                      ? const Padding(
+                                                          padding: EdgeInsets.all(12),
+                                                          child: SizedBox(
+                                                            width: 20,
+                                                            height: 20,
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                                  strokeWidth: 2,
+                                                                ),
+                                                          ),
+                                                        )
+                                                      : IconButton(
+                                                          icon: Icon(
+                                                            Icons.search,
+                                                            color: Theme.of(
+                                                              context,
+                                                            ).colorScheme.primary,
+                                                          ),
+                                                          tooltip: 'Search locations',
+                                                          onPressed: () =>
+                                                              _searchFocusNode
+                                                                  .requestFocus(),
+                                                        ),
+                                                  suffixIcon:
+                                                      _searchController.text.isNotEmpty
+                                                      ? IconButton(
+                                                          icon: const Icon(Icons.clear),
+                                                          onPressed: () {
+                                                            _searchController.clear();
+                                                            setState(
+                                                              () => _searchResults = [],
+                                                            );
+                                                            _onSearch('');
+                                                          },
+                                                        )
+                                                      : IconButton(
+                                                          key: _lostIdButtonKey,
+                                                          icon: const Icon(
+                                                            Icons.camera_alt_outlined,
+                                                          ),
+                                                          tooltip: 'Lost & Found ID',
+                                                          onPressed:
+                                                              _showIdOptionsDialog,
+                                                        ),
+                                                  border: OutlineInputBorder(
+                                                    borderRadius: BorderRadius.circular(
+                                                      12,
                                                     ),
-                                                  );
-                                                }
-                                              },
-                                        tooltip: 'Use my location',
-                                        icon: _isDetectingLocation
-                                            ? const SizedBox(
-                                                width: 20,
-                                                height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              )
-                                            : Icon(
-                                                (_deviceLocation != null &&
-                                                        _searchArea ==
-                                                            _deviceLocation!
-                                                                .displayName)
-                                                    ? Icons.my_location
-                                                    : Icons.location_searching,
+                                                  ),
+                                                  filled: true,
+                                                  fillColor:
+                                                      Theme.of(context).brightness ==
+                                                          Brightness.dark
+                                                      ? Theme.of(context)
+                                                            .colorScheme
+                                                            .surfaceContainerHighest
+                                                            .withOpacity(0.55)
+                                                      : Colors.grey[100],
+                                                  contentPadding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 16,
+                                                        vertical: 12,
+                                                      ),
+                                                ),
+                                                onChanged: _onSearchTextChanged,
+                                                onSubmitted: _onSearch,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            // Filter Button
+                                            Container(
+                                              key: _filterButtonKey,
+                                              decoration: BoxDecoration(
+                                                color: _filters.hasFilters
+                                                    ? Theme.of(context).primaryColor
+                                                    : Theme.of(context)
+                                                          .colorScheme
+                                                          .surfaceContainerHighest,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: IconButton(
+                                                icon: Icon(
+                                                  Icons.tune,
+                                                  color: _filters.hasFilters
+                                                      ? Colors.white
+                                                      : Theme.of(
+                                                          context,
+                                                        ).colorScheme.onSurfaceVariant,
+                                                ),
+                                                onPressed: () => setState(() {
+                                                  _showFilters = !_showFilters;
+                                                }),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            // My Location Button
+                                            Container(
+                                              key: _locationButtonKey,
+                                              decoration: BoxDecoration(
                                                 color:
                                                     (_deviceLocation != null &&
                                                         _searchArea ==
@@ -1900,417 +1821,492 @@ class ExplorePageState extends State<ExplorePage> {
                                                                 .displayName)
                                                     ? Theme.of(
                                                         context,
-                                                      ).colorScheme.primary
+                                                      ).colorScheme.primaryContainer
                                                     : Theme.of(context)
                                                           .colorScheme
-                                                          .onSurfaceVariant,
+                                                          .surfaceContainerHighest,
+                                                borderRadius: BorderRadius.circular(12),
                                               ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            // Inline search suggestions
-                            if (_searchResults.isNotEmpty &&
-                                _searchFocusNode.hasFocus)
-                              _buildInlineSuggestions(),
-                            // Nearby areas chips (only when header visible)
-                            if (_nearbyAreas.isNotEmpty &&
-                                _searchArea != null) ...[
-                              const SizedBox(height: 12),
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      'Nearby: ',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    ..._nearbyAreas
-                                        .take(5)
-                                        .map(
-                                          (area) => Padding(
-                                            padding: const EdgeInsets.only(
-                                              right: 8,
-                                            ),
-                                            child: ActionChip(
-                                              label: Text(
-                                                LocationService.formatAreaName(
-                                                  area,
-                                                ),
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: colorScheme
-                                                      .onSecondaryContainer,
-                                                ),
+                                              child: IconButton(
+                                                onPressed: _isDetectingLocation
+                                                    ? null
+                                                    : () async {
+                                                        setState(() => _isDetectingLocation = true);
+                                                        final result =
+                                                            await DeviceLocationService.getCurrentLocation();
+                                                        
+                                                        if (!mounted) return;
+                                                        setState(() => _isDetectingLocation = false);
+
+                                                        if (result.success && result.hasLocationData) {
+                                                          setState(() {
+                                                            _deviceLocation = result;
+                                                            _searchArea =
+                                                                result.displayName;
+                                                            _searchController.text =
+                                                                result.displayName;
+                                                            _useFYP = false;
+                                                          });
+                                                          if (result.isOutsideKenya) {
+                                                            setState(() {
+                                                              _rentals = [];
+                                                              _isLoading = false;
+                                                              _error = null;
+                                                              _hasMore = false;
+                                                            });
+                                                            return;
+                                                          }
+                                                          _refreshLocationAwareAds();
+                                                          _loadRentals(refresh: true);
+                                                        } else {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(result.errorMessage ?? 'Failed to get location. Please check your permissions.'),
+                                                              backgroundColor: Colors.red,
+                                                            ),
+                                                          );
+                                                        }
+                                                      },
+                                                tooltip: 'Use my location',
+                                                icon: _isDetectingLocation
+                                                    ? const SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                              strokeWidth: 2,
+                                                            ),
+                                                      )
+                                                    : Icon(
+                                                        (_deviceLocation != null &&
+                                                                _searchArea ==
+                                                                    _deviceLocation!
+                                                                        .displayName)
+                                                            ? Icons.my_location
+                                                            : Icons.location_searching,
+                                                        color:
+                                                            (_deviceLocation != null &&
+                                                                _searchArea ==
+                                                                    _deviceLocation!
+                                                                        .displayName)
+                                                            ? Theme.of(
+                                                                context,
+                                                              ).colorScheme.primary
+                                                            : Theme.of(context)
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                      ),
                                               ),
-                                              onPressed: () {
-                                                _searchController.text =
-                                                    LocationService.formatAreaName(
-                                                      area,
-                                                    );
-                                                _onSearch(area);
-                                              },
-                                              backgroundColor: colorScheme
-                                                  .secondaryContainer,
-                                              visualDensity:
-                                                  VisualDensity.compact,
                                             ),
-                                          ),
+                                          ],
                                         ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (_borderNeighborAreas.isNotEmpty &&
-                                _searchArea != null) ...[
-                              const SizedBox(height: 8),
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      'Border: ',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
+                                      ],
                                     ),
-                                    ..._borderNeighborAreas
-                                        .take(5)
-                                        .map(
-                                          (area) => Padding(
-                                            padding: const EdgeInsets.only(
-                                              right: 8,
-                                            ),
-                                            child: ActionChip(
-                                              label: Text(
-                                                LocationService.formatAreaName(
-                                                  area,
-                                                ),
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: colorScheme
-                                                      .onTertiaryContainer,
-                                                ),
+                                    const SizedBox(height: 8),
+                                    // Inline search suggestions
+                                    if (_searchResults.isNotEmpty &&
+                                        _searchFocusNode.hasFocus)
+                                      _buildInlineSuggestions(),
+                                    // Nearby areas chips (only when header visible)
+                                    if (_nearbyAreas.isNotEmpty &&
+                                        _searchArea != null) ...[
+                                      const SizedBox(height: 12),
+                                      SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            Text(
+                                              'Nearby: ',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: colorScheme.onSurfaceVariant,
                                               ),
-                                              onPressed: () {
-                                                _searchController.text =
-                                                    LocationService.formatAreaName(
-                                                      area,
-                                                    );
-                                                _onSearch(area);
-                                              },
-                                              backgroundColor:
-                                                  colorScheme.tertiaryContainer,
-                                              visualDensity:
-                                                  VisualDensity.compact,
                                             ),
-                                          ),
+                                            ..._nearbyAreas
+                                                .take(5)
+                                                .map(
+                                                  (area) => Padding(
+                                                    padding: const EdgeInsets.only(
+                                                      right: 8,
+                                                    ),
+                                                    child: ActionChip(
+                                                      label: Text(
+                                                        LocationService.formatAreaName(
+                                                          area,
+                                                        ),
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          color: colorScheme
+                                                              .onSecondaryContainer,
+                                                        ),
+                                                      ),
+                                                      onPressed: () {
+                                                        _searchController.text =
+                                                            LocationService.formatAreaName(
+                                                              area,
+                                                            );
+                                                        _onSearch(area);
+                                                      },
+                                                      backgroundColor: colorScheme
+                                                          .secondaryContainer,
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                    ),
+                                                  ),
+                                                ),
+                                          ],
                                         ),
+                                      ),
+                                    ],
+                                    if (_borderNeighborAreas.isNotEmpty &&
+                                        _searchArea != null) ...[
+                                      const SizedBox(height: 8),
+                                      SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            Text(
+                                              'Border: ',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: colorScheme.onSurfaceVariant,
+                                              ),
+                                            ),
+                                            ..._borderNeighborAreas
+                                                .take(5)
+                                                .map(
+                                                  (area) => Padding(
+                                                    padding: const EdgeInsets.only(
+                                                      right: 8,
+                                                    ),
+                                                    child: ActionChip(
+                                                      label: Text(
+                                                        LocationService.formatAreaName(
+                                                          area,
+                                                        ),
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          color: colorScheme
+                                                              .onTertiaryContainer,
+                                                        ),
+                                                      ),
+                                                      onPressed: () {
+                                                        _searchController.text =
+                                                            LocationService.formatAreaName(
+                                                              area,
+                                                            );
+                                                        _onSearch(area);
+                                                      },
+                                                      backgroundColor:
+                                                          colorScheme.tertiaryContainer,
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                    ),
+                                                  ),
+                                                ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ), // end AnimatedOpacity
-                    )
-                  : const SizedBox.shrink(),
-            ), // end AnimatedSize for header
-            _buildServicesRow(),
-            // Location info banner + filter chips — also hide on scroll
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: _isHeaderVisible
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Location info banner
-                        if ((_searchArea != null && _searchArea!.isNotEmpty) ||
-                            _activeAnchorLabel() != null)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color:
-                                    (_deviceLocation != null &&
-                                        _searchArea ==
-                                            _deviceLocation!.displayName)
-                                    ? Theme.of(context)
-                                          .colorScheme
-                                          .primaryContainer
-                                          .withOpacity(0.5)
-                                    : Theme.of(
-                                        context,
-                                      ).colorScheme.secondaryContainer,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    (_deviceLocation != null &&
-                                            _searchArea ==
-                                                _deviceLocation!.displayName)
-                                        ? Icons.my_location
-                                        : Icons.location_on,
-                                    size: 16,
-                                    color:
-                                        (_deviceLocation != null &&
-                                            _searchArea ==
-                                                _deviceLocation!.displayName)
-                                        ? Theme.of(context).colorScheme.primary
-                                        : Theme.of(
-                                            context,
-                                          ).colorScheme.onSecondaryContainer,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      (_activeAnchorLabel() != null &&
-                                              _activeAnchorLabel()!
-                                                  .trim()
-                                                  .isNotEmpty)
-                                          ? 'Showing results near ${_activeAnchorLabel()!}'
-                                          : ((_deviceLocation != null &&
+                              ), // end AnimatedOpacity
+                            )
+                          : const SizedBox.shrink(),
+                    ), // end AnimatedSize for header
+                    if (!_searchFocusNode.hasFocus) _buildServicesRow(),
+                    // Location info banner + filter chips — also hide on scroll or when searching
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      child: (_isHeaderVisible && !_searchFocusNode.hasFocus)
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Location info banner
+                                if ((_searchArea != null && _searchArea!.isNotEmpty) ||
+                                    _activeAnchorLabel() != null)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
+                                    ),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            (_deviceLocation != null &&
+                                                _searchArea ==
+                                                    _deviceLocation!.displayName)
+                                            ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primaryContainer
+                                                  .withOpacity(0.5)
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.secondaryContainer,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            (_deviceLocation != null &&
                                                     _searchArea ==
-                                                        _deviceLocation!
-                                                            .displayName)
-                                                ? 'Showing rentals near you'
-                                                : 'Showing results'),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
+                                                        _deviceLocation!.displayName)
+                                                ? Icons.my_location
+                                                : Icons.location_on,
+                                            size: 16,
                                             color:
                                                 (_deviceLocation != null &&
                                                     _searchArea ==
-                                                        _deviceLocation!
-                                                            .displayName)
-                                                ? Theme.of(
+                                                        _deviceLocation!.displayName)
+                                                ? Theme.of(context).colorScheme.primary
+                                                : Theme.of(
                                                     context,
-                                                  ).colorScheme.primary
-                                                : Theme.of(context)
-                                                      .colorScheme
-                                                      .onSecondaryContainer,
-                                            fontWeight: FontWeight.w600,
+                                                  ).colorScheme.onSecondaryContainer,
                                           ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              (_activeAnchorLabel() != null &&
+                                                      _activeAnchorLabel()!
+                                                          .trim()
+                                                          .isNotEmpty)
+                                                  ? 'Showing results near ${_activeAnchorLabel()!}'
+                                                  : ((_deviceLocation != null &&
+                                                            _searchArea ==
+                                                                _deviceLocation!
+                                                                    .displayName)
+                                                        ? 'Showing rentals near you'
+                                                        : 'Showing results'),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color:
+                                                        (_deviceLocation != null &&
+                                                            _searchArea ==
+                                                                _deviceLocation!
+                                                                    .displayName)
+                                                        ? Theme.of(
+                                                            context,
+                                                          ).colorScheme.primary
+                                                        : Theme.of(context)
+                                                              .colorScheme
+                                                              .onSecondaryContainer,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        if (_searchExhausted &&
-                            (_nextAction == 'BROADEN_SCOPE') &&
-                            (_activeAnchorLabel() != null))
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'No more rentals in this radius.',
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      if (_anchorConstituency != null &&
-                                          _anchorConstituency!.isNotEmpty)
-                                        ActionChip(
-                                          label: const Text(
-                                            'Broaden to constituency',
-                                          ),
-                                          onPressed: _broadenToConstituency,
-                                          visualDensity: VisualDensity.compact,
-                                        ),
-                                      if (_anchorCounty != null &&
-                                          _anchorCounty!.isNotEmpty)
-                                        ActionChip(
-                                          label: const Text(
-                                            'Broaden to county',
-                                          ),
-                                          onPressed: _broadenToCounty,
-                                          visualDensity: VisualDensity.compact,
-                                        ),
-                                      ActionChip(
-                                        label: const Text('Show all Kenya'),
-                                        onPressed: _showAllKenya,
-                                        visualDensity: VisualDensity.compact,
+                                if (_searchExhausted &&
+                                    (_nextAction == 'BROADEN_SCOPE') &&
+                                    (_activeAnchorLabel() != null))
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
+                                    ),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
                                       ),
-                                    ],
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'No more rentals in this radius.',
+                                            style: Theme.of(context).textTheme.bodySmall
+                                                ?.copyWith(fontWeight: FontWeight.w700),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              if (_anchorConstituency != null &&
+                                                  _anchorConstituency!.isNotEmpty)
+                                                ActionChip(
+                                                  label: const Text(
+                                                    'Broaden to constituency',
+                                                  ),
+                                                  onPressed: _broadenToConstituency,
+                                                  visualDensity: VisualDensity.compact,
+                                                ),
+                                              if (_anchorCounty != null &&
+                                                  _anchorCounty!.isNotEmpty)
+                                                ActionChip(
+                                                  label: const Text(
+                                                    'Broaden to county',
+                                                  ),
+                                                  onPressed: _broadenToCounty,
+                                                  visualDensity: VisualDensity.compact,
+                                                ),
+                                              ActionChip(
+                                                label: const Text('Show all Kenya'),
+                                                onPressed: _showAllKenya,
+                                                visualDensity: VisualDensity.compact,
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                ],
+                              ],
+                            )
+                          : const SizedBox.shrink(),
+                    ), // end AnimatedSize for location + filter chips
+                    if (!_showFilters && !_searchFocusNode.hasFocus) ...[
+                      // Active Filters
+                      if (_filters.hasFilters)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (_filters.minPrice != null ||
+                                  _filters.maxPrice != null)
+                                Chip(
+                                  label: Text(
+                                    'KES ${_filters.minPrice?.toInt() ?? 0} - KES ${_filters.maxPrice?.toInt() ?? '∞'}',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  deleteIcon: const Icon(Icons.close, size: 16),
+                                  onDeleted: () {
+                                    setState(() {
+                                      _priceRange = RangeValues(_minPrice, _maxPrice);
+                                      _filters = _filters.copyWith(
+                                        minPrice: null,
+                                        maxPrice: null,
+                                      );
+                                    });
+                                    _loadRentals(refresh: true);
+                                  },
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              if (_filters.bedrooms != null)
+                                Chip(
+                                  label: Text(
+                                    '${_filters.bedrooms} BR',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  deleteIcon: const Icon(Icons.close, size: 16),
+                                  onDeleted: () {
+                                    setState(() {
+                                      _selectedBedrooms = null;
+                                      _filters = _filters.copyWith(bedrooms: null);
+                                    });
+                                    _loadRentals(refresh: true);
+                                  },
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              if (_filters.propertyType != null)
+                                Chip(
+                                  label: Text(
+                                    _selectedPropertyType?.label ??
+                                        _filters.propertyType!,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  deleteIcon: const Icon(Icons.close, size: 16),
+                                  onDeleted: () {
+                                    setState(() {
+                                      _selectedPropertyType = null;
+                                      _filters = RentalFilters(
+                                        area: _filters.area,
+                                        constituency: _filters.constituency,
+                                        nearbyAreas: _filters.nearbyAreas,
+                                        minPrice: _filters.minPrice,
+                                        maxPrice: _filters.maxPrice,
+                                        bedrooms: _filters.bedrooms,
+                                        bathrooms: _filters.bathrooms,
+                                      );
+                                    });
+                                    _loadRentals(refresh: true);
+                                  },
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              if (_filters.constituency != null &&
+                                  _filters.constituency!.isNotEmpty)
+                                Chip(
+                                  label: Text(
+                                    _filters.constituency!,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  deleteIcon: const Icon(Icons.close, size: 16),
+                                  onDeleted: () {
+                                    setState(() {
+                                      _selectedConstituency = null;
+                                      _filters = RentalFilters(
+                                        area: _filters.area,
+                                        nearbyAreas: _filters.nearbyAreas,
+                                        minPrice: _filters.minPrice,
+                                        maxPrice: _filters.maxPrice,
+                                        bedrooms: _filters.bedrooms,
+                                        bathrooms: _filters.bathrooms,
+                                        propertyType: _filters.propertyType,
+                                        expandedBedrooms: _filters.expandedBedrooms,
+                                      );
+                                    });
+                                    _loadRentals(refresh: true);
+                                  },
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              TextButton(
+                                onPressed: _clearFilters,
+                                child: const Text(
+                                  'Clear all',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
-            ), // end AnimatedSize for location + filter chips
+                        ),
+                      const SizedBox(height: 8),
+                      if (_showHelperBanner)
+                        _HouseSearchHelpBanner(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const HelperHubPage(),
+                              ),
+                            );
+                          },
+                          onClose: _dismissHelperBanner,
+                        ),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ),
             // Filter Panel OR Content
             if (_showFilters)
               Expanded(
+                flex: 2,
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _buildFilterPanel(),
                 ),
               )
-            else ...[
-              // Active Filters
-              if (_filters.hasFilters)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      if (_filters.minPrice != null ||
-                          _filters.maxPrice != null)
-                        Chip(
-                          label: Text(
-                            'KES ${_filters.minPrice?.toInt() ?? 0} - KES ${_filters.maxPrice?.toInt() ?? '∞'}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          deleteIcon: const Icon(Icons.close, size: 16),
-                          onDeleted: () {
-                            setState(() {
-                              _priceRange = RangeValues(_minPrice, _maxPrice);
-                              _filters = _filters.copyWith(
-                                minPrice: null,
-                                maxPrice: null,
-                              );
-                            });
-                            _loadRentals(refresh: true);
-                          },
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      if (_filters.bedrooms != null)
-                        Chip(
-                          label: Text(
-                            '${_filters.bedrooms} BR',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          deleteIcon: const Icon(Icons.close, size: 16),
-                          onDeleted: () {
-                            setState(() {
-                              _selectedBedrooms = null;
-                              _filters = _filters.copyWith(bedrooms: null);
-                            });
-                            _loadRentals(refresh: true);
-                          },
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      if (_filters.propertyType != null)
-                        Chip(
-                          label: Text(
-                            _selectedPropertyType?.label ??
-                                _filters.propertyType!,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          deleteIcon: const Icon(Icons.close, size: 16),
-                          onDeleted: () {
-                            setState(() {
-                              _selectedPropertyType = null;
-                              _filters = RentalFilters(
-                                area: _filters.area,
-                                constituency: _filters.constituency,
-                                nearbyAreas: _filters.nearbyAreas,
-                                minPrice: _filters.minPrice,
-                                maxPrice: _filters.maxPrice,
-                                bedrooms: _filters.bedrooms,
-                                bathrooms: _filters.bathrooms,
-                              );
-                            });
-                            _loadRentals(refresh: true);
-                          },
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      if (_filters.constituency != null &&
-                          _filters.constituency!.isNotEmpty)
-                        Chip(
-                          label: Text(
-                            _filters.constituency!,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          deleteIcon: const Icon(Icons.close, size: 16),
-                          onDeleted: () {
-                            setState(() {
-                              _selectedConstituency = null;
-                              _filters = RentalFilters(
-                                area: _filters.area,
-                                nearbyAreas: _filters.nearbyAreas,
-                                minPrice: _filters.minPrice,
-                                maxPrice: _filters.maxPrice,
-                                bedrooms: _filters.bedrooms,
-                                bathrooms: _filters.bathrooms,
-                                propertyType: _filters.propertyType,
-                                expandedBedrooms: _filters.expandedBedrooms,
-                              );
-                            });
-                            _loadRentals(refresh: true);
-                          },
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      TextButton(
-                        onPressed: _clearFilters,
-                        child: const Text(
-                          'Clear all',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 8),
-            if (_showHelperBanner)
-              _HouseSearchHelpBanner(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const HelperHubPage(),
-                    ),
-                  );
-                },
-                onClose: _dismissHelperBanner,
-              ),
-              const SizedBox(height: 8),
-              // Content
-              Expanded(child: _buildContent()),
-            ],
+            else
+              Expanded(flex: 2, child: _buildContent()),
           ],
         ),
       ),
@@ -2546,60 +2542,68 @@ class ExplorePageState extends State<ExplorePage> {
 
     if (_error != null && _rentals.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Failed to load rentals',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error!,
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () => _loadRentals(refresh: true),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load rentals',
+                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => _loadRentals(refresh: true),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (_rentals.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.home_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              _searchArea != null
-                  ? 'No rentals found in $_searchArea'
-                  : 'No rentals available',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _searchArea != null
-                  ? 'Try searching a different area or adjust filters'
-                  : 'Check back later for new listings',
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-            ),
-            if (_filters.hasFilters) ...[
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.home_outlined, size: 64, color: Colors.grey[400]),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _clearFilters,
-                child: const Text('Clear Filters'),
+              Text(
+                _searchArea != null
+                    ? 'No rentals found in $_searchArea'
+                    : 'No rentals available',
+                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
               ),
+              const SizedBox(height: 8),
+              Text(
+                _searchArea != null
+                    ? 'Try searching a different area or adjust filters'
+                    : 'Check back later for new listings',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              ),
+              if (_filters.hasFilters) ...[
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _clearFilters,
+                  child: const Text('Clear Filters'),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       );
     }
@@ -2765,159 +2769,197 @@ class ExplorePageState extends State<ExplorePage> {
 
   Widget _buildServicesRow() {
     final theme = Theme.of(context);
-    final categoriesToShow = kServiceCategoriesList.where((c) => c.name != "All").toList();
+    final categoriesToShow =
+        kServiceCategoriesList.where((c) => c.name != "All").toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.handyman_rounded, color: theme.colorScheme.primary, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Specialized Services',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ServicesListPage(initialCategory: "All"),
-                    ),
-                  );
-                },
-                child: const Text('View All'),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 100,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            scrollDirection: Axis.horizontal,
-            itemCount: categoriesToShow.length + 1,
-            separatorBuilder: (context, index) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              if (index == categoriesToShow.length) {
-                return GestureDetector(
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: SizedBox(
+        height: _isServicesCompact ? 48 : 94,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          itemCount: categoriesToShow.length + 1,
+          separatorBuilder: (context, index) =>
+              SizedBox(width: _isServicesCompact ? 10 : 16),
+          itemBuilder: (context, index) {
+            final isViewAll = index == categoriesToShow.length;
+            final cat = isViewAll ? null : categoriesToShow[index];
+
+            if (_isServicesCompact) {
+              return Center(
+                child: GestureDetector(
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const ServicesListPage(initialCategory: "All"),
+                        builder: (context) => ServicesListPage(
+                          initialCategory: isViewAll ? "All" : cat!.name,
+                        ),
                       ),
                     );
                   },
-                  child: Container(
-                    width: 80,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircleAvatar(
-                          radius: 20,
-                          backgroundColor: theme.colorScheme.primary,
-                          child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'View All',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                          textAlign: TextAlign.center,
+                      color: isViewAll
+                          ? theme.colorScheme.primaryContainer
+                              .withValues(alpha: 0.3)
+                          : theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isViewAll
+                            ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                            : Colors.grey.withValues(alpha: 0.25),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 3,
+                          offset: const Offset(0, 1),
                         ),
                       ],
                     ),
+                    child: Text(
+                      isViewAll ? 'View All' : cat!.name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            isViewAll ? FontWeight.bold : FontWeight.w600,
+                        color: isViewAll
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
+                      ),
+                    ),
                   ),
-                );
-              }
+                ),
+              );
+            }
 
-              final cat = categoriesToShow[index];
+            if (isViewAll) {
               return GestureDetector(
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ServicesListPage(initialCategory: cat.name),
+                      builder: (context) =>
+                          const ServicesListPage(initialCategory: "All"),
                     ),
                   );
                 },
-                child: Container(
-                  width: 85,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
+                child: SizedBox(
+                  width: 64,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: 44,
-                        height: 44,
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+                          shape: BoxShape.circle,
+                          color: theme.colorScheme.primaryContainer
+                              .withValues(alpha: 0.3),
+                          border: Border.all(
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.3),
+                            width: 1.5,
+                          ),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            cat.imageAsset,
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Icon(cat.icon, color: theme.colorScheme.primary, size: 22),
+                        child: Center(
+                          child: Icon(
+                            Icons.arrow_forward_rounded,
+                            color: theme.colorScheme.primary,
+                            size: 24,
                           ),
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        cat.name,
-                        style: const TextStyle(
+                        'View All',
+                        style: TextStyle(
                           fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
                         ),
                         textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
               );
-            },
-          ),
+            }
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        ServicesListPage(initialCategory: cat!.name),
+                  ),
+                );
+              },
+              child: SizedBox(
+                width: 64,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: theme.colorScheme.surface,
+                        border: Border.all(
+                          color: Colors.grey.withValues(alpha: 0.25),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          cat!.imageAsset,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            cat.icon,
+                            color: theme.colorScheme.primary,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      cat.name,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-        const SizedBox(height: 8),
-      ],
+      ),
     );
   }
 }
@@ -3101,7 +3143,7 @@ class _FeedAdCardState extends State<_FeedAdCard> {
                             imageUrl: widget.ad.imageUrl!,
                             fit: BoxFit.cover,
                             errorWidget: (context, url, error) => _buildPlaceholder(),
-                            placeholder: (context, url) => Container(color: Colors.grey[200]),
+                            placeholder: (context, url) => const ShimmerPlaceholder(),
                           )
                         : _buildPlaceholder(),
                   ),
@@ -3407,16 +3449,16 @@ class _RentalCardState extends State<_RentalCard> {
             children: [
               Expanded(
                 flex: 2,
-                child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity),
+                child: DwellyNetworkImage(imageUrl: widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity),
               ),
               const SizedBox(width: 2),
               Expanded(
                 flex: 1,
                 child: Column(
                   children: [
-                    Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[1], fit: BoxFit.cover, width: double.infinity)),
+                    Expanded(child: DwellyNetworkImage(imageUrl: widget.rental.imageUrls[1], fit: BoxFit.cover, width: double.infinity)),
                     const SizedBox(height: 2),
-                    Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[2], fit: BoxFit.cover, width: double.infinity)),
+                    Expanded(child: DwellyNetworkImage(imageUrl: widget.rental.imageUrls[2], fit: BoxFit.cover, width: double.infinity)),
                   ],
                 ),
               ),
@@ -3428,9 +3470,9 @@ class _RentalCardState extends State<_RentalCard> {
           aspectRatio: 16 / 9,
           child: Row(
             children: [
-              Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity)),
+              Expanded(child: DwellyNetworkImage(imageUrl: widget.rental.imageUrls[0], fit: BoxFit.cover, height: double.infinity)),
               const SizedBox(width: 2),
-              Expanded(child: CachedNetworkImage(imageUrl: widget.rental.imageUrls[1], fit: BoxFit.cover, height: double.infinity)),
+              Expanded(child: DwellyNetworkImage(imageUrl: widget.rental.imageUrls[1], fit: BoxFit.cover, height: double.infinity)),
             ],
           ),
         );
@@ -3440,7 +3482,7 @@ class _RentalCardState extends State<_RentalCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              CachedNetworkImage(imageUrl: widget.rental.imageUrls.first, fit: BoxFit.cover),
+              DwellyNetworkImage(imageUrl: widget.rental.imageUrls.first, fit: BoxFit.cover),
               if (_compoundVideoController != null && _compoundVideoController!.value.isInitialized)
                 Positioned(
                   bottom: 8,
@@ -3466,10 +3508,10 @@ class _RentalCardState extends State<_RentalCard> {
     // Default fallback to single image
     return AspectRatio(
       aspectRatio: 16 / 9,
-      child: CachedNetworkImage(
+      child: DwellyNetworkImage(
         imageUrl: widget.rental.imageUrls.first,
         fit: BoxFit.cover,
-        errorWidget: (_, __, ___) => _buildImageFallback(context),
+        errorWidget: _buildImageFallback(context),
       ),
     );
   }

@@ -34,6 +34,7 @@ class AuthService {
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
+    serverClientId: '452516814543-4jltg8psfbeb00f31kk71jtas50tifpd.apps.googleusercontent.com',
   );
   static final PasskeyAuthenticator _passkeyAuthenticator =
       PasskeyAuthenticator();
@@ -668,8 +669,14 @@ class AuthService {
 
   // ==================== Google Sign-In ====================
 
-  static Future<AuthResponse> googleLogin({bool persistSession = true, bool forceLogin = false}) async {
+  static Future<AuthResponse> googleLogin({
+    bool persistSession = true,
+    bool forceLogin = true,
+  }) async {
     try {
+      // ALWAYS sign out first to ensure the account chooser is shown and to clear any stuck sessions.
+      await _googleSignIn.signOut();
+
       // Trigger Google Sign-In flow
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {

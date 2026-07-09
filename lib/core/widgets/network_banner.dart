@@ -39,7 +39,7 @@ class _NetworkBannerState extends State<NetworkBanner> {
         _isVisible = true;
       });
       _hideTimer?.cancel();
-      _hideTimer = Timer(const Duration(seconds: 2), () {
+      _hideTimer = Timer(const Duration(milliseconds: 3500), () {
         if (mounted) {
           setState(() {
             _isVisible = false;
@@ -66,62 +66,65 @@ class _NetworkBannerState extends State<NetworkBanner> {
             final isOffline = status == NetworkStatus.offline;
             final isBackOnline = status == NetworkStatus.backOnline;
 
-            Color bannerColor = Colors.orange.shade700.withOpacity(0.85);
+            Color iconColor = Colors.orange.shade400;
             IconData bannerIcon = Icons.network_check;
-            String bannerText = 'Slow Internet Connection';
+            String bannerText = 'Slow internet connection';
 
             if (isOffline) {
-              bannerColor = Colors.red.shade600.withOpacity(0.85);
+              iconColor = Colors.red.shade400;
               bannerIcon = Icons.wifi_off;
-              bannerText = 'No Internet Connection';
+              bannerText = 'No internet connection';
             } else if (isBackOnline) {
-              bannerColor = Colors.green.shade600.withOpacity(0.85);
+              iconColor = Colors.green.shade400;
               bannerIcon = Icons.check_circle;
-              bannerText = 'Back Online';
+              bannerText = 'Back online';
             }
 
             return Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                alignment: Alignment.topCenter,
-                child: _isVisible
-                    ? Material(
-                        color: Colors.transparent,
-                        child: Container(
-                          width: double.infinity,
-                          color: bannerColor,
-                          child: SafeArea(
-                            bottom: false,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    bannerIcon,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    bannerText,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
+              left: 16,
+              right: 16,
+              bottom: 24,
+              child: SafeArea(
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  offset: _isVisible ? Offset.zero : const Offset(0, 1.5),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isVisible ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !_isVisible,
+                      child: Material(
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(8),
+                        color: const Color(0xFF323232),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          child: Row(
+                            children: [
+                              Icon(
+                                bannerIcon,
+                                color: iconColor,
+                                size: 20,
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  bannerText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      )
-                    : const SizedBox(width: double.infinity, height: 0),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             );
           },

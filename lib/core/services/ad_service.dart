@@ -178,7 +178,7 @@ class AdService {
   AdService._(this._prefs);
 
   bool _adsDisabledForPremium() {
-    return PremiumService.shouldHideAds();
+    return PremiumService.shouldHideAds() || allAdsSuspended;
   }
 
   /// Whether Google Ads are globally suspended by super admin.

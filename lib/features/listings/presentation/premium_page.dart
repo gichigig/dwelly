@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/auth_service.dart';
@@ -41,15 +39,13 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
 
 
   String _resolvePaymentUrl(String amount) {
-    String baseUrl = 'https://billygichigdev.me/payments/mpesa';
-    if (kDebugMode) {
-      if (kIsWeb) {
-        baseUrl = 'http://localhost:3000/payments/mpesa';
-      } else if (!kIsWeb && Platform.isIOS) {
-        baseUrl = 'http://localhost:3000/payments/mpesa';
-      } else {
-        baseUrl = 'http://10.0.2.2:3000/payments/mpesa';
-      }
+    String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
+    const override = String.fromEnvironment(
+      'REALADMIN_PAYMENT_URL',
+      defaultValue: '',
+    );
+    if (override.isNotEmpty) {
+      baseUrl = override;
     }
     
     final params = <String, String>{

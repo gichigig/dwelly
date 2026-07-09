@@ -28,21 +28,13 @@ class DonationFab extends StatefulWidget {
 class _DonationFabState extends State<DonationFab>
     with SingleTickerProviderStateMixin {
     String _resolveDonationUrl() {
-      String baseUrl = 'https://billygichigdev.me/payments/mpesa';
+      String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
       const override = String.fromEnvironment(
         'REALADMIN_DONATION_URL',
         defaultValue: '',
       );
       if (override.isNotEmpty) {
         baseUrl = override;
-      } else if (kDebugMode) {
-        if (kIsWeb) {
-          baseUrl = 'http://localhost:3000/payments/mpesa';
-        } else if (Platform.isIOS) {
-          baseUrl = 'http://localhost:3000/payments/mpesa';
-        } else {
-          baseUrl = 'http://10.0.2.2:3000/payments/mpesa';
-        }
       }
       
       final token = AuthService.token;

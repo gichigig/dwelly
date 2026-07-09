@@ -38,10 +38,12 @@ class PremiumService {
   }
 
   static bool isPremiumPageVisible() {
+    if (AuthService.isTenantMode) return false;
     return premiumPageEnabled.value;
   }
 
   static Future<bool> canUseLocationFilter() async {
+    if (AuthService.isTenantMode) return true;
     if (isPremiumActive()) return true;
 
     final prefs = await SharedPreferences.getInstance();

@@ -16,9 +16,7 @@ class _LandlordPageState extends State<LandlordPage> {
 
   String _getRealAdminUrl() {
     final base = ApiService.effectiveBaseUrl;
-    if (base.contains('10.0.2.2:8080')) {
-      return 'http://10.0.2.2:3000';
-    } else if (base.contains('ishinadwelly.com')) {
+    if (base.contains('ishinadwelly.com')) {
       return 'https://ishinadwelly.com';
     } else {
       // Assuming cloudflare URL or other host

@@ -56,21 +56,13 @@ class AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<AccountPage> {
   String _resolveDonationUrl() {
-    String baseUrl = 'https://billygichigdev.me/payments/mpesa';
+    String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
     const override = String.fromEnvironment(
       'REALADMIN_DONATION_URL',
       defaultValue: '',
     );
     if (override.isNotEmpty) {
       baseUrl = override;
-    } else if (kDebugMode) {
-      if (kIsWeb) {
-        baseUrl = 'http://localhost:3000/payments/mpesa';
-      } else if (Platform.isIOS) {
-        baseUrl = 'http://localhost:3000/payments/mpesa';
-      } else {
-        baseUrl = 'http://10.0.2.2:3000/payments/mpesa';
-      }
     }
     
     final token = AuthService.token;
@@ -444,7 +436,7 @@ int _calcDirSize(String dirPath) {
             title: 'Edit Profile',
             onTap: () => _showEditProfileDialog(context),
           ),
-          if (PremiumService.isPremiumPageVisible())
+          if (!AuthService.isTenantMode && PremiumService.isPremiumPageVisible())
             _buildMenuItem(
               icon: Icons.workspace_premium,
               title: 'Dwelly Premium',
@@ -585,7 +577,7 @@ int _calcDirSize(String dirPath) {
               );
             },
           ),
-          if (PremiumService.isPremiumPageVisible())
+          if (!AuthService.isTenantMode && PremiumService.isPremiumPageVisible())
             _buildMenuItem(
               icon: Icons.workspace_premium,
               title: user.isPremiumActive ? 'Premium Active' : 'Go Premium',

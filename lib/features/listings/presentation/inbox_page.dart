@@ -623,27 +623,11 @@ class InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
 
   Future<void> _openConversation(Conversation conversation) async {
     try {
-      final isProductConversation = conversation.listingType == 'PRODUCT';
       final isPeerToPeer = conversation.listingType == 'PEER_TO_PEER' || conversation.rentalId == null || conversation.rentalId == 0;
       
       final Rental? resolvedRental;
       
-      if (isProductConversation) {
-        resolvedRental = Rental(
-          id: -1,
-          title: conversation.listingTitle ?? 'Marketplace Product',
-          description: conversation.lastMessage ?? '',
-          price: 0,
-          address: conversation.listingTitle ?? 'Marketplace Product',
-          city: '',
-          state: '',
-          bedrooms: 0,
-          bathrooms: 0,
-          squareFeet: 0,
-          propertyType: 'OTHER',
-          ownerAvatarUrl: conversation.ownerAvatarUrl,
-        );
-      } else if (isPeerToPeer) {
+      if (isPeerToPeer) {
         resolvedRental = Rental(
           id: conversation.rentalId ?? 0,
           ownerId: conversation.ownerId,

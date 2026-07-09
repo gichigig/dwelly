@@ -7,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'app_shell.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/ad_service.dart';
 import 'core/services/app_notification_center.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/services/notification_service.dart';
@@ -77,6 +78,8 @@ void main() async {
         ThemeService.init(),
         AppNotificationCenter.init(),
       ]);
+      final adService = await AdService.getInstance();
+      await adService.getDisplayConfig();
       unawaited(OfflineQueueService.init());
       AppLifecycleReactor? lifecycleReactor;
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {

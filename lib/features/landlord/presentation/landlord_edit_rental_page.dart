@@ -97,15 +97,13 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
   }
 
   Future<void> _openRealAdminProPayment() async {
-    String baseUrl = 'https://billygichigdev.me/payments/mpesa';
-    if (kDebugMode) {
-      if (kIsWeb) {
-        baseUrl = 'http://localhost:3000/payments/mpesa';
-      } else if (!kIsWeb && Platform.isIOS) {
-        baseUrl = 'http://localhost:3000/payments/mpesa';
-      } else {
-        baseUrl = 'http://10.0.2.2:3000/payments/mpesa';
-      }
+    String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
+    const override = String.fromEnvironment(
+      'REALADMIN_PAYMENT_URL',
+      defaultValue: '',
+    );
+    if (override.isNotEmpty) {
+      baseUrl = override;
     }
     
     final params = <String, String>{

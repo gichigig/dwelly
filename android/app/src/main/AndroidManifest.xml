@@ -52,9 +52,6 @@
         <meta-data
             android:name="asset_statements"
             android:resource="@string/asset_statements" />
-        <!-- Google Maps API Key -->
-        <meta-data android:name="com.google.android.geo.API_KEY"
-               android:value="YOUR_GOOGLE_MAPS_API_KEY_HERE"/>
         <!-- Google Mobile Ads Application ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

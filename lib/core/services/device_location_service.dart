@@ -83,6 +83,9 @@ class DeviceLocationResult {
     return parts.join(', ');
   }
 
+  /// Backward-compatible alias used by existing UI code.
+  String get formattedLocation => detailedDisplayName;
+
   factory DeviceLocationResult.error(String message) {
     return DeviceLocationResult(
       latitude: 0,
@@ -199,7 +202,7 @@ class DeviceLocationService {
   }
 
   /// Get current device location and resolve to ward
-  static Future<DeviceLocationResult> getCurrentLocation({bool forcePrompt = false}) async {
+  static Future<DeviceLocationResult> getCurrentLocation({bool forcePrompt = false, bool allowCachedFallback = false}) async {
     try {
       // First check if location service is enabled
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -243,48 +246,55 @@ class DeviceLocationService {
       // Permission granted — clear any stale denied flag
       await setUserDeniedLocation(false);
 
-      // Strategy: try fresh GPS position first, then fallback to last known position
+      // Strategy: try high accuracy GPS position first (fused wifi+cell+gps), then fallback to medium accuracy
       Position? position;
 
       try {
         print(
-          '[Location] Getting fresh GPS position (best accuracy first)...',
+          '[Location] Getting fresh GPS position (high accuracy first)...',
         );
         position = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.best,
+            accuracy: LocationAccuracy.high,
             timeLimit: Duration(seconds: 10),
           ),
         ).timeout(const Duration(seconds: 10));
         print(
-          '[Location] Got best-accuracy position: ${position.latitude}, ${position.longitude}',
+          '[Location] Got high-accuracy position: ${position.latitude}, ${position.longitude}',
         );
       } catch (e) {
-        print('[Location] Best-accuracy GPS failed: $e');
-        // Try low accuracy as fallback if high accuracy times out
+        print('[Location] High-accuracy GPS failed: $e');
+        // Try medium accuracy as fallback if high accuracy times out
         try {
-          print('[Location] Retrying with low accuracy...');
+          print('[Location] Retrying with medium accuracy...');
           position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.low,
+              accuracy: LocationAccuracy.medium,
               timeLimit: Duration(seconds: 5),
             ),
           ).timeout(const Duration(seconds: 5));
           print(
-            '[Location] Got low-accuracy position: ${position.latitude}, ${position.longitude}',
+            '[Location] Got medium-accuracy position: ${position.latitude}, ${position.longitude}',
           );
         } catch (e2) {
-          print('[Location] Low-accuracy GPS also failed: $e2');
+          print('[Location] Medium-accuracy GPS also failed: $e2');
           
-          // Final fallback: Try last known position (instant, no GPS needed)
+          // Try last known position only if allowCachedFallback is true OR if timestamp is very recent (< 5 mins)
           try {
-            print('[Location] Trying getLastKnownPosition as final fallback...');
-            position = await Geolocator.getLastKnownPosition()
+            print('[Location] Checking getLastKnownPosition...');
+            final lastPosition = await Geolocator.getLastKnownPosition()
                 .timeout(const Duration(seconds: 2));
-            if (position != null) {
-              print(
-                '[Location] Got last known position: ${position.latitude}, ${position.longitude}',
-              );
+            if (lastPosition != null) {
+              final isRecent = lastPosition.timestamp != null &&
+                  DateTime.now().difference(lastPosition.timestamp!) < const Duration(minutes: 5);
+              if (allowCachedFallback || isRecent) {
+                position = lastPosition;
+                print(
+                  '[Location] Got valid last known position: ${position.latitude}, ${position.longitude} (recent: $isRecent)',
+                );
+              } else {
+                print('[Location] Ignored stale last known position from ${lastPosition.timestamp}');
+              }
             } else {
               print('[Location] No last known position available');
             }
@@ -294,15 +304,17 @@ class DeviceLocationService {
         }
       }
 
-      // If we still don't have a position, return cached or error
+      // If we still don't have a position, return cached (only if allowed) or error
       if (position == null) {
-        print('[Location] All GPS methods failed, trying cached location');
-        final cached = await getCachedLocation();
-        if (cached != null) {
-          return cached;
+        print('[Location] All GPS methods failed');
+        if (allowCachedFallback) {
+          final cached = await getCachedLocation();
+          if (cached != null) {
+            return cached;
+          }
         }
         return DeviceLocationResult.error(
-          'Could not get GPS position. Make sure GPS is enabled and you are in an open area.',
+          'Could not get live GPS position. Make sure GPS is enabled and signal is clear.',
         );
       }
 
@@ -370,10 +382,12 @@ class DeviceLocationService {
       print('[Location] Error getting device location: $e');
       print('[Location] Stack trace: $stackTrace');
 
-      // Try to return cached location
-      final cached = await getCachedLocation();
-      if (cached != null) {
-        return cached;
+      // Try to return cached location only if allowed
+      if (allowCachedFallback) {
+        final cached = await getCachedLocation();
+        if (cached != null) {
+          return cached;
+        }
       }
 
       return DeviceLocationResult.error('Failed to get location: $e');

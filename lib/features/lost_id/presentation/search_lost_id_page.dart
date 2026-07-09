@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../data/id_scanner_service.dart';
 import '../../../core/services/google_ad_service.dart';
 import '../../../core/services/auth_service.dart';
@@ -52,6 +53,43 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
     super.dispose();
   }
   
+  Future<void> _callNumber(String phone) async {
+    final uri = Uri.parse('tel:${phone.trim()}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot open dialer on this device')),
+      );
+    }
+  }
+
+  void _copyNumber(String phone, String label) {
+    Clipboard.setData(ClipboardData(text: phone.trim()));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$label copied to clipboard')),
+      );
+    }
+  }
+
+  Future<void> _openWhatsApp(String phone) async {
+    String cleanPhone = phone.trim().replaceAll(RegExp(r'[^0-9+]'), '');
+    if (cleanPhone.startsWith('0')) {
+      cleanPhone = '+254${cleanPhone.substring(1)}';
+    } else if (cleanPhone.startsWith('254')) {
+      cleanPhone = '+$cleanPhone';
+    }
+    final uri = Uri.parse('https://wa.me/$cleanPhone');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp not installed')),
+      );
+    }
+  }
+
   Future<void> _searchLostId() async {
     if (!_formKey.currentState!.validate()) return;
     
@@ -495,32 +533,89 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.phone, color: Colors.green),
+                        const Icon(Icons.phone, color: Colors.green, size: 24),
                         const SizedBox(width: 8),
                         SelectableText(
                           result.finderPhone ?? 'N/A',
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 22,
                             fontWeight: FontWeight.bold,
                             color: Colors.black,
                           ),
                         ),
                       ],
                     ),
-                    if (result.finderWhatsApp != null && result.finderWhatsApp!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                    if (result.finderPhone != null && result.finderPhone!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 12,
+                        runSpacing: 8,
                         children: [
-                          Icon(Icons.chat, color: Colors.green.shade600),
-                          const SizedBox(width: 8),
-                          SelectableText(
-                            'WhatsApp: ${result.finderWhatsApp}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.green.shade700,
+                          ElevatedButton.icon(
+                            onPressed: () => _callNumber(result.finderPhone!),
+                            icon: const Icon(Icons.call, size: 18),
+                            label: const Text('Call Direct'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _copyNumber(result.finderPhone!, 'Phone number'),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('Copy'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.green.shade700,
+                              side: BorderSide(color: Colors.green.shade700),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (result.finderWhatsApp != null && result.finderWhatsApp!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.chat, color: Colors.green.shade600),
+                              const SizedBox(width: 8),
+                              SelectableText(
+                                'WhatsApp: ${result.finderWhatsApp}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.green.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                onPressed: () => _openWhatsApp(result.finderWhatsApp!),
+                                icon: Icon(Icons.open_in_new, size: 20, color: Colors.green.shade700),
+                                tooltip: 'Chat on WhatsApp',
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(6),
+                              ),
+                              IconButton(
+                                onPressed: () => _copyNumber(result.finderWhatsApp!, 'WhatsApp number'),
+                                icon: Icon(Icons.copy, size: 18, color: Colors.green.shade700),
+                                tooltip: 'Copy WhatsApp',
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(6),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -559,9 +654,11 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                         children: [
                           Icon(Icons.location_on, color: Colors.grey.shade600, size: 20),
                           const SizedBox(width: 4),
-                          Text(
-                            'Found at: ${result.foundLocation}',
-                            style: TextStyle(color: Colors.grey.shade700),
+                          Flexible(
+                            child: Text(
+                              'Found at: ${result.foundLocation}',
+                              style: TextStyle(color: Colors.grey.shade700),
+                            ),
                           ),
                         ],
                       ),

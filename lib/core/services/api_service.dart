@@ -26,7 +26,7 @@ class ApiService {
 
   static const String mobileApiKey = 'FBC15F5E-B537-4E21-A55D-838817507365';
 
-  // Use 10.0.2.2 for Android emulator, localhost for web/iOS simulator
+  // Returns the API base URL (defaults to https://api.ishinadwelly.com/api)
   static String get baseUrl {
     // Use runtime URL if set (for physical devices)
     if (_runtimeUrl != null && _runtimeUrl!.isNotEmpty) {
@@ -114,7 +114,7 @@ class ApiService {
   }
 
   static String get _defaultBaseUrl {
-    // Using permanent Cloudflare Tunnel for physical device testing
+    // Production API base URL
     return 'https://api.ishinadwelly.com/api';
   }
 

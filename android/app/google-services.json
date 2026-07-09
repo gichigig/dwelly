@@ -102,6 +102,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "452516814543-ds7gcp8791e2v3isusutain0lbm5ipd3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ishinadwelly.app",
+            "certificate_hash": "8e535683a0a4914f6767574d790eb122db604c7a"
+          }
+        },
+        {
+          "client_id": "452516814543-iiunns2q363af76hh5b7nuca6bu9aemh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ishinadwelly.app",
+            "certificate_hash": "e3f789fcf5d184dc8b0e91ede363387f17fead6e"
+          }
+        },
+        {
           "client_id": "452516814543-s994bf9ukc5dqg11emosi7qbcqp5lcmc.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

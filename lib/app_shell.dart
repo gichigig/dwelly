@@ -29,7 +29,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
-  bool _isMarketplaceMode = false;
+
   AdService? _adService;
   bool _isResumeAdInFlight = false;
   Timer? _unreadBadgeTimer;
@@ -69,10 +69,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _index = 0;
       _pages[0] = InboxPage(key: _inboxPageKey);
     } else {
-      _pages[0] = ExplorePage(
-        onMarketplaceModeChanged: (active) =>
-            setState(() => _isMarketplaceMode = active),
-      );
+      _pages[0] = ExplorePage();
     }
     _startUnreadBadgePolling();
     unawaited(_initAdService());
@@ -115,6 +112,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(AppNotificationCenter.reload());
+      unawaited(_adService?.getDisplayConfig(forceRefresh: true));
       unawaited(_refreshUnreadBadge());
       unawaited(_maybeShowResumeAd());
       unawaited(PremiumService.refreshPremiumStatus().then((_) {
@@ -133,6 +131,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Future<void> _maybeShowPremiumLaunch() async {
     if (!mounted || _premiumLaunchShown) return;
+    if (AuthService.isTenantMode) return;
     if (PremiumService.isPremiumActive() || !PremiumService.isPremiumPageVisible()) return;
     _premiumLaunchShown = true;
 
@@ -235,8 +234,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       case 0:
         _pages[index] = ExplorePage(
           key: _explorePageKey,
-          onMarketplaceModeChanged: (active) =>
-              setState(() => _isMarketplaceMode = active),
         );
         break;
       case 1:
@@ -271,7 +268,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _tabHistory.clear();
       _tabHistory.add(0);
       _index = 0;
-      _isMarketplaceMode = false;
+
       _ensurePageLoaded(0);
     });
   }
@@ -406,9 +403,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         ),
       ),
-      bottomNavigationBar: _isMarketplaceMode
-          ? null
-          : Column(
+      bottomNavigationBar: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const GoogleAdBannerWidget(),

@@ -17,7 +17,8 @@ class ErrorMapper {
     final rawMessage = _extractMessage(payload);
     final safeMessage = _safeMessage(rawMessage);
 
-    if (statusCode == 401) {
+    if (code == 'UNAUTHORIZED' || statusCode == 401) {
+      print('DEBUG: 401 or UNAUTHORIZED code received. Raw body: ${response.body}');
       return const AppError(
         code: AppErrorCode.sessionExpired,
         message: 'Your session expired. Please sign in again.',
