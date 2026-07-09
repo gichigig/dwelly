@@ -442,6 +442,37 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
     }
   }
 
+  Future<void> _togglePushMfa(bool enable) async {
+    setState(() => _busy = true);
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/auth/security/push/toggle'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${AuthService.token}',
+        },
+        body: jsonEncode({'enabled': enable}),
+      );
+      if (response.statusCode == 200) {
+        await _fetchSecurityMethods();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(enable
+                    ? 'Tap to Verify (Push 2FA) enabled'
+                    : 'Tap to Verify (Push 2FA) disabled')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackBar(context, e, fallbackMessage: 'Failed to update push verification setting.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _registerPasskey() async {
     final token = AuthService.token;
     if (token == null) return;
@@ -946,11 +977,31 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
                         Text(
                           _securityMethods == null
                               ? 'Unable to load MFA settings'
-                              : 'Enabled: ${_securityMethods!.mfaEnabled ? "Yes" : "No"} | TOTP: ${_securityMethods!.totpEnabled ? "On" : "Off"} | Passkey: ${_securityMethods!.passkeyEnabled ? "On" : "Off"}',
+                              : 'Enabled: ${_securityMethods!.mfaEnabled ? "Yes" : "No"} | Tap to Verify: ${_securityMethods!.pushEnabled ? "On" : "Off"} | TOTP: ${_securityMethods!.totpEnabled ? "On" : "Off"} | Passkey: ${_securityMethods!.passkeyEnabled ? "On" : "Off"}',
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Recovery codes remaining: ${_securityMethods?.recoveryCodesRemaining ?? 0}',
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _togglePushMfa(
+                                          !(_securityMethods?.pushEnabled ?? false),
+                                        ),
+                                icon: const Icon(Icons.touch_app_outlined),
+                                label: Text(
+                                  (_securityMethods?.pushEnabled ?? false)
+                                      ? 'Disable Tap to Verify'
+                                      : 'Enable Tap to Verify',
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -1127,6 +1178,7 @@ class _SecurityMethods {
   final bool mfaEnabled;
   final bool totpEnabled;
   final bool passkeyEnabled;
+  final bool pushEnabled;
   final String? preferredMethod;
   final int recoveryCodesRemaining;
   final List<_PasskeySummary> passkeys;
@@ -1135,6 +1187,7 @@ class _SecurityMethods {
     required this.mfaEnabled,
     required this.totpEnabled,
     required this.passkeyEnabled,
+    required this.pushEnabled,
     required this.preferredMethod,
     required this.recoveryCodesRemaining,
     required this.passkeys,
@@ -1145,6 +1198,7 @@ class _SecurityMethods {
       mfaEnabled: json['mfaEnabled'] == true,
       totpEnabled: json['totpEnabled'] == true,
       passkeyEnabled: json['passkeyEnabled'] == true,
+      pushEnabled: json['pushEnabled'] == true,
       preferredMethod: json['preferredMethod']?.toString(),
       recoveryCodesRemaining:
           (json['recoveryCodesRemaining'] as num?)?.toInt() ?? 0,
@@ -1157,6 +1211,7 @@ class _SecurityMethods {
   List<String> get availablePreferenceMethods {
     final methods = <String>[];
     if (totpEnabled) methods.add('TOTP');
+    if (pushEnabled) methods.add('PUSH');
     if (passkeyEnabled) methods.add('PASSKEY');
     if (recoveryCodesRemaining > 0) methods.add('RECOVERY');
     if (methods.isEmpty) methods.add('TOTP');

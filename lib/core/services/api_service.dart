@@ -17,34 +17,34 @@ class ApiService {
 
   static const Map<String, String> _hostAliases = {};
 
-  // Optional Cloudflare tunnel URL passed via --dart-define.
-  // Example: flutter run --dart-define=CLOUDFLARE_URL=https://xxxx.trycloudflare.com
-  static const String _cloudflareUrl = String.fromEnvironment(
-    'CLOUDFLARE_URL',
-    defaultValue: '',
+  // Optional custom API URL passed via --dart-define.
+  // Example: flutter run --dart-define=CUSTOM_API_URL=https://api.example.com
+  static const String _customEnvUrl = String.fromEnvironment(
+    'CUSTOM_API_URL',
+    defaultValue: 'https://api.ishinadwelly.com',
   );
 
   static const String mobileApiKey = 'FBC15F5E-B537-4E21-A55D-838817507365';
 
   // Returns the API base URL (defaults to https://api.ishinadwelly.com/api)
   static String get baseUrl {
-    // Use runtime URL if set (for physical devices)
+    // Use runtime URL if set
     if (_runtimeUrl != null && _runtimeUrl!.isNotEmpty) {
       return _toApiBase(_runtimeUrl!);
     }
 
-    // If Cloudflare URL is set, use it (for physical devices)
-    if (_cloudflareUrl.isNotEmpty) {
-      return _toApiBase(_cloudflareUrl);
+    // If custom env URL is set, use it
+    if (_customEnvUrl.isNotEmpty) {
+      return _toApiBase(_customEnvUrl);
     }
 
     return _defaultBaseUrl;
   }
 
-  // Helper method to update the base URL at runtime (useful for settings)
+  // Helper method to update the base URL at runtime
   static String? _runtimeUrl;
 
-  static void setCloudflareUrl(String url) {
+  static void setCustomApiUrl(String url) {
     _runtimeUrl = url.trim();
   }
 

@@ -390,6 +390,10 @@ class NotificationService {
 
     final notification = message.notification;
     final type = message.data['type'] as String?;
+    if (type == 'MFA_PUSH_CHALLENGE') {
+      handleNotification(Map<String, dynamic>.from(message.data));
+      return;
+    }
     final prefs = await NotificationPreferencesService.getCachedOrDefault();
     if (!_isAllowedByPreferences(prefs, type)) {
       print('Skipping foreground notification due to preferences. type=$type');
@@ -531,6 +535,7 @@ class NotificationService {
     }
 
     _fcmToken = fcmToken;
+    final deviceName = await _getHumanReadableDeviceName();
 
     try {
       final response = await http.post(
@@ -542,7 +547,7 @@ class NotificationService {
         body: jsonEncode({
           'fcmToken': fcmToken,
           'deviceType': Platform.isAndroid ? 'ANDROID' : 'IOS',
-          'deviceName': Platform.localHostname,
+          'deviceName': deviceName,
           'appVersion': '1.0.0',
         }),
       );
@@ -557,6 +562,39 @@ class NotificationService {
       print('Register device error: $e');
       return false;
     }
+  }
+
+  static Future<String> _getHumanReadableDeviceName() async {
+    try {
+      if (Platform.isAndroid) {
+        try {
+          final modelRes = await Process.run('getprop', ['ro.product.model']);
+          final brandRes = await Process.run('getprop', ['ro.product.brand']);
+          final model = modelRes.stdout.toString().trim();
+          final brand = brandRes.stdout.toString().trim();
+          if (model.isNotEmpty) {
+            if (brand.isNotEmpty &&
+                !model.toLowerCase().startsWith(brand.toLowerCase())) {
+              return '${_capitalize(brand)} $model';
+            }
+            return _capitalize(model);
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    final host = Platform.localHostname.trim();
+    if (host.isNotEmpty && host != 'localhost') {
+      return host;
+    }
+    return Platform.isAndroid
+        ? 'Android Smartphone'
+        : (Platform.isIOS ? 'iPhone' : 'Mobile Device');
+  }
+
+  static String _capitalize(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1);
   }
 
   /// Unregister device token
@@ -628,6 +666,13 @@ class NotificationService {
           print('Navigate to conversation: $referenceId');
         }
         break;
+      case 'MFA_PUSH_CHALLENGE':
+        final challengeId = data['challengeId'] as String?;
+        final challengeToken = data['challengeToken'] as String?;
+        if (challengeId != null && challengeToken != null) {
+          _showPushApprovalDialog(challengeId, challengeToken);
+        }
+        break;
       default:
         if (referenceId != null) {
           print('Navigate to rental by default if referenceId present: $referenceId');
@@ -639,6 +684,83 @@ class NotificationService {
         } else {
           print('Unknown notification type: $type');
         }
+    }
+  }
+
+  static Future<void> _showPushApprovalDialog(
+    String challengeId,
+    String challengeToken,
+  ) async {
+    final context = navigatorKey.currentState?.context;
+    if (context == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.security, color: Colors.blue, size: 28),
+            SizedBox(width: 8),
+            Text('Sign-In Approval Request'),
+          ],
+        ),
+        content: const Text(
+          'Someone is attempting to sign in to your account. Did you initiate this sign-in request?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _respondToPushChallenge(challengeId, challengeToken, false);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Deny'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _respondToPushChallenge(challengeId, challengeToken, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Future<void> _respondToPushChallenge(
+    String challengeId,
+    String challengeToken,
+    bool approve,
+  ) async {
+    final endpoint = approve ? '/mfa/push/approve' : '/mfa/push/deny';
+    try {
+      await http.post(
+        Uri.parse('${ApiService.baseUrl}$endpoint'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'challengeId': challengeId,
+          'challengeToken': challengeToken,
+        }),
+      );
+      final ctx = navigatorKey.currentState?.context;
+      if (ctx != null) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              approve ? 'Sign-in approved!' : 'Sign-in request denied.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Push response error: $e');
     }
   }
 

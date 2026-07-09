@@ -60,6 +60,12 @@ android {
             )
         }
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 }
 
 flutter {
