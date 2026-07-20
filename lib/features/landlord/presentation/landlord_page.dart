@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/api_service.dart';
 import 'landlord_dashboard_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class LandlordPage extends StatefulWidget {
   const LandlordPage({super.key});
@@ -38,7 +39,9 @@ class _LandlordPageState extends State<LandlordPage> {
   }
 
   void _launchRealAdminSignup() async {
-    final url = Uri.parse('${_getRealAdminUrl()}/signup?role=landlord&source=dwelly');
+    final url = Uri.parse(
+      '${_getRealAdminUrl()}/signup?role=landlord&source=dwelly',
+    );
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
@@ -54,7 +57,8 @@ class _LandlordPageState extends State<LandlordPage> {
   Widget build(BuildContext context) {
     final user = AuthService.currentUser;
 
-    if (user != null && (user.role == 'ADMIN' || user.primaryRole == 'landlord')) {
+    if (user != null &&
+        (user.role == 'ADMIN' || user.primaryRole == 'landlord')) {
       return const LandlordDashboardPage();
     }
 
@@ -87,7 +91,7 @@ class _LandlordPageState extends State<LandlordPage> {
               ),
               const SizedBox(height: 48),
               if (_isLoading)
-                const CircularProgressIndicator()
+                const DwellyOrbitingLoader()
               else
                 Column(
                   children: [
@@ -95,18 +99,25 @@ class _LandlordPageState extends State<LandlordPage> {
                       onPressed: () async {
                         if (user == null) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please log in to continue')),
+                            const SnackBar(
+                              content: Text('Please log in to continue'),
+                            ),
                           );
                           return;
                         }
                         setState(() => _isLoading = true);
                         try {
                           await AuthService.setPrimaryRole('landlord');
-                          if (mounted) setState(() {}); // Trigger rebuild to show dashboard
+                          if (mounted)
+                            setState(
+                              () {},
+                            ); // Trigger rebuild to show dashboard
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to update role: $e')),
+                              SnackBar(
+                                content: Text('Failed to update role: $e'),
+                              ),
                             );
                           }
                         } finally {
@@ -119,7 +130,12 @@ class _LandlordPageState extends State<LandlordPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: Text(user != null ? 'Continue as ${user.firstName}' : 'Continue', style: const TextStyle(fontSize: 16)),
+                      child: Text(
+                        user != null
+                            ? 'Continue as ${user.firstName}'
+                            : 'Continue',
+                        style: const TextStyle(fontSize: 16),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton(
@@ -130,12 +146,18 @@ class _LandlordPageState extends State<LandlordPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text('Create a separate account', style: TextStyle(fontSize: 16)),
+                      child: const Text(
+                        'Create a separate account',
+                        style: TextStyle(fontSize: 16),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: _launchRealAdmin,
-                      child: const Text('Sign in to existing account', style: TextStyle(fontSize: 16)),
+                      child: const Text(
+                        'Sign in to existing account',
+                        style: TextStyle(fontSize: 16),
+                      ),
                     ),
                   ],
                 ),

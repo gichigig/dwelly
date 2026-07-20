@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../../core/models/advertisement.dart';
 import '../../core/services/ad_service.dart';
-import '../../core/services/google_ad_service.dart';
-import '../../core/services/premium_service.dart';
 import '../../core/widgets/app_launch_ad_screen.dart';
 
 class _SplashAdPayload {
@@ -24,23 +24,21 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const Duration _minimumSplashDuration = Duration(seconds: 5);
-  static const Duration _maxAdWait = Duration(milliseconds: 1200);
-
   bool _showSplash = true;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
   late final Future<_SplashAdPayload?> _splashAdFuture;
-  Timer? _splashTimer;
+  bool _splashFlowStarted = false;
 
   @override
   void initState() {
     super.initState();
+    debugPrint('[Splash] initState called');
 
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 800),
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -60,32 +58,59 @@ class _SplashScreenState extends State<SplashScreen>
     _animationController.forward();
     _splashAdFuture = _preloadSplashAd();
 
-    _splashTimer = Timer(_minimumSplashDuration, () async {
-      await _finishSplashFlow();
+    // Wait for the first real frame to be rendered, THEN start a wall-clock
+    // timer for the minimum splash duration.  This guarantees the user sees the
+    // splash for at least 1.5 s of *real screen time* (not jank time).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('[Splash] First frame rendered — starting splash timer');
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        debugPrint('[Splash] Splash timer fired — finishing splash flow');
+        _finishSplashFlow();
+      });
     });
   }
 
   Future<_SplashAdPayload?> _preloadSplashAd() async {
     try {
-      final adService = await AdService.getInstance();
-      final splashAd = await adService.getTargetedAd(AdPlacement.SPLASH);
-      if (splashAd == null) return null;
+      final adService = await AdService.getInstance().timeout(
+        const Duration(milliseconds: 800),
+      );
+      final splashAd = await adService
+          .getTargetedAd(AdPlacement.SPLASH)
+          .timeout(const Duration(milliseconds: 800));
+      if (splashAd == null) {
+        debugPrint('[Splash] No splash ad available');
+        return null;
+      }
+      debugPrint('[Splash] Splash ad preloaded: ${splashAd.id}');
       return _SplashAdPayload(adService: adService, ad: splashAd);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Splash] Splash ad preload failed: $e');
       return null;
     }
   }
 
   Future<void> _finishSplashFlow() async {
-    if (!mounted) return;
+    if (!mounted || _splashFlowStarted) return;
+    _splashFlowStarted = true;
+    debugPrint('[Splash] _finishSplashFlow started');
 
     try {
       final payload = await _splashAdFuture.timeout(
-        _maxAdWait,
-        onTimeout: () => null,
+        const Duration(milliseconds: 600),
+        onTimeout: () {
+          debugPrint('[Splash] Splash ad future timed out');
+          return null;
+        },
+      );
+
+      debugPrint(
+        '[Splash] Splash ad payload: ${payload != null ? 'available' : 'null'}',
       );
 
       if (mounted && payload != null) {
+        debugPrint('[Splash] Showing splash ad screen');
         await Navigator.of(context).push(
           PageRouteBuilder(
             opaque: true,
@@ -101,11 +126,14 @@ class _SplashScreenState extends State<SplashScreen>
             },
           ),
         );
+        debugPrint('[Splash] Splash ad screen dismissed');
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Splash] Error in splash flow: $e');
       // Fail open: continue into app if splash ad fails.
     } finally {
       if (mounted) {
+        debugPrint('[Splash] Dismissing splash — showing app');
         setState(() {
           _showSplash = false;
         });
@@ -115,7 +143,6 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _splashTimer?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -141,178 +168,156 @@ class _SplashScreenState extends State<SplashScreen>
           animation: _animationController,
           builder: (context, child) {
             return Column(
-              mainAxisAlignment: PremiumService.isPremiumActive() ? MainAxisAlignment.center : MainAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-              if (!PremiumService.isPremiumActive()) ...[
-                Expanded(
+                // Centered Logo and Name
+                SafeArea(
                   child: Opacity(
                     opacity: _fadeAnimation.value,
-                    child: const SizedBox(
-                      width: double.infinity,
-                      height: double.infinity,
-                      child: FittedBox(
-                        fit: BoxFit.fill,
-                        alignment: Alignment.topCenter,
-                        child: SizedBox(
-                          width: 300,
-                          height: 250,
-                          child: GoogleAdMediumRectangleWidget(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2), // 2px gap bordering the logo
-              ],
-              
-              // Bottom Logo and Name
-              SafeArea(
-                top: false,
-                child: Opacity(
-                  opacity: _fadeAnimation.value,
-                  child: Transform.scale(
-                    scale: _scaleAnimation.value,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Small Logo
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.2),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.asset(
-                                  'assets/images/logo.png',
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.transparent,
-                                      child: CustomPaint(painter: DwellyLogoPainter()),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            // App Name
-                            ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  Color(0xFF0EA5E9), // Teal
-                                  Color(0xFF1E40AF), // Blue
-                                ],
-                              ).createShader(bounds),
-                              child: const Text(
-                                'Dwelly',
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Tagline
-                        Text(
-                          'Real Estate App',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[400],
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // By Bluvberry
-                        AnimatedBuilder(
-                          animation: _animationController,
-                          builder: (context, child) {
-                            final byBluvberryOpacity = Tween<double>(begin: 0.0, end: 1.0)
-                                .animate(
-                                  CurvedAnimation(
-                                    parent: _animationController,
-                                    curve: const Interval(
-                                      0.5,
-                                      1.0,
-                                      curve: Curves.easeOut,
-                                    ),
-                                  ),
-                                );
-                            return Opacity(
-                              opacity: byBluvberryOpacity.value,
-                              child: child,
-                            );
-                          },
-                          child: Column(
+                    child: Transform.scale(
+                      scale: _scaleAnimation.value,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
-                                'by',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[400],
-                                  fontWeight: FontWeight.w400,
+                              // Small Logo
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(
+                                        0xFF0EA5E9,
+                                      ).withValues(alpha: 0.25),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Image.asset(
+                                    'assets/images/app_icon_dark.png',
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Image.asset(
+                                        'assets/images/logo.png',
+                                        fit: BoxFit.contain,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return Container(
+                                                color: Colors.transparent,
+                                                child: CustomPaint(
+                                                  painter: DwellyLogoPainter(),
+                                                ),
+                                              );
+                                            },
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(width: 16),
+                              // App Name
                               ShaderMask(
-                                shaderCallback: (bounds) => const LinearGradient(
-                                  colors: [
-                                    Color(0xFF6366F1), // Indigo
-                                    Color(0xFF8B5CF6), // Purple
-                                  ],
-                                ).createShader(bounds),
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        Color(0xFF0EA5E9), // Teal
+                                        Color(0xFF1E40AF), // Blue
+                                      ],
+                                    ).createShader(bounds),
                                 child: const Text(
-                                  'bluvberry',
+                                  'Dwelly',
                                   style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
                                     color: Colors.white,
-                                    letterSpacing: 1.5,
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          // Tagline
+                          Text(
+                            'Real Estate App',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[400],
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // By Bluvberry
+                          AnimatedBuilder(
+                            animation: _animationController,
+                            builder: (context, child) {
+                              final byBluvberryOpacity =
+                                  Tween<double>(begin: 0.0, end: 1.0).animate(
+                                    CurvedAnimation(
+                                      parent: _animationController,
+                                      curve: const Interval(
+                                        0.5,
+                                        1.0,
+                                        curve: Curves.easeOut,
+                                      ),
+                                    ),
+                                  );
+                              return Opacity(
+                                opacity: byBluvberryOpacity.value,
+                                child: child,
+                              );
+                            },
+                            child: Column(
+                              children: [
+                                Text(
+                                  'by',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[400],
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          Color(0xFF6366F1), // Indigo
+                                          Color(0xFF8B5CF6), // Purple
+                                        ],
+                                      ).createShader(bounds),
+                                  child: const Text(
+                                    'bluvberry',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          );
-        },
+                const SizedBox(height: 16),
+              ],
+            );
+          },
         ),
       ),
-    );
-  }
-
-  Widget _buildFallbackLogo() {
-    return Container(
-      width: 180,
-      height: 180,
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: CustomPaint(painter: DwellyLogoPainter()),
     );
   }
 }

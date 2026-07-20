@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:screen_protector/screen_protector.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class ProfilePhotoViewerPage extends StatefulWidget {
   final String imageUrl;
@@ -55,7 +56,7 @@ class _ProfilePhotoViewerPageState extends State<ProfilePhotoViewerPage> {
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;
                 return const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
+                  child: DwellyOrbitingLoader(glowColor: Colors.white),
                 );
               },
               errorBuilder: (context, error, stackTrace) => const Center(

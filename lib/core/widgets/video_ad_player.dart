@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/advertisement.dart';
 import '../services/ad_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// Widget for playing video advertisements
 class VideoAdPlayer extends StatefulWidget {
@@ -269,10 +270,7 @@ class _VideoAdPlayerState extends State<VideoAdPlayer> {
               Container(
                 color: Colors.grey[900],
                 child: const Center(
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2,
-                  ),
+                  child: DwellyOrbitingLoader(glowColor: Colors.white),
                 ),
               ),
 

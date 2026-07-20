@@ -12,6 +12,7 @@ import '../../../core/errors/passkey_error_mapper.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class SecuritySetupWizardPage extends StatefulWidget {
   const SecuritySetupWizardPage({super.key});
@@ -437,7 +438,7 @@ class _SecuritySetupWizardPageState extends State<SecuritySetupWizardPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Security Setup Wizard')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : Stepper(
               currentStep: _currentStep,
               onStepContinue: _goNext,

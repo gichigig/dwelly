@@ -1,4 +1,3 @@
-import 'package:share_plus/share_plus.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,14 +13,16 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/widgets/banner_ad_widget.dart';
 import '../../../core/errors/ui_error.dart';
-import '../../../core/navigation/app_tab_navigator.dart';
+import '../../../core/widgets/shimmer_placeholder.dart';
 import 'chat_page.dart';
+import '../../rentals/presentation/hashtag_search_page.dart';
 import 'package:video_player/video_player.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../../../core/widgets/app_launch_ad_screen.dart';
 import '../../../core/widgets/full_screen_gallery.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import '../../../core/services/video_unlock_session_service.dart';
+import '../../../core/widgets/share_listing_sheet.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class RentalDetailPage extends StatefulWidget {
   final Rental rental;
@@ -55,15 +56,16 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   void _startAutoScroll() {
     _autoScrollTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (!_pageController.hasClients) return;
-      
-      final pageCount = widget.rental.imageUrls.length + (widget.rental.hasVideo ? 1 : 0);
+
+      final pageCount =
+          widget.rental.imageUrls.length + (widget.rental.hasAnyVideo ? 1 : 0);
       if (pageCount <= 1) return;
-      
+
       int nextIndex = _pageController.page!.round() + 1;
       if (nextIndex >= pageCount) {
         nextIndex = 0;
       }
-      
+
       _pageController.animateToPage(
         nextIndex,
         duration: const Duration(milliseconds: 400),
@@ -73,30 +75,43 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   }
 
   void _initVideo() {
-    final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
-    if (!isPremium) return;
+    final effectiveUrl = widget.rental.effectiveVideoUrl;
+    final isUnlocked = VideoUnlockSessionService.isVideoUnlocked(
+      rentalId: widget.rental.id,
+      videoUrl: effectiveUrl,
+    );
+    if (!isUnlocked) return;
 
     _initializeVideoPlayer();
   }
 
   void _initializeVideoPlayer() {
-    if (widget.rental.hasVideo && widget.rental.videoUrl != null) {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.rental.videoUrl!),
-      )..initialize().then((_) {
-          _videoController!.setLooping(true);
-          _videoController!.setVolume(0.0); // Mute by default
-          _videoController!.play();
-          if (mounted) setState(() {});
-        });
+    final effectiveUrl = widget.rental.effectiveVideoUrl;
+    if (widget.rental.hasAnyVideo && effectiveUrl != null) {
+      _videoController =
+          VideoPlayerController.networkUrl(Uri.parse(effectiveUrl))
+            ..initialize().then((_) {
+              _videoController!.setLooping(true);
+              _videoController!.setVolume(0.0); // Mute by default
+              _videoController!.play();
+              if (mounted) setState(() {});
+            });
     }
   }
 
   Future<void> _unlockVideoWithAd() async {
+    final effectiveUrl = widget.rental.effectiveVideoUrl;
     await GoogleRewardedAdManager.showRewardedAd(
       context,
       onReward: () {
-        if (mounted) _initializeVideoPlayer();
+        if (mounted) {
+          VideoUnlockSessionService.unlockVideo(
+            rentalId: widget.rental.id,
+            videoUrl: effectiveUrl,
+          );
+          _initializeVideoPlayer();
+          setState(() {});
+        }
       },
     );
   }
@@ -274,26 +289,17 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                     ? const SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       )
                     : Icon(
                         _isSaved ? Icons.bookmark : Icons.bookmark_border,
                         color: _isSaved ? Colors.amber : Colors.white,
                       ),
               ),
-              /*
-              Builder(
-                builder: (BuildContext innerContext) {
-                  return IconButton(
-                    onPressed: () {
-                      final text = '${rental.title} - ${rental.formattedPrice}\nLocation: ${rental.fullAddress}\nCheck it out on Dwelly!';
-                      _showCustomShareMenu(context, text, rental.title);
-                    },
-                    icon: const Icon(Icons.share),
-                  );
-                }
+              IconButton(
+                onPressed: () => ShareListingSheet.show(context, widget.rental),
+                icon: const Icon(Icons.share, color: Colors.white),
               ),
-              */
               // More options menu
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
@@ -317,31 +323,60 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: (rental.imageUrls.isNotEmpty || rental.hasVideo)
+              background: (rental.imageUrls.isNotEmpty || rental.hasAnyVideo)
                   ? GestureDetector(
                       onTap: () {
-                        final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
+                        final effectiveUrl = rental.effectiveVideoUrl;
+                        final isUnlocked =
+                            VideoUnlockSessionService.isVideoUnlocked(
+                              rentalId: rental.id,
+                              videoUrl: effectiveUrl,
+                            );
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => FullScreenGallery(
+                              rentalId: rental.id,
                               imageUrls: rental.imageUrls,
-                              videoUrl: rental.videoUrl,
-                              showVideoFirst: isPremium,
-                              isPremium: isPremium,
+                              thumbnailUrls: rental.thumbnailUrls,
+                              mediumUrls: rental.mediumUrls,
+                              videoUrl: effectiveUrl,
+                              showVideoFirst: isUnlocked,
+                              isPremium: isUnlocked,
                             ),
                           ),
-                        );
+                        ).then((_) {
+                          if (mounted &&
+                              VideoUnlockSessionService.isVideoUnlocked(
+                                rentalId: rental.id,
+                                videoUrl: effectiveUrl,
+                              )) {
+                            if (_videoController == null) {
+                              _initializeVideoPlayer();
+                            }
+                            setState(() {});
+                          }
+                        });
                       },
                       child: PageView.builder(
                         controller: _pageController,
-                        itemCount: rental.imageUrls.length + (rental.hasVideo ? 1 : 0),
+                        itemCount:
+                            rental.imageUrls.length +
+                            (rental.hasAnyVideo ? 1 : 0),
                         itemBuilder: (context, index) {
-                          final isPremium = AuthService.currentUser?.isPremiumActive ?? false;
-                          final videoIndex = isPremium ? 0 : rental.imageUrls.length;
+                          final effectiveUrl = rental.effectiveVideoUrl;
+                          final isUnlocked =
+                              VideoUnlockSessionService.isVideoUnlocked(
+                                rentalId: rental.id,
+                                videoUrl: effectiveUrl,
+                              );
+                          final videoIndex = isUnlocked
+                              ? 0
+                              : rental.imageUrls.length;
 
-                          if (rental.hasVideo && index == videoIndex) {
-                            if (_videoController != null && _videoController!.value.isInitialized) {
+                          if (rental.hasAnyVideo && index == videoIndex) {
+                            if (_videoController != null &&
+                                _videoController!.value.isInitialized) {
                               return Stack(
                                 alignment: Alignment.center,
                                 children: [
@@ -349,7 +384,8 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                                     color: Colors.black,
                                     child: Center(
                                       child: AspectRatio(
-                                        aspectRatio: _videoController!.value.aspectRatio,
+                                        aspectRatio:
+                                            _videoController!.value.aspectRatio,
                                         child: VideoPlayer(_videoController!),
                                       ),
                                     ),
@@ -383,9 +419,14 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                                   Container(color: Colors.black87),
                                   Center(
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                        const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+                                        const Icon(
+                                          Icons.lock_outline,
+                                          color: Colors.white54,
+                                          size: 48,
+                                        ),
                                         const SizedBox(height: 16),
                                         const Text(
                                           'Watch Ad to Unlock Video',
@@ -398,12 +439,19 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                                         const SizedBox(height: 24),
                                         ElevatedButton.icon(
                                           onPressed: _unlockVideoWithAd,
-                                          icon: const Icon(Icons.play_circle_fill),
+                                          icon: const Icon(
+                                            Icons.play_circle_fill,
+                                          ),
                                           label: const Text('Unlock Video'),
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: Theme.of(context).primaryColor,
+                                            backgroundColor: Theme.of(
+                                              context,
+                                            ).primaryColor,
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -414,14 +462,24 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                             }
                           }
 
-                          final imageIndex = (rental.hasVideo && index > videoIndex) ? index - 1 : (rental.hasVideo && index < videoIndex) ? index : index;
-                          return CachedNetworkImage(
+                          final imageIndex =
+                              (rental.hasAnyVideo && index > videoIndex)
+                              ? index - 1
+                              : (rental.hasAnyVideo && index < videoIndex)
+                              ? index
+                              : index;
+                          return DwellyNetworkImage(
                             imageUrl: rental.imageUrls[imageIndex],
+                            thumbnailUrl:
+                                imageIndex < rental.thumbnailUrls.length
+                                ? rental.thumbnailUrls[imageIndex]
+                                : null,
+                            mediumUrl: imageIndex < rental.mediumUrls.length
+                                ? rental.mediumUrls[imageIndex]
+                                : null,
+                            loadFull: true,
                             fit: BoxFit.cover,
-                            errorWidget: (context, url, error) {
-                              return _buildPlaceholder();
-                            },
-                            placeholder: (context, url) => Container(color: Colors.grey[200]),
+                            errorWidget: _buildPlaceholder(),
                           );
                         },
                       ),
@@ -445,6 +503,45 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (rental.isSponsored)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFF59E0B),
+                                      Color(0xFFD97706),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.auto_awesome,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      rental.sponsorshipType != null &&
+                                              rental.sponsorshipType != 'BOTH'
+                                          ? 'Sponsored (${rental.sponsorshipType})'
+                                          : 'Sponsored Listing',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             Text(
                               rental.title,
                               style: const TextStyle(
@@ -452,22 +549,35 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            if (rental.hasVideo && !(AuthService.currentUser?.isPremiumActive ?? false))
+                            if (rental.hasAnyVideo &&
+                                !VideoUnlockSessionService.isVideoUnlocked(
+                                  rentalId: rental.id,
+                                  videoUrl: rental.effectiveVideoUrl,
+                                ))
                               Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
                                 child: OutlinedButton.icon(
                                   onPressed: () {
                                     _pageController.animateToPage(
                                       rental.imageUrls.length,
-                                      duration: const Duration(milliseconds: 300),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
                                       curve: Curves.easeInOut,
                                     );
                                   },
-                                  icon: const Icon(Icons.play_circle_outline, size: 18),
+                                  icon: const Icon(
+                                    Icons.play_circle_outline,
+                                    size: 18,
+                                  ),
                                   label: const Text('Watch Video'),
                                   style: OutlinedButton.styleFrom(
-                                    foregroundColor: Theme.of(context).primaryColor,
-                                    side: BorderSide(color: Theme.of(context).primaryColor),
+                                    foregroundColor: Theme.of(
+                                      context,
+                                    ).primaryColor,
+                                    side: BorderSide(
+                                      color: Theme.of(context).primaryColor,
+                                    ),
                                     visualDensity: VisualDensity.compact,
                                   ),
                                 ),
@@ -556,11 +666,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _buildFeatureBox(
-                        Icons.bed,
-                        '${rental.bedrooms}',
-                        'Beds',
-                      ),
+                      _buildFeatureBox(Icons.bed, '${rental.bedrooms}', 'Beds'),
                       _buildFeatureBox(
                         Icons.bathtub,
                         '${rental.bathrooms}',
@@ -598,6 +704,35 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                       height: 1.5,
                     ),
                   ),
+                  if (rental.hashtags.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: rental.hashtags.map((tag) {
+                        return ActionChip(
+                          label: Text(
+                            tag.startsWith('#') ? tag : '#$tag',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          backgroundColor: Colors.blue.withOpacity(0.08),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => HashtagSearchPage(
+                                  hashtag: tag.startsWith('#') ? tag : '#$tag',
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
                   if (_listingDetailAd != null && _adService != null) ...[
                     const SizedBox(height: 24),
                     BannerAdWidget(
@@ -741,9 +876,11 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
     if (r.latitude == null || r.longitude == null) return;
     final lat = r.latitude!;
     final lng = r.longitude!;
-    
+
     final appleMapsUrl = Uri.parse('http://maps.apple.com/?daddr=$lat,$lng');
-    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    final googleMapsUrl = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
+    );
 
     try {
       if (Platform.isIOS) {
@@ -884,99 +1021,15 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                     if (!context.mounted) return;
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => ChatPage(rental: rental)),
+                      MaterialPageRoute(
+                        builder: (_) => ChatPage(rental: rental),
+                      ),
                     );
                   }
                 },
               ),
 
               const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showCustomShareMenu(BuildContext context, String text, String subject) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Share Listing',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.grey[200],
-                  child: const Icon(Icons.copy, color: Colors.black87),
-                ),
-                title: const Text('Copy to Clipboard'),
-                onTap: () async {
-                  await Clipboard.setData(ClipboardData(text: text));
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied to clipboard!')),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.green[50],
-                  child: const Icon(Icons.message, color: Colors.green),
-                ),
-                title: const Text('WhatsApp'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final encodedText = Uri.encodeComponent(text);
-                  final uri = Uri.parse('https://wa.me/?text=$encodedText');
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WhatsApp not installed')));
-                    }
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.blue[50],
-                  child: const Icon(Icons.sms, color: Colors.blue),
-                ),
-                title: const Text('SMS'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final encodedText = Uri.encodeComponent(text);
-                  final uri = Uri.parse('sms:?body=$encodedText');
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -1092,15 +1145,19 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
       child: _isCheckingStatus
           ? const SizedBox(
               height: 200,
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: DwellyOrbitingLoader()),
             )
           : _buildReportForm(),
     );
   }
 
   Widget _buildReportForm() {
-    final titleText = _hasAlreadyReported ? 'Add Additional Complaint' : 'Report Listing';
-    final buttonText = _hasAlreadyReported ? 'Submit Additional Complaint' : 'Submit Report';
+    final titleText = _hasAlreadyReported
+        ? 'Add Additional Complaint'
+        : 'Report Listing';
+    final buttonText = _hasAlreadyReported
+        ? 'Submit Additional Complaint'
+        : 'Submit Report';
 
     return SingleChildScrollView(
       child: Column(
@@ -1127,7 +1184,10 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
               const SizedBox(width: 8),
               Text(
                 titleText,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -1176,8 +1236,8 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
             maxLines: 4,
             maxLength: 500,
             decoration: InputDecoration(
-              hintText: _hasAlreadyReported 
-                  ? 'Add your new complaint here...' 
+              hintText: _hasAlreadyReported
+                  ? 'Add your new complaint here...'
                   : 'Describe the issue in detail...',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1203,10 +1263,7 @@ class _ReportBottomSheetState extends State<_ReportBottomSheet> {
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                      child: DwellyOrbitingLoader(),
                     )
                   : Text(
                       buttonText,

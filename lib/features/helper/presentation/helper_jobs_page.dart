@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/models/helper_job.dart';
 import '../../../core/services/helper_job_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/dwelly_orbiting_loader.dart';
 
 class HelperJobsPage extends StatefulWidget {
   const HelperJobsPage({super.key});
@@ -17,12 +18,12 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
   String? _error;
   List<HelperJob> _clientJobs = [];
   List<HelperJob> _helperJobs = [];
-  
+
   int _clientPage = 0;
   bool _clientHasMore = true;
   int _helperPage = 0;
   bool _helperHasMore = true;
-  
+
   final ScrollController _clientScrollController = ScrollController();
   final ScrollController _helperScrollController = ScrollController();
 
@@ -32,15 +33,17 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
   void initState() {
     super.initState();
     _loadJobs();
-    
+
     _clientScrollController.addListener(() {
-      if (_clientScrollController.position.pixels >= _clientScrollController.position.maxScrollExtent - 200) {
+      if (_clientScrollController.position.pixels >=
+          _clientScrollController.position.maxScrollExtent - 200) {
         _loadClientJobs(loadMore: true);
       }
     });
-    
+
     _helperScrollController.addListener(() {
-      if (_helperScrollController.position.pixels >= _helperScrollController.position.maxScrollExtent - 200) {
+      if (_helperScrollController.position.pixels >=
+          _helperScrollController.position.maxScrollExtent - 200) {
         _loadHelperJobs(loadMore: true);
       }
     });
@@ -60,22 +63,20 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
     });
 
     try {
-      await Future.wait([
-        _loadClientJobs(),
-        if (_isHelper) _loadHelperJobs(),
-      ]);
+      await Future.wait([_loadClientJobs(), if (_isHelper) _loadHelperJobs()]);
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
-      if (mounted) setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
     }
   }
 
   Future<void> _loadClientJobs({bool loadMore = false}) async {
     if (loadMore && (_isLoadingMoreClient || !_clientHasMore)) return;
-    
+
     if (loadMore) {
       setState(() => _isLoadingMoreClient = true);
     } else {
@@ -105,7 +106,7 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
 
   Future<void> _loadHelperJobs({bool loadMore = false}) async {
     if (loadMore && (_isLoadingMoreHelper || !_helperHasMore)) return;
-    
+
     if (loadMore) {
       setState(() => _isLoadingMoreHelper = true);
     } else {
@@ -136,28 +137,207 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
   Future<void> _approveJob(HelperJob job) async {
     try {
       await HelperJobService.approveJob(job.id);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Job approved and funds released!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Job approved and funds released!')),
+      );
       _loadJobs();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
   Future<void> _disputeJob(HelperJob job) async {
     try {
       await HelperJobService.disputeJob(job.id);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Job disputed. We will review it.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Job disputed. We will review it.')),
+      );
       _loadJobs();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
-  Widget _buildJobList(List<HelperJob> jobs, bool isClientView, ScrollController controller, bool isLoadingMore) {
+  void _showWithdrawalDialog(double maxAmount) {
+    final amountController = TextEditingController();
+    final phoneController = TextEditingController(
+      text: AuthService.currentUser?.phone ?? '',
+    );
+    final bool needsPhone = true; // Always allow entering M-Pesa number
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Withdraw Funds'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Available: KES ${maxAmount.toStringAsFixed(2)}'),
+                  const SizedBox(height: 8),
+                  if (!needsPhone)
+                    Text(
+                      'Destination: ${AuthService.currentUser?.phone}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Amount (KES)',
+                      border: OutlineInputBorder(),
+                      prefixText: 'KES ',
+                    ),
+                    enabled: !isSubmitting,
+                  ),
+                  if (needsPhone) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'M-Pesa Phone Number',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.phone),
+                      ),
+                      enabled: !isSubmitting,
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!isSubmitting)
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final amountText = amountController.text;
+                          final amount = double.tryParse(amountText);
+                          if (amount == null || amount <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Enter a valid amount'),
+                              ),
+                            );
+                            return;
+                          }
+                          if (amount > maxAmount) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Insufficient balance'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          if (needsPhone) {
+                            final phone = phoneController.text.trim();
+                            if (phone.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Enter your M-Pesa phone number',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            setDialogState(() => isSubmitting = true);
+                            try {
+                              await AuthService.updateProfile(
+                                firstName:
+                                    AuthService.currentUser?.firstName ?? '',
+                                lastName:
+                                    AuthService.currentUser?.lastName ?? '',
+                                phone: phone,
+                              );
+                              await AuthService.refreshCurrentUser();
+                            } catch (e) {
+                              setDialogState(() => isSubmitting = false);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to save phone: $e'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+                          } else {
+                            setDialogState(() => isSubmitting = true);
+                          }
+
+                          try {
+                            await HelperJobService.requestWithdrawal(amount);
+                            if (mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Withdrawal requested successfully!',
+                                  ),
+                                ),
+                              );
+                              _loadJobs();
+                              AuthService.refreshCurrentUser();
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSubmitting = false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceAll('Exception: ', ''),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: DwellyOrbitingLoader(),
+                        )
+                      : const Text('Withdraw'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildJobList(
+    List<HelperJob> jobs,
+    bool isClientView,
+    ScrollController controller,
+    bool isLoadingMore,
+  ) {
     if (jobs.isEmpty) {
       return Center(
         child: Text(
-          isClientView ? 'You have not hired any helpers yet.' : 'You have no helper jobs yet.',
+          isClientView
+              ? 'You have not hired any helpers yet.'
+              : 'You have no helper jobs yet.',
           style: const TextStyle(color: Colors.grey, fontSize: 16),
         ),
       );
@@ -171,12 +351,12 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
         if (index == jobs.length) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 16.0),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: DwellyOrbitingLoader()),
           );
         }
         final job = jobs[index];
         final otherUser = isClientView ? job.helper : job.client;
-        
+
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: Padding(
@@ -187,19 +367,35 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      isClientView ? 'Helper: ${otherUser.fullName}' : 'Client: ${otherUser.fullName}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    Expanded(
+                      child: Text(
+                        isClientView
+                            ? 'Helper: ${otherUser.fullName}'
+                            : 'Client: ${otherUser.fullName}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: _getStatusColor(job.status),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         job.status.value,
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -211,25 +407,34 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
                   Text('Description: ${job.description}'),
                 ],
                 const SizedBox(height: 4),
-                Text('Date: ${job.createdAt.toLocal().toString().split('.')[0]}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(
+                  'Date: ${job.createdAt.toLocal().toString().split('.')[0]}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
                 if (isClientView && job.status == JobStatus.active) ...[
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       TextButton(
                         onPressed: () => _disputeJob(job),
-                        child: const Text('Dispute', style: TextStyle(color: Colors.red)),
+                        child: const Text(
+                          'Dispute',
+                          style: TextStyle(color: Colors.red),
+                        ),
                       ),
-                      const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: () => _approveJob(job),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                        ),
                         child: const Text('Approve & Release Funds'),
                       ),
                     ],
-                  )
-                ]
+                  ),
+                ],
               ],
             ),
           ),
@@ -240,12 +445,17 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
 
   Color _getStatusColor(JobStatus status) {
     switch (status) {
-      case JobStatus.active: return Colors.blue;
-      case JobStatus.completed: return Colors.green;
-      case JobStatus.pendingPayment: return Colors.orange;
-      case JobStatus.disputed: return Colors.red;
+      case JobStatus.active:
+        return Colors.blue;
+      case JobStatus.completed:
+        return Colors.green;
+      case JobStatus.pendingPayment:
+        return Colors.orange;
+      case JobStatus.disputed:
+        return Colors.red;
       case JobStatus.cancelled:
-      case JobStatus.refunded: return Colors.grey;
+      case JobStatus.refunded:
+        return Colors.grey;
     }
   }
 
@@ -265,40 +475,73 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: Offset(0, 5)),
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 10,
+            offset: Offset(0, 5),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Earnings Dashboard', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          const Text(
+            'Earnings Dashboard',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Available Balance', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  Text('KES ${balance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Available Balance',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    Text(
+                      'KES ${balance.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Withdrawals coming soon!')));
+                  if (balance > 0) {
+                    _showWithdrawalDialog(balance);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Your balance is zero')),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
                 child: const Text('Withdraw'),
               ),
             ],
           ),
           const Divider(color: Colors.white30, height: 24),
-          Text('Total Earned: KES ${totalEarned.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          Text(
+            'Total Earned: KES ${totalEarned.toStringAsFixed(2)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
         ],
       ),
     );
@@ -310,10 +553,17 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
       return Scaffold(
         appBar: AppBar(title: const Text('My Hired Helpers')),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: DwellyOrbitingLoader(size: 64))
             : _error != null
-                ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
-                : _buildJobList(_clientJobs, true, _clientScrollController, _isLoadingMoreClient),
+            ? Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              )
+            : _buildJobList(
+                _clientJobs,
+                true,
+                _clientScrollController,
+                _isLoadingMoreClient,
+              ),
       );
     }
 
@@ -330,27 +580,47 @@ class _HelperJobsPageState extends State<HelperJobsPage> {
           ),
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: DwellyOrbitingLoader(size: 64))
             : _error != null
-                ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
-                : TabBarView(
+            ? Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              )
+            : TabBarView(
+                children: [
+                  _buildJobList(
+                    _clientJobs,
+                    true,
+                    _clientScrollController,
+                    _isLoadingMoreClient,
+                  ),
+                  Column(
                     children: [
-                      _buildJobList(_clientJobs, true, _clientScrollController, _isLoadingMoreClient),
-                      Column(
-                        children: [
-                          _buildEarningsDashboard(),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text('Recent Jobs', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      _buildEarningsDashboard(),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Recent Jobs',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          Expanded(child: _buildJobList(_helperJobs, false, _helperScrollController, _isLoadingMoreHelper)),
-                        ],
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildJobList(
+                          _helperJobs,
+                          false,
+                          _helperScrollController,
+                          _isLoadingMoreHelper,
+                        ),
                       ),
                     ],
                   ),
+                ],
+              ),
       ),
     );
   }

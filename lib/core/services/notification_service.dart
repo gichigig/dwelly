@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as plain_http;
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -13,10 +16,13 @@ import 'app_notification_center.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
 import 'notification_preferences_service.dart';
+import '../../features/lost_id/data/id_scanner_service.dart';
+import '../../features/lost_id/presentation/temporary_chat_page.dart';
 
 // Top-level function for background message handling
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  DartPluginRegistrant.ensureInitialized();
   await Firebase.initializeApp();
   print('Handling background message: ${message.messageId}');
 
@@ -34,6 +40,42 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     body: message.notification?.body,
   );
 
+  // Always check native Android chat notification FIRST for MESSAGE type
+  final isMessage = type == 'MESSAGE';
+  var title =
+      message.data['senderName'] as String? ??
+      message.data['title'] as String? ??
+      message.notification?.title ??
+      'Notification';
+  if (title.startsWith('New message from ')) {
+    title = title.replaceFirst('New message from ', '').trim();
+  }
+  final body =
+      message.data['body'] as String? ?? message.notification?.body ?? '';
+
+  if (isMessage && Platform.isAndroid) {
+    final refId = message.data['referenceId'];
+    try {
+      print(
+        'Attempting native Android inline reply notification across background engine...',
+      );
+      final nativeResult =
+          await const MethodChannel(
+            'com.ishinadwelly.app/native_notification',
+          ).invokeMethod('showNativeChatNotification', {
+            'chatId': refId?.toString() ?? '',
+            'receiverId': message.data['senderId']?.toString() ?? '',
+            'messageId': message.data['messageId']?.toString() ?? '',
+            'senderName': title,
+            'messageText': body,
+          });
+      print('showNativeChatNotification result: $nativeResult');
+      if (nativeResult == true) return;
+    } catch (e) {
+      print('showNativeChatNotification exception: $e');
+    }
+  }
+
   // IMPORTANT: When app is in background and FCM has a 'notification' field,
   // Android system automatically shows the notification. We should NOT show
   // another local notification to avoid duplicates.
@@ -41,11 +83,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final notification = message.notification;
   if (notification == null) {
     // Data-only message - show notification manually
-    final isMessage = type == 'MESSAGE';
     final channelId = isMessage ? 'messages' : 'rental_alerts';
     final channelName = isMessage ? 'Messages' : 'Rental Alerts';
-    final title = message.data['title'] as String? ?? 'Notification';
-    final body = message.data['body'] as String? ?? '';
 
     List<AndroidNotificationAction> actions = [];
     if (isMessage) {
@@ -71,12 +110,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final plugin = FlutterLocalNotificationsPlugin();
 
     const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+      '@drawable/ic_notification',
     );
     const initSettings = InitializationSettings(android: androidSettings);
     await plugin.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: _onBackgroundNotificationResponse,
+      onDidReceiveNotificationResponse:
+          NotificationService._onNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse:
+          _onBackgroundNotificationResponse,
     );
 
     final androidDetails = AndroidNotificationDetails(
@@ -84,12 +126,21 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       channelName,
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFF0F172A),
       actions: actions,
     );
 
+    int notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (isMessage) {
+      final refId = message.data['referenceId'];
+      if (refId != null) {
+        notificationId = int.tryParse(refId.toString()) ?? notificationId;
+      }
+    }
+
     await plugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      notificationId,
       title,
       body,
       NotificationDetails(android: androidDetails),
@@ -104,10 +155,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> _onBackgroundNotificationResponse(
   NotificationResponse response,
 ) async {
+  DartPluginRegistrant.ensureInitialized();
   print('=== BACKGROUND NOTIFICATION RESPONSE ===');
   print('Action ID: ${response.actionId}');
   print('Input: ${response.input}');
-  // This runs in a separate isolate, so we need to handle it carefully
   await _handleNotificationAction(response);
 }
 
@@ -118,9 +169,28 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
   print('Input: ${response.input}');
   print('Payload: ${response.payload}');
 
+  // Always initialize plugin early so cancellation/updates in background isolate succeed
+  final plugin = FlutterLocalNotificationsPlugin();
+  try {
+    const androidSettings = AndroidInitializationSettings(
+      '@drawable/ic_notification',
+    );
+    const initSettings = InitializationSettings(android: androidSettings);
+    await plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse:
+          NotificationService._onNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse:
+          _onBackgroundNotificationResponse,
+    );
+  } catch (e) {
+    print('Failed to initialize local notifications in isolate: $e');
+  }
+
   final payload = response.payload;
   if (payload == null) {
     print('No payload, aborting');
+    if (response.id != null) await plugin.cancel(response.id!);
     return;
   }
 
@@ -136,14 +206,16 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
 
   if (type != 'MESSAGE' || conversationId == null) {
     print('Not a MESSAGE or no conversationId, aborting');
+    if (response.id != null) await plugin.cancel(response.id!);
     return;
   }
 
   // Read token directly from SharedPreferences (works in background isolates)
   final prefs = await SharedPreferences.getInstance();
-  final token = prefs.getString('auth_token');
+  var token = await _resolveBackgroundAuthToken(prefs, data);
   if (token == null) {
     print('No auth token available for notification action');
+    if (response.id != null) await plugin.cancel(response.id!);
     return;
   }
 
@@ -157,34 +229,54 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
     print('Reply text: $replyText');
     if (replyText == null || replyText.trim().isEmpty) {
       print('Empty reply, aborting');
+      if (response.id != null) await plugin.cancel(response.id!);
       return;
     }
 
+    final clientMessageId = 'notif_${DateTime.now().microsecondsSinceEpoch}';
     try {
-      final clientMessageId = 'notif_${DateTime.now().microsecondsSinceEpoch}';
       final queuedUrl = '$baseUrl/conversations/$conversationId/messages/queue';
       print('Sending queued reply to: $queuedUrl');
 
-      var res = await http
-          .post(
-            Uri.parse(queuedUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode({
-              'content': replyText.trim(),
-              'messageType': 'TEXT',
-              'clientMessageId': clientMessageId,
-            }),
-          )
-          .timeout(const Duration(seconds: 12));
+      Future<plain_http.Response> sendQueued(String bearerToken) {
+        return plain_http
+            .post(
+              Uri.parse(queuedUrl),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $bearerToken',
+              },
+              body: jsonEncode({
+                'content': replyText.trim(),
+                'messageType': 'TEXT',
+                'clientMessageId': clientMessageId,
+              }),
+            )
+            .timeout(const Duration(seconds: 12));
+      }
 
-      // Backward/alternative fallback if queue path is unavailable.
-      if (res.statusCode == 404 || res.statusCode == 405) {
+      var res = await sendQueued(token);
+
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        final refreshedToken = await _resolveBackgroundAuthTokenInternal(
+          prefs,
+          data,
+          forceRefresh: true,
+        );
+        if (refreshedToken != null && refreshedToken.isNotEmpty) {
+          token = refreshedToken;
+          print('Retrying notification reply after token refresh');
+          res = await sendQueued(token);
+        }
+      }
+
+      // If queue endpoint returned any error (or is unavailable), fallback to synchronous send.
+      if (res.statusCode != 200 && res.statusCode != 201) {
         final syncUrl = '$baseUrl/conversations/$conversationId/messages';
-        print('Queue endpoint unavailable; fallback to sync send: $syncUrl');
-        res = await http
+        print(
+          'Queue endpoint returned ${res.statusCode}; fallback to sync send: $syncUrl',
+        );
+        res = await plain_http
             .post(
               Uri.parse(syncUrl),
               headers: {
@@ -205,21 +297,68 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         print('Reply sent successfully to conversation $conversationId');
-        // Cancel the original notification instead of showing confirmation
-        final plugin = FlutterLocalNotificationsPlugin();
-        await plugin.cancelAll();
+        final targetId = response.id ?? int.tryParse(conversationId) ?? 0;
+        await plugin.show(
+          targetId,
+          'Sent',
+          'You: ${replyText.trim()}',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'messages',
+              'Messages',
+              importance: Importance.low,
+              priority: Priority.low,
+              timeoutAfter: 3500,
+            ),
+          ),
+        );
       } else {
         print(
           'Failed to send reply: ${res.statusCode} - ${_compactResponseBody(res.body)}',
         );
+        final targetId = response.id ?? int.tryParse(conversationId) ?? 0;
+        await plugin.show(
+          targetId,
+          'Message not sent',
+          'Could not deliver your reply (${res.statusCode}). Tap to open chat.',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'messages',
+              'Messages',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          payload: response.payload,
+        );
       }
     } catch (e) {
       print('Error sending reply: $e');
+      await _enqueueNotificationReply(
+        conversationId: int.tryParse(conversationId),
+        content: replyText.trim(),
+        clientMessageId: clientMessageId,
+      );
+      final targetId = response.id ?? int.tryParse(conversationId) ?? 0;
+      await plugin.show(
+        targetId,
+        'Message queued offline',
+        'Will retry when internet returns. Tap to open chat.',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'messages',
+            'Messages',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+        payload: response.payload,
+      );
     }
   } else if (response.actionId == 'mark_read') {
     // Handle mark as read action
     try {
-      final res = await http
+      final res = await plain_http
           .put(
             Uri.parse('$baseUrl/conversations/$conversationId/read'),
             headers: {
@@ -231,17 +370,27 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
 
       if (res.statusCode == 200) {
         print('Marked conversation $conversationId as read');
+        if (response.id != null) {
+          await plugin.cancel(response.id!);
+        }
       } else {
         print('Failed to mark as read: ${res.statusCode}');
+        if (response.id != null) {
+          await plugin.cancel(response.id!);
+        }
       }
     } catch (e) {
       print('Error marking as read: $e');
+      if (response.id != null) {
+        await plugin.cancel(response.id!);
+      }
     }
   }
 }
 
 class NotificationService {
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
   static String? _fcmToken;
   static bool _initialized = false;
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -330,7 +479,7 @@ class NotificationService {
 
   static Future<void> _initLocalNotifications() async {
     const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+      '@drawable/ic_notification',
     );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -404,10 +553,14 @@ class NotificationService {
     final channelName = isMessage ? 'Messages' : 'Rental Alerts';
 
     // Get title/body from notification field or data field (for data-only messages)
-    final title =
+    var title =
+        message.data['senderName'] as String? ??
         notification?.title ??
         message.data['title'] as String? ??
         'New Notification';
+    if (title.startsWith('New message from ')) {
+      title = title.replaceFirst('New message from ', '').trim();
+    }
     final body = notification?.body ?? message.data['body'] as String? ?? '';
 
     await AppNotificationCenter.ingestPayload(
@@ -503,7 +656,8 @@ class NotificationService {
       channelName,
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFF0F172A),
       actions: actions,
     );
     const iosDetails = DarwinNotificationDetails();
@@ -513,7 +667,33 @@ class NotificationService {
     );
 
     try {
-      final notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      // Use conversationId (referenceId) as notification ID for messages
+      // so we can cancel by conversationId later when user opens that chat
+      int notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if (isMessage && payload != null) {
+        try {
+          final payloadData = jsonDecode(payload) as Map<String, dynamic>;
+          final refId = payloadData['referenceId'];
+          if (refId != null) {
+            notificationId = int.tryParse(refId.toString()) ?? notificationId;
+          }
+          if (Platform.isAndroid) {
+            try {
+              final nativeResult =
+                  await const MethodChannel(
+                    'com.ishinadwelly.app/native_notification',
+                  ).invokeMethod('showNativeChatNotification', {
+                    'chatId': refId?.toString() ?? '',
+                    'receiverId': payloadData['senderId']?.toString() ?? '',
+                    'messageId': payloadData['messageId']?.toString() ?? '',
+                    'senderName': title,
+                    'messageText': body,
+                  });
+              if (nativeResult == true) return;
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
       print('Calling _localNotifications.show with id=$notificationId');
       await _localNotifications.show(
         notificationId,
@@ -602,17 +782,19 @@ class NotificationService {
     if (_fcmToken == null) return true;
 
     try {
-      final response = await http.delete(
-        Uri.parse('${ApiService.baseUrl}/notifications/device'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null)
-            'Authorization': 'Bearer $token'
-          else if (AuthService.token != null)
-            'Authorization': 'Bearer ${AuthService.token}',
-        },
-        body: jsonEncode({'fcmToken': _fcmToken}),
-      ).timeout(const Duration(seconds: 3));
+      final response = await http
+          .delete(
+            Uri.parse('${ApiService.baseUrl}/notifications/device'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null)
+                'Authorization': 'Bearer $token'
+              else if (AuthService.token != null)
+                'Authorization': 'Bearer ${AuthService.token}',
+            },
+            body: jsonEncode({'fcmToken': _fcmToken}),
+          )
+          .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
         _fcmToken = null;
@@ -638,6 +820,35 @@ class NotificationService {
     final link = (data['link'] ?? data['url']) as String?;
 
     if (link != null && link.isNotEmpty) {
+      print('Processing link: $link');
+      // Check if this link points directly to a rental listing inside Dwelly
+      final rentalMatch = RegExp(r'/rental[s]?/(\d+)').firstMatch(link);
+      if (rentalMatch != null) {
+        final extractedId = rentalMatch.group(1);
+        if (extractedId != null && extractedId.isNotEmpty) {
+          print(
+            'Extracted rental ID from direct URL: $extractedId. Navigating inside app...',
+          );
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => RentalDetailsPage(id: extractedId),
+            ),
+          );
+          return;
+        }
+      }
+
+      // If referenceId is present for RENTAL/RENTAL_ALERT along with link, navigate directly
+      if ((type == 'RENTAL_ALERT' || type == 'RENTAL' || type == 'LISTING') &&
+          referenceId != null &&
+          referenceId.isNotEmpty) {
+        print('Navigating to rental by referenceId: $referenceId');
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (_) => RentalDetailsPage(id: referenceId)),
+        );
+        return;
+      }
+
       print('Launch external link: $link');
       try {
         final uri = Uri.parse(link);
@@ -666,6 +877,16 @@ class NotificationService {
           print('Navigate to conversation: $referenceId');
         }
         break;
+      case 'LOST_ID_FOUND':
+      case 'LOST_ID_MATCHED':
+        if (referenceId != null) {
+          final foundIdId = int.tryParse(referenceId);
+          if (foundIdId != null) {
+            print('Launch TemporaryChat for foundId: $foundIdId');
+            _launchTemporaryChatByFoundId(foundIdId);
+          }
+        }
+        break;
       case 'MFA_PUSH_CHALLENGE':
         final challengeId = data['challengeId'] as String?;
         final challengeToken = data['challengeToken'] as String?;
@@ -675,7 +896,9 @@ class NotificationService {
         break;
       default:
         if (referenceId != null) {
-          print('Navigate to rental by default if referenceId present: $referenceId');
+          print(
+            'Navigate to rental by default if referenceId present: $referenceId',
+          );
           navigatorKey.currentState?.push(
             MaterialPageRoute(
               builder: (_) => RentalDetailsPage(id: referenceId),
@@ -684,6 +907,34 @@ class NotificationService {
         } else {
           print('Unknown notification type: $type');
         }
+    }
+  }
+
+  static Future<void> _launchTemporaryChatByFoundId(int foundIdId) async {
+    try {
+      final chatData = await IdScannerServiceChat.startTemporaryChat(foundIdId);
+      final roomId = chatData['roomId']?.toString() ?? '';
+      if (roomId.isEmpty) return;
+      final myRole = chatData['myRole']?.toString() ?? 'OWNER';
+      final myAlias = myRole.toUpperCase() == 'FINDER'
+          ? (chatData['finderAlias']?.toString() ?? 'Finder')
+          : (chatData['ownerAlias']?.toString() ?? 'Owner');
+      final otherAlias = myRole.toUpperCase() == 'FINDER'
+          ? (chatData['ownerAlias']?.toString() ?? 'Owner')
+          : (chatData['finderAlias']?.toString() ?? 'Finder');
+
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => TemporaryChatPage(
+            roomId: roomId,
+            myRole: myRole,
+            myAlias: myAlias,
+            otherAlias: otherAlias,
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Failed to open temporary chat from notification: $e');
     }
   }
 
@@ -802,10 +1053,17 @@ class NotificationService {
     print('Unsubscribed from topic: $topic');
   }
 
-  /// Clear all message notifications (call when opening messaging tab)
-  static Future<void> clearMessageNotifications() async {
-    await _localNotifications.cancelAll();
-    print('Cleared all message notifications');
+  /// Clear message notifications for a specific conversation, or all if no ID given
+  static Future<void> clearMessageNotifications({int? conversationId}) async {
+    if (conversationId != null) {
+      // Cancel notifications matching this conversation ID
+      // We use the conversation ID as the notification tag
+      await _localNotifications.cancel(conversationId);
+      print('Cleared notification for conversation $conversationId');
+    } else {
+      await _localNotifications.cancelAll();
+      print('Cleared all message notifications');
+    }
   }
 }
 
@@ -851,6 +1109,100 @@ int? _toMinutes(String value) {
   if (hour == null || minute == null) return null;
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return hour * 60 + minute;
+}
+
+Future<String?> _resolveBackgroundAuthToken(
+  SharedPreferences prefs,
+  Map<String, dynamic> payload,
+) async {
+  return _resolveBackgroundAuthTokenInternal(prefs, payload);
+}
+
+Future<String?> _resolveBackgroundAuthTokenInternal(
+  SharedPreferences prefs,
+  Map<String, dynamic> payload, {
+  bool forceRefresh = false,
+}) async {
+  final cachedToken = prefs.getString('auth_token') ?? AuthService.token;
+  if (!forceRefresh && cachedToken != null && cachedToken.isNotEmpty) {
+    return cachedToken;
+  }
+
+  final refreshToken = prefs.getString('auth_refresh_token');
+  if (refreshToken == null || refreshToken.isEmpty) {
+    return null;
+  }
+
+  final payloadBaseUrl = payload['apiBaseUrl']?.toString();
+  final baseUrl = _normalizeApiBaseUrl(payloadBaseUrl) ?? ApiService.baseUrl;
+
+  try {
+    final response = await plain_http
+        .post(
+          Uri.parse('$baseUrl/auth/refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refreshToken': refreshToken}),
+        )
+        .timeout(const Duration(seconds: 8));
+
+    if (response.statusCode != 200) {
+      print('Background token refresh failed: ${response.statusCode}');
+      return null;
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final nextToken = decoded['token']?.toString();
+    final nextRefreshToken = decoded['refreshToken']?.toString();
+    if (nextToken == null || nextToken.isEmpty) {
+      return null;
+    }
+
+    await prefs.setString('auth_token', nextToken);
+    if (nextRefreshToken != null && nextRefreshToken.isNotEmpty) {
+      await prefs.setString('auth_refresh_token', nextRefreshToken);
+    }
+    return nextToken;
+  } catch (e) {
+    print('Background token refresh error: $e');
+    return null;
+  }
+}
+
+Future<void> _enqueueNotificationReply({
+  required int? conversationId,
+  required String content,
+  required String clientMessageId,
+}) async {
+  if (conversationId == null || conversationId <= 0 || content.isEmpty) {
+    return;
+  }
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    const queueKey = 'offline_message_queue';
+    final queueStr = prefs.getString(queueKey);
+    final List<dynamic> queue = queueStr == null || queueStr.isEmpty
+        ? <dynamic>[]
+        : (jsonDecode(queueStr) as List<dynamic>);
+
+    final alreadyQueued = queue.any((item) {
+      if (item is! Map) return false;
+      return item['clientMessageId']?.toString() == clientMessageId;
+    });
+    if (alreadyQueued) return;
+
+    queue.add({
+      'conversationId': conversationId,
+      'content': content,
+      'messageType': 'TEXT',
+      'clientMessageId': clientMessageId,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+    await prefs.setString(queueKey, jsonEncode(queue));
+    print('Queued notification reply locally for retry: $clientMessageId');
+  } catch (e) {
+    print('Failed to queue notification reply locally: $e');
+  }
 }
 
 String? _normalizeApiBaseUrl(String? rawValue) {

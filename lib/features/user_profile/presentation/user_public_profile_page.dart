@@ -3,15 +3,15 @@ import 'package:intl/intl.dart';
 
 import 'package:realestate/core/services/api_service.dart';
 import 'package:realestate/core/services/user_profile_service.dart';
-import 'package:realestate/core/models/rental.dart';
 import 'package:realestate/features/listings/presentation/rental_detail_page.dart';
 import 'package:realestate/features/user_profile/presentation/profile_photo_viewer_page.dart';
 import 'package:realestate/core/services/contact_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class UserPublicProfilePage extends StatefulWidget {
   final int userId;
 
-  const UserPublicProfilePage({Key? key, required this.userId}) : super(key: key);
+  const UserPublicProfilePage({super.key, required this.userId});
 
   @override
   State<UserPublicProfilePage> createState() => _UserPublicProfilePageState();
@@ -21,6 +21,7 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
   bool _isLoading = true;
   String? _error;
   PublicProfile? _profile;
+  int _displayLimit = 10;
 
   @override
   void initState() {
@@ -34,7 +35,10 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
         _isLoading = true;
         _error = null;
       });
-      final profile = await UserProfileService.getPublicProfile(widget.userId, forceRefresh: forceRefresh);
+      final profile = await UserProfileService.getPublicProfile(
+        widget.userId,
+        forceRefresh: forceRefresh,
+      );
       setState(() {
         _profile = profile;
         _isLoading = false;
@@ -52,35 +56,40 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-      ),
+      appBar: AppBar(title: const Text('Profile')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader(size: 64))
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Error: $_error', style: TextStyle(color: theme.colorScheme.error)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadProfile,
-                        child: const Text('Retry'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Error: $_error',
+                    style: TextStyle(color: theme.colorScheme.error),
                   ),
-                )
-              : _profile == null
-                  ? const Center(child: Text('Profile not found'))
-                  : RefreshIndicator(
-                      onRefresh: () => _loadProfile(forceRefresh: true),
-                      child: _buildProfileContent(context, _profile!, theme),
-                    ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadProfile,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
+          : _profile == null
+          ? const Center(child: Text('Profile not found'))
+          : RefreshIndicator(
+              onRefresh: () => _loadProfile(forceRefresh: true),
+              child: _buildProfileContent(context, _profile!, theme),
+            ),
     );
   }
 
-  Widget _buildProfileContent(BuildContext context, PublicProfile profile, ThemeData theme) {
+  Widget _buildProfileContent(
+    BuildContext context,
+    PublicProfile profile,
+    ThemeData theme,
+  ) {
     String? displayAvatarUrl = profile.avatarUrl;
     if (displayAvatarUrl == null || displayAvatarUrl.isEmpty) {
       try {
@@ -104,7 +113,9 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                  theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.4,
+                  ),
                   theme.colorScheme.surface.withValues(alpha: 0.0),
                 ],
                 stops: const [0.0, 1.0],
@@ -120,12 +131,18 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                             context,
                             PageRouteBuilder(
                               opaque: false,
-                              pageBuilder: (_, __, ___) => ProfilePhotoViewerPage(
-                                imageUrl: ApiService.resolveMediaUrl(displayAvatarUrl!)!,
-                                tag: 'profile_avatar_${profile.id}',
-                              ),
+                              pageBuilder: (_, __, ___) =>
+                                  ProfilePhotoViewerPage(
+                                    imageUrl: ApiService.resolveMediaUrl(
+                                      displayAvatarUrl!,
+                                    )!,
+                                    tag: 'profile_avatar_${profile.id}',
+                                  ),
                               transitionsBuilder: (_, animation, __, child) {
-                                return FadeTransition(opacity: animation, child: child);
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                );
                               },
                             ),
                           );
@@ -139,20 +156,37 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                         child: CircleAvatar(
                           radius: 50,
                           backgroundColor: theme.colorScheme.primaryContainer,
-                          backgroundImage: displayAvatarUrl != null && displayAvatarUrl.isNotEmpty ? NetworkImage(ApiService.resolveMediaUrl(displayAvatarUrl)!) : null,
-                          child: displayAvatarUrl == null || displayAvatarUrl.isEmpty
-                              ? Icon(Icons.person, size: 50, color: theme.colorScheme.onPrimaryContainer)
+                          backgroundImage:
+                              displayAvatarUrl != null &&
+                                  displayAvatarUrl.isNotEmpty
+                              ? NetworkImage(
+                                  ApiService.resolveMediaUrl(displayAvatarUrl)!,
+                                )
+                              : null,
+                          child:
+                              displayAvatarUrl == null ||
+                                  displayAvatarUrl.isEmpty
+                              ? Icon(
+                                  Icons.person,
+                                  size: 50,
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                )
                               : null,
                         ),
                       ),
-                      if (displayAvatarUrl != null && displayAvatarUrl.isNotEmpty)
+                      if (displayAvatarUrl != null &&
+                          displayAvatarUrl.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.zoom_in, size: 16, color: theme.colorScheme.onPrimary),
+                          child: Icon(
+                            Icons.zoom_in,
+                            size: 16,
+                            color: theme.colorScheme.onPrimary,
+                          ),
                         ),
                     ],
                   ),
@@ -160,7 +194,9 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                 const SizedBox(height: 16),
                 Text(
                   '${profile.firstName} ${profile.lastName}',
-                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -169,29 +205,50 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                     if (profile.verificationStatus == 'VERIFIED')
                       Container(
                         margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.verified, size: 16, color: Colors.blue),
+                            const Icon(
+                              Icons.verified,
+                              size: 16,
+                              color: Colors.blue,
+                            ),
                             const SizedBox(width: 4),
-                            Text('Verified', style: theme.textTheme.labelSmall?.copyWith(color: Colors.blue, fontWeight: FontWeight.bold)),
+                            Text(
+                              'Verified',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     if (profile.userType != null)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.1,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           profile.userType!,
-                          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                   ],
@@ -201,13 +258,15 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
                       'Member since ${DateFormat('MMMM yyyy').format(profile.memberSince!)}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
               ],
             ),
           ),
-          
+
           // Listings Section
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -216,7 +275,9 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
               children: [
                 Text(
                   'Active Listings (${profile.activeListings.length})',
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 if (profile.activeListings.isEmpty)
@@ -225,50 +286,113 @@ class _UserPublicProfilePageState extends State<UserPublicProfilePage> {
                     child: Center(
                       child: Text(
                         'No active listings found.',
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: profile.activeListings.length,
-                    separatorBuilder: (context, index) => const Divider(),
-                    itemBuilder: (context, index) {
-                      final rental = profile.activeListings[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 80,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            image: rental.imageUrls.isNotEmpty
-                                ? DecorationImage(
-                                    image: NetworkImage(rental.imageUrls.first),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: rental.imageUrls.isEmpty
-                              ? const Icon(Icons.home_work)
-                              : null,
-                        ),
-                        title: Text(rental.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(rental.formattedPrice, style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => RentalDetailPage(rental: rental),
+                else ...[
+                  Builder(
+                    builder: (context) {
+                      final visibleListings = profile.activeListings
+                          .take(_displayLimit)
+                          .toList();
+                      return ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: visibleListings.length,
+                        separatorBuilder: (context, index) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final rental = visibleListings[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Container(
+                              width: 80,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color:
+                                    theme.colorScheme.surfaceContainerHighest,
+                                image: rental.imageUrls.isNotEmpty
+                                    ? DecorationImage(
+                                        image: NetworkImage(
+                                          rental.imageUrls.first,
+                                        ),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                              ),
+                              child: rental.imageUrls.isEmpty
+                                  ? const Icon(Icons.home_work)
+                                  : null,
                             ),
+                            title: Text(
+                              rental.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              rental.formattedPrice,
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      RentalDetailPage(rental: rental),
+                                ),
+                              );
+                            },
                           );
                         },
                       );
                     },
                   ),
+                  if (profile.activeListings.length > _displayLimit)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _displayLimit += 10;
+                            });
+                          },
+                          icon: const Icon(Icons.expand_more),
+                          label: Text(
+                            'Show More Listings (${profile.activeListings.length - _displayLimit} remaining)',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_displayLimit > 10 && profile.activeListings.length > 10)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Center(
+                        child: TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _displayLimit = 10;
+                            });
+                          },
+                          child: const Text('Show Less'),
+                        ),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),

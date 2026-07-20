@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -78,11 +79,8 @@ class _PlaceholderPage extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: Text(title, style: const TextStyle(fontSize: 22)),
-        ),
+        child: Center(child: Text(title, style: const TextStyle(fontSize: 22))),
       ),
     );
   }
 }
-

@@ -11,7 +11,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Dwelly</string>
+	<string>IshinaDwelly</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -19,7 +19,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Dwelly</string>
+	<string>IshinaDwelly</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -35,6 +35,7 @@
 			<array>
 				<string>com.googleusercontent.apps.452516814543-ej8db49plp6ae32rhj2btm95pc71bns0</string>
 				<string>dwelly</string>
+				<string>dwellyauth</string>
 			</array>
 		</dict>
 	</array>
@@ -45,7 +46,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to scan found IDs or take a profile picture.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs photo library access to choose a profile picture.</string>
+	<string>This app needs photo library access to let you choose a profile picture or send photos in chat.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app uses your location to find rentals near you.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

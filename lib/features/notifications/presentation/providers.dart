@@ -19,4 +19,3 @@ final unreadCountProvider = Provider<int>((ref) {
     error: (_, __) => 0,
   );
 });
-

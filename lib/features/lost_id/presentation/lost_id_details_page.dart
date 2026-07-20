@@ -14,12 +14,7 @@ class LostIdDetailsPage extends ConsumerWidget {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         surfaceTintColor: Colors.transparent,
         title: const Text('Lost ID Details'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () {},
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.share), onPressed: () {})],
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -37,7 +32,9 @@ class LostIdDetailsPage extends ConsumerWidget {
                         children: [
                           CircleAvatar(
                             radius: 32,
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer,
                             child: Icon(
                               Icons.badge,
                               size: 32,
@@ -68,7 +65,10 @@ class LostIdDetailsPage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Text('Found Location', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Found Location',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -80,9 +80,14 @@ class LostIdDetailsPage extends ConsumerWidget {
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 16),
-              Text('Description', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Description',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 8),
-              const Text('Found near the main bus station. Please contact to claim.'),
+              const Text(
+                'Found near the main bus station. Please contact to claim.',
+              ),
               const SizedBox(height: 24),
             ],
           ),
@@ -115,4 +120,3 @@ class LostIdDetailsPage extends ConsumerWidget {
     );
   }
 }
-

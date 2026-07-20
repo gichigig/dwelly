@@ -27,42 +27,39 @@ class DonationFab extends StatefulWidget {
 
 class _DonationFabState extends State<DonationFab>
     with SingleTickerProviderStateMixin {
-    String _resolveDonationUrl() {
-      String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
-      const override = String.fromEnvironment(
-        'REALADMIN_DONATION_URL',
-        defaultValue: '',
-      );
-      if (override.isNotEmpty) {
-        baseUrl = override;
-      }
-      
-      final token = AuthService.token;
-      if (token != null) {
-        return '$baseUrl?token=$token';
-      }
-      return baseUrl;
+  String _resolveDonationUrl() {
+    String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
+    const override = String.fromEnvironment(
+      'REALADMIN_DONATION_URL',
+      defaultValue: '',
+    );
+    if (override.isNotEmpty) {
+      baseUrl = override;
     }
 
-    Future<void> _openDonationPage() async {
-      if (!AuthService.isLoggedIn) {
-        showLoginBottomSheet(
-          context,
-          onSuccess: () {},
-        );
-        return;
-      }
-      
-      final uri = Uri.parse(_resolveDonationUrl());
-      try {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } catch (_) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to open donation page.')),
-        );
-      }
+    final token = AuthService.token;
+    if (token != null) {
+      return '$baseUrl?token=$token';
     }
+    return baseUrl;
+  }
+
+  Future<void> _openDonationPage() async {
+    if (!AuthService.isLoggedIn) {
+      showLoginBottomSheet(context, onSuccess: () {});
+      return;
+    }
+
+    final uri = Uri.parse(_resolveDonationUrl());
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open donation page.')),
+      );
+    }
+  }
 
   bool _isExpanded = false;
   late AnimationController _animController;
@@ -206,13 +203,22 @@ class _DonationFabState extends State<DonationFab>
         FloatingActionButton(
           heroTag: 'donation_fab',
           onPressed: _toggle,
-          backgroundColor:
-              _isExpanded ? Colors.grey[700] : const Color(0xFF4CAF50),
+          backgroundColor: _isExpanded
+              ? Colors.grey[700]
+              : const Color(0xFF4CAF50),
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: _isExpanded
-                ? const Icon(Icons.close, key: ValueKey('close'), color: Colors.white)
-                : const Icon(Icons.favorite, key: ValueKey('heart'), color: Colors.white),
+                ? const Icon(
+                    Icons.close,
+                    key: ValueKey('close'),
+                    color: Colors.white,
+                  )
+                : const Icon(
+                    Icons.favorite,
+                    key: ValueKey('heart'),
+                    color: Colors.white,
+                  ),
           ),
         ),
       ],

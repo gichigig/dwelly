@@ -8,7 +8,10 @@ import 'api_service.dart';
 import 'auth_service.dart';
 
 class HelperService {
-  static Future<List<User>> getAvailableHelpers({String? county, String? category}) async {
+  static Future<List<User>> getAvailableHelpers({
+    String? county,
+    String? category,
+  }) async {
     try {
       final uri = Uri.parse('${ApiService.baseUrl}/helper/available').replace(
         queryParameters: {
@@ -21,7 +24,9 @@ class HelperService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        return data.map((json) => User.fromJson(json as Map<String, dynamic>)).toList();
+        return data
+            .map((json) => User.fromJson(json as Map<String, dynamic>))
+            .toList();
       } else {
         throw AppError(
           code: AppErrorCode.unknown,
@@ -48,6 +53,7 @@ class HelperService {
     double? serviceRadiusKm,
     String? serviceAreaMode,
     List<String>? offeredServices,
+    bool? hideExactLocation,
   }) async {
     try {
       final token = AuthService.token;
@@ -62,12 +68,14 @@ class HelperService {
         'price': price,
         'coverageLevel': coverageLevel,
         if (county != null) 'county': county,
-        if (constituencies != null && constituencies.isNotEmpty) 'constituencies': constituencies,
+        if (constituencies != null && constituencies.isNotEmpty)
+          'constituencies': constituencies,
         if (wards != null && wards.isNotEmpty) 'wards': wards,
         if (serviceCategory != null) 'serviceCategory': serviceCategory,
         if (serviceRadiusKm != null) 'serviceRadiusKm': serviceRadiusKm,
         if (serviceAreaMode != null) 'serviceAreaMode': serviceAreaMode,
         if (offeredServices != null) 'offeredServices': offeredServices,
+        if (hideExactLocation != null) 'hideExactLocation': hideExactLocation,
       };
 
       final response = await http.post(
@@ -131,16 +139,24 @@ class HelperService {
     }
   }
 
-  static Future<List<HelperReview>> getHelperReviews(int helperId, {int page = 0, int size = 20}) async {
+  static Future<List<HelperReview>> getHelperReviews(
+    int helperId, {
+    int page = 0,
+    int size = 20,
+  }) async {
     try {
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/helpers/$helperId/reviews?page=$page&size=$size'),
+        Uri.parse(
+          '${ApiService.baseUrl}/helpers/$helperId/reviews?page=$page&size=$size',
+        ),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> content = data['content'] ?? [];
-        return content.map((json) => HelperReview.fromJson(json as Map<String, dynamic>)).toList();
+        return content
+            .map((json) => HelperReview.fromJson(json as Map<String, dynamic>))
+            .toList();
       } else {
         throw AppError(
           code: AppErrorCode.unknown,
@@ -171,10 +187,7 @@ class HelperService {
         );
       }
 
-      final body = {
-        'rating': rating,
-        'comment': comment,
-      };
+      final body = {'rating': rating, 'comment': comment};
 
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/helpers/$helperId/reviews'),
@@ -191,7 +204,8 @@ class HelperService {
         final data = jsonDecode(response.body);
         throw AppError(
           code: AppErrorCode.unknown,
-          message: data['error'] ?? data['message'] ?? 'Failed to submit review',
+          message:
+              data['error'] ?? data['message'] ?? 'Failed to submit review',
           technicalMessage: response.body,
         );
       }

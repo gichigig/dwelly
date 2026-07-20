@@ -45,11 +45,7 @@ class FeedAdWidget extends StatelessWidget {
 
   void _showForm(BuildContext context) {
     if (ad.linkType == LinkType.FORM && ad.formSchema != null) {
-      AdFormModal.show(
-        context,
-        ad: ad,
-        adService: adService,
-      );
+      AdFormModal.show(context, ad: ad, adService: adService);
     }
   }
 }
@@ -61,7 +57,7 @@ class AdListBuilder extends StatelessWidget {
   final AdService adService;
   final int adInterval; // Show an ad every N items
   final double adHeight;
-  
+
   const AdListBuilder({
     super.key,
     required this.children,
@@ -82,14 +78,16 @@ class AdListBuilder extends StatelessWidget {
 
     for (int i = 0; i < children.length; i++) {
       combined.add(children[i]);
-      
+
       // Insert ad after every N items
       if ((i + 1) % adInterval == 0 && adIndex < ads.length) {
-        combined.add(FeedAdWidget(
-          ad: ads[adIndex],
-          adService: adService,
-          height: ads[adIndex].mediaType == MediaType.VIDEO ? 200 : adHeight,
-        ));
+        combined.add(
+          FeedAdWidget(
+            ad: ads[adIndex],
+            adService: adService,
+            height: ads[adIndex].mediaType == MediaType.VIDEO ? 200 : adHeight,
+          ),
+        );
         adIndex++;
       }
     }
@@ -128,13 +126,17 @@ class SliverAdListBuilder extends StatelessWidget {
       combined.add(slivers[i]);
 
       if ((i + 1) % adInterval == 0 && adIndex < ads.length) {
-        combined.add(SliverToBoxAdapter(
-          child: FeedAdWidget(
-            ad: ads[adIndex],
-            adService: adService,
-            height: ads[adIndex].mediaType == MediaType.VIDEO ? 200 : adHeight,
+        combined.add(
+          SliverToBoxAdapter(
+            child: FeedAdWidget(
+              ad: ads[adIndex],
+              adService: adService,
+              height: ads[adIndex].mediaType == MediaType.VIDEO
+                  ? 200
+                  : adHeight,
+            ),
           ),
-        ));
+        );
         adIndex++;
       }
     }
@@ -222,7 +224,11 @@ class _AdCarouselState extends State<AdCarousel> {
                   height: widget.height,
                   onFormTap: () {
                     if (ad.linkType == LinkType.FORM && ad.formSchema != null) {
-                      AdFormModal.show(context, ad: ad, adService: widget.adService);
+                      AdFormModal.show(
+                        context,
+                        ad: ad,
+                        adService: widget.adService,
+                      );
                     }
                   },
                 ),

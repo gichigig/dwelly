@@ -4,21 +4,24 @@ import '../../../core/services/api_service.dart';
 import '../../../core/widgets/location_autocomplete.dart';
 import '../../../core/widgets/map_picker.dart';
 import 'dart:convert';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class LandlordCreateBuildingPage extends StatefulWidget {
   const LandlordCreateBuildingPage({super.key});
 
   @override
-  State<LandlordCreateBuildingPage> createState() => _LandlordCreateBuildingPageState();
+  State<LandlordCreateBuildingPage> createState() =>
+      _LandlordCreateBuildingPageState();
 }
 
-class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage> {
+class _LandlordCreateBuildingPageState
+    extends State<LandlordCreateBuildingPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _wardController = TextEditingController();
   final _constituencyController = TextEditingController();
   final _countyController = TextEditingController();
-  
+
   double? _latitude;
   double? _longitude;
 
@@ -50,9 +53,9 @@ class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -73,7 +76,7 @@ class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage>
     return Scaffold(
       appBar: AppBar(title: const Text('Add Building')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : Padding(
               padding: const EdgeInsets.all(16.0),
               child: Form(
@@ -82,8 +85,12 @@ class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage>
                   children: [
                     TextFormField(
                       controller: _nameController,
-                      decoration: const InputDecoration(labelText: 'Building Name', border: OutlineInputBorder()),
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Building Name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     LocationAutocomplete(
@@ -117,25 +124,27 @@ class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage>
                     TextFormField(
                       controller: _constituencyController,
                       decoration: InputDecoration(
-                        labelText: 'Constituency', 
+                        labelText: 'Constituency',
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Colors.grey.shade100,
                       ),
                       readOnly: true,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _countyController,
                       decoration: InputDecoration(
-                        labelText: 'County', 
+                        labelText: 'County',
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Colors.grey.shade100,
                       ),
                       readOnly: true,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 24),
                     const Row(
@@ -144,7 +153,10 @@ class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage>
                         SizedBox(width: 8),
                         Text(
                           'Geotag Coordinates',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -169,13 +181,19 @@ class _LandlordCreateBuildingPageState extends State<LandlordCreateBuildingPage>
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           'Coordinates locked: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
-                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     const SizedBox(height: 32),
                     ElevatedButton(
                       onPressed: _submit,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
                       child: const Text('Save Building'),
                     ),
                   ],

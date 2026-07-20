@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/device_location_service.dart';
+import 'dwelly_orbiting_loader.dart';
 
 class MapPicker extends StatefulWidget {
   final double? initialLatitude;
@@ -33,7 +34,10 @@ class _MapPickerState extends State<MapPicker> {
 
   Future<void> _initializeLocation() async {
     if (widget.initialLatitude != null && widget.initialLongitude != null) {
-      _initialCenter = LatLng(widget.initialLatitude!, widget.initialLongitude!);
+      _initialCenter = LatLng(
+        widget.initialLatitude!,
+        widget.initialLongitude!,
+      );
       _selectedPoint = _initialCenter;
       setState(() => _isLoading = false);
       return;
@@ -92,7 +96,7 @@ class _MapPickerState extends State<MapPicker> {
           color: Colors.grey[200],
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(child: CircularProgressIndicator()),
+        child: const Center(child: DwellyOrbitingLoader(size: 64)),
       );
     }
 
@@ -150,7 +154,10 @@ class _MapPickerState extends State<MapPicker> {
                 onTap: _locateMe,
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -158,14 +165,21 @@ class _MapPickerState extends State<MapPicker> {
                         const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: DwellyOrbitingLoader(),
                         )
                       else
-                        const Icon(Icons.my_location, size: 18, color: Colors.blue),
+                        const Icon(
+                          Icons.my_location,
+                          size: 18,
+                          color: Colors.blue,
+                        ),
                       const SizedBox(width: 8),
                       const Text(
                         'Locate Me',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),

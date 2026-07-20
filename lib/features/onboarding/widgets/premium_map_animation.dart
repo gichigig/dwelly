@@ -40,10 +40,7 @@ class _PremiumMapAnimationState extends State<PremiumMapAnimation>
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.05),
           shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white.withOpacity(0.15),
-            width: 2,
-          ),
+          border: Border.all(color: Colors.white.withOpacity(0.15), width: 2),
         ),
         child: AnimatedBuilder(
           animation: _controller,
@@ -151,8 +148,10 @@ class _MapAnimationPainter extends CustomPainter {
     routePath.lineTo(targetDx * 0.6, targetDy * -0.5);
     // 4. Curved road swooping up to target
     routePath.quadraticBezierTo(
-      targetDx, targetDy * -0.5, // Control point
-      targetDx, targetDy,        // End point
+      targetDx,
+      targetDy * -0.5, // Control point
+      targetDx,
+      targetDy, // End point
     );
 
     // Key points to place landmarks near
@@ -161,7 +160,7 @@ class _MapAnimationPainter extends CustomPainter {
       Offset(targetDx * 0.4, targetDy * -0.5),
       Offset(targetDx * 0.6, targetDy * -0.5),
     ];
-    
+
     final metrics = routePath.computeMetrics().first;
 
     canvas.save();
@@ -199,7 +198,9 @@ class _MapAnimationPainter extends CustomPainter {
           colors: [Colors.blue.shade900, Colors.lightBlueAccent],
         ).createShader(gradientRect)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 5.0 / scale // Wider
+        ..strokeWidth =
+            5.0 /
+            scale // Wider
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
 
@@ -209,7 +210,7 @@ class _MapAnimationPainter extends CustomPainter {
         final dotDistance = metrics.length * movingDotProgress;
         final tangent = metrics.getTangentForOffset(dotDistance);
         final movingDotPos = tangent?.position ?? Offset.zero;
-        
+
         final iconPainter = TextPainter(
           text: TextSpan(
             text: String.fromCharCode(Icons.directions_walk.codePoint),
@@ -223,7 +224,7 @@ class _MapAnimationPainter extends CustomPainter {
           textDirection: TextDirection.ltr,
         );
         iconPainter.layout();
-        
+
         // Center the icon on the moving point
         iconPainter.paint(
           canvas,
@@ -290,13 +291,28 @@ class _MapAnimationPainter extends CustomPainter {
 
   void _drawLandmarks(Canvas canvas, Size size, List<Offset> waypoints) {
     if (waypoints.length < 3) return;
-    
+
     // Supermarket near first 90-degree turn
-    _drawLandmark(canvas, waypoints[0] + const Offset(-10, -20), Icons.local_grocery_store, "Supermarket");
+    _drawLandmark(
+      canvas,
+      waypoints[0] + const Offset(-10, -20),
+      Icons.local_grocery_store,
+      "Supermarket",
+    );
     // City Park near second 90-degree turn
-    _drawLandmark(canvas, waypoints[1] + const Offset(20, 10), Icons.park, "City Park");
+    _drawLandmark(
+      canvas,
+      waypoints[1] + const Offset(20, 10),
+      Icons.park,
+      "City Park",
+    );
     // Cafe near start of the curve
-    _drawLandmark(canvas, waypoints[2] + const Offset(15, -15), Icons.local_cafe, "Cafe");
+    _drawLandmark(
+      canvas,
+      waypoints[2] + const Offset(15, -15),
+      Icons.local_cafe,
+      "Cafe",
+    );
   }
 
   void _drawLandmark(Canvas canvas, Offset pos, IconData icon, String name) {
@@ -313,17 +329,30 @@ class _MapAnimationPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     );
     iconPainter.layout();
-    iconPainter.paint(canvas, Offset(pos.dx - iconPainter.width / 2, pos.dy - iconPainter.height / 2));
-    
+    iconPainter.paint(
+      canvas,
+      Offset(pos.dx - iconPainter.width / 2, pos.dy - iconPainter.height / 2),
+    );
+
     final textPainter = TextPainter(
       text: TextSpan(
         text: name,
-        style: const TextStyle(color: Colors.white54, fontSize: 8, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+          color: Colors.white54,
+          fontSize: 8,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       textDirection: TextDirection.ltr,
     );
     textPainter.layout();
-    textPainter.paint(canvas, Offset(pos.dx - textPainter.width / 2, pos.dy + iconPainter.height / 2 + 2));
+    textPainter.paint(
+      canvas,
+      Offset(
+        pos.dx - textPainter.width / 2,
+        pos.dy + iconPainter.height / 2 + 2,
+      ),
+    );
   }
 
   void _drawCone(Canvas canvas, Size size, double angle, double opacity) {
@@ -357,28 +386,34 @@ class _MapAnimationPainter extends CustomPainter {
       ..color = Colors.blue.withOpacity(0.8 * opacity)
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
-    
+
     canvas.drawLine(
       Offset.zero,
-      Offset(math.cos(angle - fov / 2) * radius, math.sin(angle - fov / 2) * radius),
+      Offset(
+        math.cos(angle - fov / 2) * radius,
+        math.sin(angle - fov / 2) * radius,
+      ),
       edgePaint,
     );
     canvas.drawLine(
       Offset.zero,
-      Offset(math.cos(angle + fov / 2) * radius, math.sin(angle + fov / 2) * radius),
+      Offset(
+        math.cos(angle + fov / 2) * radius,
+        math.sin(angle + fov / 2) * radius,
+      ),
       edgePaint,
     );
   }
 
   void _drawPopupCard(Canvas canvas, Size size, double opacity) {
     final center = Offset(size.width / 2, size.height / 2);
-    
+
     // Animate card sliding up
     final slideOffset = (1.0 - opacity) * 20;
 
     final cardWidth = size.width * 0.65;
     final cardHeight = size.height * 0.28;
-    
+
     final rect = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: Offset(center.dx, center.dy - 30 + slideOffset),
@@ -397,10 +432,7 @@ class _MapAnimationPainter extends CustomPainter {
     );
 
     // Card background
-    canvas.drawRRect(
-      rect,
-      Paint()..color = Colors.white.withOpacity(opacity),
-    );
+    canvas.drawRRect(rect, Paint()..color = Colors.white.withOpacity(opacity));
 
     // Details in card
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
@@ -437,7 +469,7 @@ class _MapAnimationPainter extends CustomPainter {
       thumbRect,
       Paint()..color = Colors.blue.withOpacity(0.2 * opacity),
     );
-    
+
     final iconPainter = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(Icons.home.codePoint),
@@ -451,10 +483,7 @@ class _MapAnimationPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     );
     iconPainter.layout();
-    iconPainter.paint(
-      canvas, 
-      Offset(thumbRect.left + 7, thumbRect.top + 7),
-    );
+    iconPainter.paint(canvas, Offset(thumbRect.left + 7, thumbRect.top + 7));
   }
 
   @override

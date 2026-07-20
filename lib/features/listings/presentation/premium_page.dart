@@ -12,7 +12,6 @@ class PremiumPage extends StatefulWidget {
 }
 
 class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
-
   @override
   void initState() {
     super.initState();
@@ -37,7 +36,6 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-
   String _resolvePaymentUrl(String amount) {
     String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
     const override = String.fromEnvironment(
@@ -47,27 +45,21 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
     if (override.isNotEmpty) {
       baseUrl = override;
     }
-    
-    final params = <String, String>{
-      'type': 'PREMIUM',
-      'amount': amount,
-    };
-    
+
+    final params = <String, String>{'type': 'PREMIUM', 'amount': amount};
+
     final token = AuthService.token;
     if (token != null) {
       params['token'] = token;
     }
-    
+
     final uri = Uri.parse(baseUrl).replace(queryParameters: params);
     return uri.toString();
   }
 
   Future<void> _openWebPortal(String amount) async {
     if (!AuthService.isLoggedIn) {
-      showLoginBottomSheet(
-        context,
-        onSuccess: () {},
-      );
+      showLoginBottomSheet(context, onSuccess: () {});
       return;
     }
 
@@ -124,7 +116,10 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
             const SizedBox(height: 12),
             if (isActive && user?.premiumExpiresAt != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.green.shade700,
                   borderRadius: BorderRadius.circular(20),
@@ -145,7 +140,10 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.amber.shade700,
                         borderRadius: BorderRadius.circular(20),
@@ -166,7 +164,10 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
             _buildFeatureRow(Icons.block, '🚫 ZERO Ads Interruption'),
             _buildFeatureRow(Icons.map, '🗺️ Advanced Location Filters'),
             _buildFeatureRow(Icons.radar, '📡 Exclusive Direction Cone Radar'),
-            _buildFeatureRow(Icons.notifications_active, '🔔 Premium Instant Alerts'),
+            _buildFeatureRow(
+              Icons.notifications_active,
+              '🔔 Premium Instant Alerts',
+            ),
             _buildFeatureRow(Icons.video_library, '🎥 Full HD Video Access'),
             const SizedBox(height: 40),
             if (!isActive)
@@ -177,7 +178,11 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
                     height: 64,
                     child: ElevatedButton.icon(
                       onPressed: () => _openWebPortal('300'),
-                      icon: const Icon(Icons.open_in_new, size: 28, color: Color(0xFF0D47A1)),
+                      icon: const Icon(
+                        Icons.open_in_new,
+                        size: 28,
+                        color: Color(0xFF0D47A1),
+                      ),
                       label: const Text(
                         'PAY 300 KSH (30 DAYS)',
                         style: TextStyle(

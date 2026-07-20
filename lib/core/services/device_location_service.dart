@@ -116,47 +116,7 @@ class DeviceLocationService {
     await prefs.setBool(_locationPermissionDeniedKey, denied);
   }
 
-  /// Get cached last known location
-  static Future<DeviceLocationResult?> getCachedLocation() async {
-    final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString(_lastLocationKey);
-    if (cached != null) {
-      try {
-        final json = jsonDecode(cached);
-        return DeviceLocationResult(
-          latitude: json['latitude'] ?? 0,
-          longitude: json['longitude'] ?? 0,
-          ward: json['ward'],
-          constituency: json['constituency'],
-          county: json['county'],
-          areaName: json['areaName'],
-          isOutsideKenya: json['isOutsideKenya'] ?? false,
-          success: true,
-        );
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  /// Cache location result
-  static Future<void> _cacheLocation(DeviceLocationResult result) async {
-    if (!result.success) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _lastLocationKey,
-      jsonEncode({
-        'latitude': result.latitude,
-        'longitude': result.longitude,
-        'ward': result.ward,
-        'constituency': result.constituency,
-        'county': result.county,
-        'areaName': result.areaName,
-        'isOutsideKenya': result.isOutsideKenya,
-      }),
-    );
-  }
+  // Removed getCachedLocation and _cacheLocation per user request.
 
   /// Check if location service is enabled on the device
   static Future<bool> isLocationServiceEnabled() async {
@@ -202,7 +162,10 @@ class DeviceLocationService {
   }
 
   /// Get current device location and resolve to ward
-  static Future<DeviceLocationResult> getCurrentLocation({bool forcePrompt = false, bool allowCachedFallback = false}) async {
+  static Future<DeviceLocationResult> getCurrentLocation({
+    bool forcePrompt = false,
+    bool allowCachedFallback = false,
+  }) async {
     try {
       // First check if location service is enabled
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -246,73 +209,61 @@ class DeviceLocationService {
       // Permission granted — clear any stale denied flag
       await setUserDeniedLocation(false);
 
-      // Strategy: try high accuracy GPS position first (fused wifi+cell+gps), then fallback to medium accuracy
+      // Strategy: Check last known position first, then try balanced accuracy (Wi-Fi/Cell tower/fused location)
       Position? position;
+      Position? lastKnown;
 
       try {
-        print(
-          '[Location] Getting fresh GPS position (high accuracy first)...',
+        lastKnown = await Geolocator.getLastKnownPosition().timeout(
+          const Duration(seconds: 2),
         );
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 10),
-          ),
-        ).timeout(const Duration(seconds: 10));
-        print(
-          '[Location] Got high-accuracy position: ${position.latitude}, ${position.longitude}',
-        );
-      } catch (e) {
-        print('[Location] High-accuracy GPS failed: $e');
-        // Try medium accuracy as fallback if high accuracy times out
+      } catch (_) {}
+
+      // If allowCachedFallback is requested and we already have a recent last known position (< 15 min), return it immediately
+      if (lastKnown != null && allowCachedFallback) {
+        final isRecent =
+            lastKnown.timestamp != null &&
+            DateTime.now().difference(lastKnown.timestamp!) <
+                const Duration(minutes: 15);
+        if (isRecent) {
+          print(
+            '[Location] Using recent cached position: ${lastKnown.latitude}, ${lastKnown.longitude}',
+          );
+          position = lastKnown;
+        }
+      }
+
+      if (position == null) {
+        // Only use HIGH accuracy (GPS chip), similar to WhatsApp/Maps.
+        // We wait up to 15 seconds to get a precise lock, as an inaccurate
+        // cell-tower location is useless for AR and nearby searches.
         try {
-          print('[Location] Retrying with medium accuracy...');
+          print(
+            '[Location] Getting fresh position (high accuracy, waiting up to 15s)...',
+          );
           position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.medium,
-              timeLimit: Duration(seconds: 5),
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 15),
             ),
-          ).timeout(const Duration(seconds: 5));
+          ).timeout(const Duration(seconds: 15));
           print(
-            '[Location] Got medium-accuracy position: ${position.latitude}, ${position.longitude}',
+            '[Location] Got high accuracy position: ${position.latitude}, ${position.longitude}',
           );
-        } catch (e2) {
-          print('[Location] Medium-accuracy GPS also failed: $e2');
-          
-          // Try last known position only if allowCachedFallback is true OR if timestamp is very recent (< 5 mins)
-          try {
-            print('[Location] Checking getLastKnownPosition...');
-            final lastPosition = await Geolocator.getLastKnownPosition()
-                .timeout(const Duration(seconds: 2));
-            if (lastPosition != null) {
-              final isRecent = lastPosition.timestamp != null &&
-                  DateTime.now().difference(lastPosition.timestamp!) < const Duration(minutes: 5);
-              if (allowCachedFallback || isRecent) {
-                position = lastPosition;
-                print(
-                  '[Location] Got valid last known position: ${position.latitude}, ${position.longitude} (recent: $isRecent)',
-                );
-              } else {
-                print('[Location] Ignored stale last known position from ${lastPosition.timestamp}');
-              }
-            } else {
-              print('[Location] No last known position available');
-            }
-          } catch (e3) {
-            print('[Location] getLastKnownPosition error: $e3');
+        } catch (e) {
+          print('[Location] High accuracy position failed after 15s ($e).');
+          if (lastKnown != null) {
+            position = lastKnown;
+            print(
+              '[Location] Fallback to last known position: ${position.latitude}, ${position.longitude}',
+            );
           }
         }
       }
 
-      // If we still don't have a position, return cached (only if allowed) or error
+      // If we still don't have a position, return error
       if (position == null) {
         print('[Location] All GPS methods failed');
-        if (allowCachedFallback) {
-          final cached = await getCachedLocation();
-          if (cached != null) {
-            return cached;
-          }
-        }
         return DeviceLocationResult.error(
           'Could not get live GPS position. Make sure GPS is enabled and signal is clear.',
         );
@@ -347,8 +298,8 @@ class DeviceLocationService {
             final locality = p.locality?.isNotEmpty == true
                 ? p.locality!
                 : (p.subAdministrativeArea?.isNotEmpty == true
-                    ? p.subAdministrativeArea!
-                    : (p.administrativeArea ?? ''));
+                      ? p.subAdministrativeArea!
+                      : (p.administrativeArea ?? ''));
             final country = p.country ?? 'Outside Kenya';
             if (locality.isNotEmpty) {
               resolvedAreaName = '$locality, $country';
@@ -374,21 +325,10 @@ class DeviceLocationService {
         success: true,
       );
 
-      // Cache for future use
-      await _cacheLocation(result);
-
       return result;
     } catch (e, stackTrace) {
       print('[Location] Error getting device location: $e');
       print('[Location] Stack trace: $stackTrace');
-
-      // Try to return cached location only if allowed
-      if (allowCachedFallback) {
-        final cached = await getCachedLocation();
-        if (cached != null) {
-          return cached;
-        }
-      }
 
       return DeviceLocationResult.error('Failed to get location: $e');
     }
@@ -666,8 +606,8 @@ class DeviceLocationService {
       };
     }
 
-    // In debug mode, if we are testing on an emulator and the location is wildly far away 
-    // (like the default San Francisco location on iOS), let's default to Nairobi CBD 
+    // In debug mode, if we are testing on an emulator and the location is wildly far away
+    // (like the default San Francisco location on iOS), let's default to Nairobi CBD
     // so the app remains fully functional for testing.
     if (kDebugMode) {
       return {
@@ -691,7 +631,9 @@ class DeviceLocationService {
   }
 
   /// Store location payload for profile sync after authentication.
-  static Future<void> setPendingProfileLocation(DeviceLocationResult result) async {
+  static Future<void> setPendingProfileLocation(
+    DeviceLocationResult result,
+  ) async {
     if (!result.success || !result.hasLocationData) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(

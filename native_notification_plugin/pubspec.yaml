@@ -1,0 +1,19 @@
+name: native_notification_plugin
+description: Native Android WhatsApp-style inline notification replies and token synchronization for Dwelly.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.ishinadwelly.native_notification_plugin
+        pluginClass: NativeNotificationPlugin

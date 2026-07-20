@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class HouseSearchHelpPage extends StatefulWidget {
   final VoidCallback? onNavigateToInbox;
@@ -171,7 +172,7 @@ class _HouseSearchHelpPageState extends State<HouseSearchHelpPage> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: DwellyOrbitingLoader(),
                           )
                         : const Icon(Icons.send),
                     label: Text(_isSubmitting ? 'Sending' : 'Send request'),

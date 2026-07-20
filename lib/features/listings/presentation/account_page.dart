@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/models/user.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/api_service.dart';
@@ -16,6 +17,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/cache_service.dart' as app_cache;
 import '../../../core/services/device_rental_cache_service.dart';
 import '../../../core/services/device_location_service.dart';
+import '../../../core/services/data_saver_service.dart';
 import '../../../core/services/premium_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/data/kenya_locations.dart';
@@ -32,9 +34,11 @@ import 'security_setup_wizard_page.dart';
 import 'privacy_personalization_page.dart';
 import 'reports_safety_center_page.dart';
 import 'cache_management_page.dart';
+import 'about_developer_page.dart';
 import '../../helper/presentation/helper_hub_page.dart';
 import '../../helper/presentation/services_list_page.dart';
 import '../../landlord/presentation/landlord_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 enum _SecurityWizardPromptAction { setupNow, remindLater }
 
@@ -64,7 +68,7 @@ class _AccountPageState extends State<AccountPage> {
     if (override.isNotEmpty) {
       baseUrl = override;
     }
-    
+
     final token = AuthService.token;
     if (token != null) {
       return '$baseUrl?token=$token';
@@ -74,13 +78,10 @@ class _AccountPageState extends State<AccountPage> {
 
   Future<void> _openDonationPage() async {
     if (!AuthService.isLoggedIn) {
-      showLoginBottomSheet(
-        context,
-        onSuccess: () {},
-      );
+      showLoginBottomSheet(context, onSuccess: () {});
       return;
     }
-    
+
     final uri = Uri.parse(_resolveDonationUrl());
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -100,12 +101,14 @@ class _AccountPageState extends State<AccountPage> {
   bool _hasPendingProfileLocation = false;
   String _cacheSizeStr = 'Calculating...';
   int _totalCacheBytes = 0;
+  bool _dataSaverEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _loadLocalLocationFallback();
     _calculateCacheSize();
+    _loadDataSaverPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoOpenSecurityWizard();
     });
@@ -114,7 +117,9 @@ class _AccountPageState extends State<AccountPage> {
 
   @override
   void dispose() {
-    PremiumService.premiumPageEnabled.removeListener(_onPremiumPageEnabledChanged);
+    PremiumService.premiumPageEnabled.removeListener(
+      _onPremiumPageEnabledChanged,
+    );
     super.dispose();
   }
 
@@ -123,49 +128,53 @@ class _AccountPageState extends State<AccountPage> {
   }
 
   Future<void> _loadLocalLocationFallback() async {
-    final cached = await DeviceLocationService.getCachedLocation();
     final pending = await DeviceLocationService.getPendingProfileLocation();
     if (!mounted) return;
     setState(() {
-      _cachedDeviceLocation = cached;
+      _cachedDeviceLocation = null;
       _hasPendingProfileLocation = pending != null && pending.isNotEmpty;
     });
   }
 
-// Top-level function for the background isolate
-int _calcDirSize(String dirPath) {
-  int total = 0;
-  final dir = Directory(dirPath);
-  if (dir.existsSync()) {
-    try {
-      for (final entity in dir.listSync(recursive: true, followLinks: false)) {
-        if (entity is File) {
-          try {
-            total += entity.lengthSync();
-          } catch (_) {}
+  // Top-level function for the background isolate
+  int _calcDirSize(String dirPath) {
+    int total = 0;
+    final dir = Directory(dirPath);
+    if (dir.existsSync()) {
+      try {
+        for (final entity in dir.listSync(
+          recursive: true,
+          followLinks: false,
+        )) {
+          if (entity is File) {
+            try {
+              total += entity.lengthSync();
+            } catch (_) {}
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
+    return total;
   }
-  return total;
-}
 
   Future<void> _calculateCacheSize() async {
     try {
       final tempDir = await getTemporaryDirectory();
-      
+
       // Offload to a background isolate to prevent UI freezing
       final totalSize = await compute(_calcDirSize, tempDir.path);
-      
+
       if (!mounted) return;
       setState(() {
         _totalCacheBytes = totalSize;
         if (totalSize < 1024 * 1024) {
           _cacheSizeStr = '${(totalSize / 1024).toStringAsFixed(1)} KB';
         } else if (totalSize < 1024 * 1024 * 1024) {
-          _cacheSizeStr = '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+          _cacheSizeStr =
+              '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB';
         } else {
-          _cacheSizeStr = '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+          _cacheSizeStr =
+              '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
         }
       });
     } catch (e) {
@@ -176,6 +185,27 @@ int _calcDirSize(String dirPath) {
         });
       }
     }
+  }
+
+  Future<void> _loadDataSaverPreference() async {
+    final enabled = await DataSaverService.instance.isEnabled();
+    if (!mounted) return;
+    setState(() => _dataSaverEnabled = enabled);
+  }
+
+  Future<void> _toggleDataSaver(bool enabled) async {
+    setState(() => _dataSaverEnabled = enabled);
+    await DataSaverService.instance.setEnabled(enabled);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled
+              ? 'Data Saver is on. Image prefetch is minimized.'
+              : 'Data Saver is off. Faster image prefetch is enabled.',
+        ),
+      ),
+    );
   }
 
   Future<void> _maybeAutoOpenSecurityWizard() async {
@@ -332,6 +362,7 @@ int _calcDirSize(String dirPath) {
           _buildAppearanceCard(context),
           const SizedBox(height: 16),
           _buildCacheStorageItem(),
+          _buildDataSaverToggleItem(),
         ],
       ),
     );
@@ -360,19 +391,46 @@ int _calcDirSize(String dirPath) {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  FullScreenImageAvatar(
-                    radius: 36,
-                    backgroundColor: Theme.of(context).primaryColor,
-                    avatarUrl: user.avatarUrl,
-                    fallbackWidget: Text(
-                      user.firstName.isNotEmpty
-                          ? user.firstName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                  GestureDetector(
+                    onTap: () => _showEditProfileDialog(context),
+                    child: Stack(
+                      children: [
+                        FullScreenImageAvatar(
+                          radius: 36,
+                          backgroundColor: Theme.of(context).primaryColor,
+                          avatarUrl: user.avatarUrl,
+                          fallbackWidget: Text(
+                            user.firstName.isNotEmpty
+                                ? user.firstName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -436,7 +494,8 @@ int _calcDirSize(String dirPath) {
             title: 'Edit Profile',
             onTap: () => _showEditProfileDialog(context),
           ),
-          if (!AuthService.isTenantMode && PremiumService.isPremiumPageVisible())
+          if (!AuthService.isTenantMode &&
+              PremiumService.isPremiumPageVisible())
             _buildMenuItem(
               icon: Icons.workspace_premium,
               title: 'Dwelly Premium',
@@ -457,8 +516,12 @@ int _calcDirSize(String dirPath) {
             ),
 
           _buildMenuItem(
-            icon: AuthService.isTenantMode ? Icons.home_work : Icons.home_work_outlined,
-            title: AuthService.isTenantMode ? 'Exit Tenant Mode' : 'Tenant Mode',
+            icon: AuthService.isTenantMode
+                ? Icons.home_work
+                : Icons.home_work_outlined,
+            title: AuthService.isTenantMode
+                ? 'Exit Tenant Mode'
+                : 'Tenant Mode',
             subtitle: AuthService.isTenantMode
                 ? 'Restore full navigation, explore rentals and ads'
                 : 'Simplified view for active tenants (Inbox & Account only, ad-free)',
@@ -488,7 +551,10 @@ int _calcDirSize(String dirPath) {
             subtitle: 'Movers, gas delivery, water delivery, mama fua & more',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ServicesListPage(initialCategory: "All")),
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const ServicesListPage(initialCategory: "All"),
+                ),
               );
             },
           ),
@@ -497,19 +563,21 @@ int _calcDirSize(String dirPath) {
             title: 'Helper Hub',
             subtitle: 'Find a helper or become one',
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const HelperHubPage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const HelperHubPage()));
             },
           ),
           _buildMenuItem(
             icon: Icons.real_estate_agent,
-            title: user.primaryRole == 'landlord' ? 'Landlord Dashboard' : 'Become a Landlord',
+            title: user.primaryRole == 'landlord'
+                ? 'Landlord Dashboard'
+                : 'Become a Landlord',
             subtitle: 'Manage properties with RealAdmin',
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LandlordPage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const LandlordPage()));
             },
           ),
           _buildMenuItem(
@@ -541,22 +609,26 @@ int _calcDirSize(String dirPath) {
             title: 'Security Center',
             subtitle: 'Password, devices and account deletion',
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const SecurityCenterPage(),
-                ),
-              );
+              Navigator.of(context)
+                  .push(
+                    MaterialPageRoute(
+                      builder: (context) => const SecurityCenterPage(),
+                    ),
+                  )
+                  .then((_) {
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  });
             },
           ),
           _buildMenuItem(
             icon: Icons.work,
-            title: 'My Helper Jobs',
-            subtitle: 'View your active helper requests and jobs',
+            title: 'Helpers & Payment History',
+            subtitle: 'See who you hired, when, and payment history',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const HelperJobsPage(),
-                ),
+                MaterialPageRoute(builder: (context) => const HelperJobsPage()),
               );
             },
           ),
@@ -577,7 +649,8 @@ int _calcDirSize(String dirPath) {
               );
             },
           ),
-          if (!AuthService.isTenantMode && PremiumService.isPremiumPageVisible())
+          if (!AuthService.isTenantMode &&
+              PremiumService.isPremiumPageVisible())
             _buildMenuItem(
               icon: Icons.workspace_premium,
               title: user.isPremiumActive ? 'Premium Active' : 'Go Premium',
@@ -592,6 +665,7 @@ int _calcDirSize(String dirPath) {
               },
             ),
           _buildCacheStorageItem(),
+          _buildDataSaverToggleItem(),
           _buildMenuItem(
             icon: Icons.dark_mode_outlined,
             title: 'Appearance',
@@ -614,6 +688,16 @@ int _calcDirSize(String dirPath) {
             icon: Icons.info,
             title: 'About',
             onTap: () => _showAboutDialog(context),
+          ),
+          _buildMenuItem(
+            icon: Icons.code,
+            title: 'About Developer',
+            subtitle:
+                'Reach out for website, software or mobile app development',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AboutDeveloperPage()),
+            ),
           ),
           const Divider(height: 32),
           _buildMenuItem(
@@ -656,22 +740,29 @@ int _calcDirSize(String dirPath) {
 
     return InkWell(
       onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const CacheManagementPage()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const CacheManagementPage()));
         _calculateCacheSize();
+        _loadDataSaverPreference();
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(Icons.delete_sweep, color: Theme.of(context).iconTheme.color ?? Colors.grey[700]),
+            Icon(
+              Icons.delete_sweep,
+              color: Theme.of(context).iconTheme.color ?? Colors.grey[700],
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Clear device cache', style: TextStyle(fontSize: 16)),
+                  const Text(
+                    'Clear device cache',
+                    style: TextStyle(fontSize: 16),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     '$_cacheSizeStr stored on device',
@@ -683,9 +774,13 @@ int _calcDirSize(String dirPath) {
                     child: LinearProgressIndicator(
                       value: progress,
                       minHeight: 6,
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        progress > 0.8 ? Colors.red : Theme.of(context).primaryColor,
+                        progress > 0.8
+                            ? Colors.red
+                            : Theme.of(context).primaryColor,
                       ),
                     ),
                   ),
@@ -697,6 +792,25 @@ int _calcDirSize(String dirPath) {
             Icon(Icons.chevron_right, color: Colors.grey[400]),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDataSaverToggleItem() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: SwitchListTile.adaptive(
+        secondary: Icon(
+          Icons.data_saver_on_outlined,
+          color: Theme.of(context).iconTheme.color ?? Colors.grey[700],
+        ),
+        title: const Text('Data Saver'),
+        subtitle: const Text(
+          'Default is ON. Turn OFF to allow thumbnail prefetch for faster browsing.',
+          style: TextStyle(fontSize: 12),
+        ),
+        value: _dataSaverEnabled,
+        onChanged: _toggleDataSaver,
       ),
     );
   }
@@ -1311,6 +1425,8 @@ class _EditProfileFormState extends State<_EditProfileForm> {
   late final TextEditingController _lastNameController;
   late final TextEditingController _phoneController;
   bool _isLoading = false;
+  bool _isUploadingAvatar = false;
+  String? _avatarUrl;
   String? _error;
 
   @override
@@ -1319,6 +1435,7 @@ class _EditProfileFormState extends State<_EditProfileForm> {
     _firstNameController = TextEditingController(text: widget.user.firstName);
     _lastNameController = TextEditingController(text: widget.user.lastName);
     _phoneController = TextEditingController(text: widget.user.phone ?? '');
+    _avatarUrl = widget.user.avatarUrl;
   }
 
   @override
@@ -1327,6 +1444,87 @@ class _EditProfileFormState extends State<_EditProfileForm> {
     _lastNameController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAndUploadAvatar({required ImageSource source}) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 75,
+      );
+      if (pickedFile == null || !mounted) return;
+
+      setState(() {
+        _isUploadingAvatar = true;
+        _error = null;
+      });
+
+      final file = File(pickedFile.path);
+      final url = await ApiService.uploadFile(
+        file,
+        '/files/upload',
+        token: AuthService.token,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _avatarUrl = url;
+        _isUploadingAvatar = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isUploadingAvatar = false;
+        _error =
+            'Failed to upload photo: ${e.toString().replaceAll('Exception: ', '')}';
+      });
+    }
+  }
+
+  void _showAvatarOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAndUploadAvatar(source: ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take Photo'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAndUploadAvatar(source: ImageSource.camera);
+              },
+            ),
+            if (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text(
+                  'Remove Photo',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() {
+                    _avatarUrl = '';
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _save() async {
@@ -1344,6 +1542,7 @@ class _EditProfileFormState extends State<_EditProfileForm> {
         phone: _phoneController.text.trim().isEmpty
             ? null
             : _phoneController.text.trim(),
+        avatarUrl: _avatarUrl,
       );
       widget.onSuccess();
     } catch (e) {
@@ -1355,9 +1554,11 @@ class _EditProfileFormState extends State<_EditProfileForm> {
         );
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -1391,7 +1592,80 @@ class _EditProfileFormState extends State<_EditProfileForm> {
               'Edit Profile',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+            Center(
+              child: Stack(
+                children: [
+                  GestureDetector(
+                    onTap: _isUploadingAvatar ? null : _showAvatarOptions,
+                    child: FullScreenImageAvatar(
+                      radius: 46,
+                      backgroundColor: Theme.of(context).primaryColor,
+                      avatarUrl: _avatarUrl,
+                      fallbackWidget: _isUploadingAvatar
+                          ? const DwellyOrbitingLoader(glowColor: Colors.white)
+                          : Text(
+                              widget.user.firstName.isNotEmpty
+                                  ? widget.user.firstName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onTap: _isUploadingAvatar ? null : _showAvatarOptions,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: _isUploadingAvatar
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: DwellyOrbitingLoader(),
+                              )
+                            : const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton.icon(
+                onPressed: _isUploadingAvatar ? null : _showAvatarOptions,
+                icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                label: Text(
+                  (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                      ? 'Change Profile Photo'
+                      : 'Add Profile Photo',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             if (_error != null) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1456,20 +1730,19 @@ class _EditProfileFormState extends State<_EditProfileForm> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _phoneController,
-              keyboardType: TextInputType.phone,
               decoration: InputDecoration(
-                labelText: 'Phone (optional)',
-                prefixIcon: const Icon(Icons.phone),
+                labelText: 'Phone Number (Optional)',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isLoading ? null : _save,
+                onPressed: (_isLoading || _isUploadingAvatar) ? null : _save,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -1480,7 +1753,7 @@ class _EditProfileFormState extends State<_EditProfileForm> {
                     ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       )
                     : const Text(
                         'Save Changes',
@@ -1637,7 +1910,7 @@ class _LocationSettingsSheetState extends State<_LocationSettingsSheet> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       )
                     : const Icon(Icons.my_location),
                 label: Text(
@@ -1717,7 +1990,7 @@ class _LocationSettingsSheetState extends State<_LocationSettingsSheet> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       )
                     : const Text(
                         'Save Location',
@@ -2099,7 +2372,7 @@ class _FypSettingsSheetState extends State<_FypSettingsSheet> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: DwellyOrbitingLoader(),
                         )
                       : const Text(
                           'Save Preferences',

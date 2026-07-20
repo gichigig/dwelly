@@ -23,7 +23,10 @@ class EmptyState extends StatelessWidget {
           children: [
             Icon(icon, size: 64, color: Colors.grey),
             const SizedBox(height: 12),
-            Text(title, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(
+              title,
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 6),
             Text(subtitle, style: t.bodyMedium?.copyWith(color: Colors.grey)),
           ],

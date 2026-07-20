@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/dwelly_orbiting_loader.dart';
 import '../../../core/models/rental.dart';
 import '../services/landlord_service.dart';
 import 'landlord_create_building_page.dart';
@@ -20,6 +21,7 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
   bool _isLoading = true;
   List<dynamic> _buildings = [];
   List<Rental> _rentals = [];
+  int _visibleRentalsLimit = 10;
 
   @override
   void initState() {
@@ -63,11 +65,18 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
           children: [
             CircleAvatar(
               radius: 28,
-              backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                  ? CachedNetworkImageProvider(ApiService.resolveMediaUrl(user.avatarUrl)!) as ImageProvider
+              backgroundImage:
+                  user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                  ? CachedNetworkImageProvider(
+                          ApiService.resolveMediaUrl(user.avatarUrl)!,
+                        )
+                        as ImageProvider
                   : null,
               child: user.avatarUrl == null || user.avatarUrl!.isEmpty
-                  ? Text(user.firstName.isNotEmpty ? user.firstName[0] : '?', style: const TextStyle(fontSize: 24))
+                  ? Text(
+                      user.firstName.isNotEmpty ? user.firstName[0] : '?',
+                      style: const TextStyle(fontSize: 24),
+                    )
                   : null,
             ),
             const SizedBox(width: 16),
@@ -75,7 +84,13 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(user.fullName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    user.fullName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   Text(user.email, style: const TextStyle(color: Colors.grey)),
                 ],
               ),
@@ -94,7 +109,11 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
 
     return Row(
       children: [
-        _buildStatCard('Buildings', _buildings.length.toString(), Colors.purple),
+        _buildStatCard(
+          'Buildings',
+          _buildings.length.toString(),
+          Colors.purple,
+        ),
         const SizedBox(width: 8),
         _buildStatCard('Active', active.toString(), Colors.green),
         const SizedBox(width: 8),
@@ -115,9 +134,19 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
           padding: const EdgeInsets.symmetric(vertical: 16.0),
           child: Column(
             children: [
-              Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(label, style: TextStyle(fontSize: 12, color: color.withOpacity(0.8))),
+              Text(
+                label,
+                style: TextStyle(fontSize: 12, color: color.withOpacity(0.8)),
+              ),
             ],
           ),
         ),
@@ -128,11 +157,9 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Landlord Dashboard'),
-      ),
+      appBar: AppBar(title: const Text('Landlord Dashboard')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader(size: 64))
           : RefreshIndicator(
               onRefresh: _loadData,
               child: ListView(
@@ -145,25 +172,37 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Your Buildings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Your Buildings',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       TextButton.icon(
                         icon: const Icon(Icons.add, size: 16),
                         label: const Text('Add'),
                         onPressed: () async {
                           final result = await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const LandlordCreateBuildingPage()),
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const LandlordCreateBuildingPage(),
+                            ),
                           );
                           if (result == true) {
                             _loadData();
                           }
                         },
-                      )
+                      ),
                     ],
                   ),
                   if (_buildings.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16.0),
-                      child: Text('No buildings yet', style: TextStyle(color: Colors.grey)),
+                      child: Text(
+                        'No buildings yet',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     )
                   else
                     SizedBox(
@@ -177,7 +216,8 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
                             onTap: () async {
                               final result = await Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => LandlordEditBuildingPage(building: b),
+                                  builder: (_) =>
+                                      LandlordEditBuildingPage(building: b),
                                 ),
                               );
                               if (result == true) {
@@ -192,9 +232,24 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(b['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    Text(
+                                      b['name'] ?? 'Unnamed',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                     const SizedBox(height: 4),
-                                    Text('${b['ward'] ?? ''}, ${b['county'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                    Text(
+                                      '${b['ward'] ?? ''}, ${b['county'] ?? ''}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -207,28 +262,41 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Recent Rentals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Recent Rentals',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       TextButton.icon(
                         icon: const Icon(Icons.add, size: 16),
                         label: const Text('Add'),
                         onPressed: () async {
                           final result = await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => LandlordCreateRentalPage(buildings: _buildings)),
+                            MaterialPageRoute(
+                              builder: (_) => LandlordCreateRentalPage(
+                                buildings: _buildings,
+                              ),
+                            ),
                           );
                           if (result == true) {
                             _loadData();
                           }
                         },
-                      )
+                      ),
                     ],
                   ),
                   if (_rentals.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16.0),
-                      child: Text('No rentals yet', style: TextStyle(color: Colors.grey)),
+                      child: Text(
+                        'No rentals yet',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     )
-                  else
-                    ..._rentals.map((r) {
+                  else ...[
+                    ..._rentals.take(_visibleRentalsLimit).map((r) {
                       Color statusColor = Colors.grey;
                       if (r.status == 'ACTIVE') statusColor = Colors.green;
                       if (r.status == 'PENDING') statusColor = Colors.orange;
@@ -243,25 +311,43 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
                             borderRadius: BorderRadius.circular(8),
                             image: r.imageUrls.isNotEmpty
                                 ? DecorationImage(
-                                    image: CachedNetworkImageProvider(ApiService.resolveMediaUrl(r.imageUrls.first)!),
+                                    image: CachedNetworkImageProvider(
+                                      ApiService.resolveMediaUrl(
+                                        r.imageUrls.first,
+                                      )!,
+                                    ),
                                     fit: BoxFit.cover,
                                   )
                                 : null,
                             color: Colors.grey[200],
                           ),
-                          child: r.imageUrls.isEmpty ? const Icon(Icons.home, color: Colors.grey) : null,
+                          child: r.imageUrls.isEmpty
+                              ? const Icon(Icons.home, color: Colors.grey)
+                              : null,
                         ),
-                        title: Text('${r.bedrooms} Bed, ${r.propertyType}', maxLines: 1),
-                        subtitle: Text('KES ${r.price.toStringAsFixed(0)} • ${r.areaName ?? r.ward}'),
+                        title: Text(
+                          '${r.bedrooms} Bed, ${r.propertyType}',
+                          maxLines: 1,
+                        ),
+                        subtitle: Text(
+                          'KES ${r.price.toStringAsFixed(0)} • ${r.areaName ?? r.ward}',
+                        ),
                         trailing: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: statusColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             r.status ?? 'UNKNOWN',
-                            style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: statusColor,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         onTap: () async {
@@ -278,7 +364,49 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
                           }
                         },
                       );
-                    }).toList(),
+                    }),
+                    if (_rentals.length > _visibleRentalsLimit)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _visibleRentalsLimit += 10;
+                              });
+                            },
+                            icon: const Icon(Icons.expand_more),
+                            label: Text(
+                              'Show More Rentals (${_rentals.length - _visibleRentalsLimit} remaining)',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (_visibleRentalsLimit > 10 && _rentals.length > 10)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Center(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _visibleRentalsLimit = 10;
+                              });
+                            },
+                            child: const Text('Show Less'),
+                          ),
+                        ),
+                      ),
+                  ],
                   const SizedBox(height: 32),
                   const Text(
                     'For advanced property management (financials, tenants, full edits), please log in to the RealAdmin web portal.',

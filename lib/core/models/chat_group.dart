@@ -67,7 +67,9 @@ class ChatGroup {
 
   factory ChatGroup.fromJson(Map<String, dynamic> json) {
     var list = json['members'] as List? ?? [];
-    List<GroupMember> membersList = list.map((i) => GroupMember.fromJson(i)).toList();
+    List<GroupMember> membersList = list
+        .map((i) => GroupMember.fromJson(i))
+        .toList();
 
     return ChatGroup(
       id: json['id'] ?? 0,
@@ -100,9 +102,9 @@ class GroupMessage {
   final String senderName;
   final String? senderUsername;
   final String? senderAvatarUrl;
-  final String content;
-  final String messageType;
-  final String? mediaUrl;
+  String content;
+  String messageType;
+  String? mediaUrl;
   final String? metadata;
   final DateTime createdAt;
   final String? clientMessageId;

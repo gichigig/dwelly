@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:dwelly/core/services/api_service.dart';
-import 'package:dwelly/core/services/auth_service.dart';class Helper {
+import 'package:dwelly/core/services/auth_service.dart';
+
+class Helper {
   final int id;
   final String name;
   final double helperPrice;
@@ -30,8 +32,12 @@ import 'package:dwelly/core/services/auth_service.dart';class Helper {
       helperPrice: (json['helperPrice'] as num).toDouble(),
       helperCounty: json['helperCounty'],
       helperCoverageLevel: json['helperCoverageLevel'],
-      helperConstituencies: json['helperConstituencies'] != null ? List<String>.from(json['helperConstituencies']) : null,
-      helperWards: json['helperWards'] != null ? List<String>.from(json['helperWards']) : null,
+      helperConstituencies: json['helperConstituencies'] != null
+          ? List<String>.from(json['helperConstituencies'])
+          : null,
+      helperWards: json['helperWards'] != null
+          ? List<String>.from(json['helperWards'])
+          : null,
       avatarUrl: json['avatarUrl'],
     );
   }
@@ -71,9 +77,7 @@ class HelpersRepository {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'phoneNumber': phone,
-      }),
+      body: jsonEncode({'phoneNumber': phone}),
     );
 
     if (response.statusCode != 200) {
@@ -87,6 +91,11 @@ final helpersRepositoryProvider = Provider((ref) {
   return HelpersRepository();
 });
 
-final availableHelpersProvider = FutureProvider.family<List<Helper>, String?>((ref, county) {
-  return ref.watch(helpersRepositoryProvider).getAvailableHelpers(county: county);
+final availableHelpersProvider = FutureProvider.family<List<Helper>, String?>((
+  ref,
+  county,
+) {
+  return ref
+      .watch(helpersRepositoryProvider)
+      .getAvailableHelpers(county: county);
 });

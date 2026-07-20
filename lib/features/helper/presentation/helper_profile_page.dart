@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 import '../../../core/models/helper_profile.dart';
 import '../../../core/models/helper_review.dart';
 import '../../../core/models/rental.dart';
-import '../../../core/models/user.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../core/services/helper_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/dwelly_orbiting_loader.dart';
 import '../../listings/presentation/chat_page.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HelperProfilePage extends StatefulWidget {
   final int helperId;
   final String helperName;
 
-  const HelperProfilePage({super.key, required this.helperId, required this.helperName});
+  const HelperProfilePage({
+    super.key,
+    required this.helperId,
+    required this.helperName,
+  });
 
   @override
   State<HelperProfilePage> createState() => _HelperProfilePageState();
@@ -40,7 +45,7 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
     try {
       final profile = await HelperService.getHelperProfile(widget.helperId);
       final reviews = await HelperService.getHelperReviews(widget.helperId);
-      
+
       if (mounted) {
         setState(() {
           _profile = profile;
@@ -89,10 +94,8 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ChatPage(
-            rental: dummyRental,
-            existingConversation: conversation,
-          ),
+          builder: (context) =>
+              ChatPage(rental: dummyRental, existingConversation: conversation),
         ),
       );
     } catch (_) {
@@ -100,14 +103,59 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
       if (!mounted) return;
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => ChatPage(rental: dummyRental),
+        MaterialPageRoute(builder: (context) => ChatPage(rental: dummyRental)),
+      );
+    }
+  }
+
+  Future<void> _callHelper() async {
+    if (_profile?.phoneNumber != null && _profile!.phoneNumber!.isNotEmpty) {
+      final uri = Uri.parse('tel:${_profile!.phoneNumber}');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot launch phone dialer')),
+        );
+      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No phone number listed for this helper')),
+      );
+    }
+  }
+
+  Future<void> _getDirections() async {
+    if (_profile?.locationLatitude != null &&
+        _profile?.locationLongitude != null) {
+      final uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${_profile!.locationLatitude},${_profile!.locationLongitude}',
+      );
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot open Google Maps')),
+        );
+      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Physical location coordinates not provided by this service provider',
+          ),
         ),
       );
     }
   }
 
   Future<void> _showRateDialog() async {
+    if (!AuthService.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to leave a review')),
+      );
+      return;
+    }
     int rating = 5;
     final commentController = TextEditingController();
     bool submitting = false;
@@ -119,38 +167,48 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Rate Helper'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('How was your experience with this helper?'),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
-                        icon: Icon(
-                          index < rating ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 32,
-                        ),
-                        onPressed: () {
-                          setDialogState(() {
-                            rating = index + 1;
-                          });
-                        },
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: commentController,
-                    decoration: const InputDecoration(
-                      labelText: 'Review (Optional)',
-                      border: OutlineInputBorder(),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('How was your experience with this helper?'),
+                    const SizedBox(height: 16),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(5, (index) {
+                          return IconButton(
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(
+                              minWidth: 40,
+                              minHeight: 40,
+                            ),
+                            icon: Icon(
+                              index < rating ? Icons.star : Icons.star_border,
+                              color: Colors.amber,
+                              size: 28,
+                            ),
+                            onPressed: () {
+                              setDialogState(() {
+                                rating = index + 1;
+                              });
+                            },
+                          );
+                        }),
+                      ),
                     ),
-                    maxLines: 3,
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: commentController,
+                      decoration: const InputDecoration(
+                        labelText: 'Review (Optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -172,7 +230,9 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                               Navigator.pop(context);
                               _loadData(); // Refresh to show new review
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Review submitted!')),
+                                const SnackBar(
+                                  content: Text('Review submitted!'),
+                                ),
                               );
                             }
                           } catch (e) {
@@ -188,7 +248,11 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                           }
                         },
                   child: submitting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: DwellyOrbitingLoader(),
+                        )
                       : const Text('Submit'),
                 ),
               ],
@@ -202,14 +266,17 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Helper Profile'),
-      ),
+      appBar: AppBar(title: const Text('Helper Profile')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader(size: 64))
           : _error != null
-              ? Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)))
-              : _buildProfile(),
+          ? Center(
+              child: Text(
+                'Error: $_error',
+                style: const TextStyle(color: Colors.red),
+              ),
+            )
+          : _buildProfile(),
     );
   }
 
@@ -221,50 +288,64 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
         children: [
           // Header Section
           Container(
-            color: Theme.of(context).colorScheme.surfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             padding: const EdgeInsets.all(24.0),
             child: Column(
               children: [
                 GestureDetector(
-                  onTap: profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty ? () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          backgroundColor: Colors.black,
-                          appBar: AppBar(
-                            backgroundColor: Colors.black,
-                            iconTheme: const IconThemeData(color: Colors.white),
-                            elevation: 0,
-                          ),
-                          body: Center(
-                            child: InteractiveViewer(
-                              child: Hero(
-                                tag: 'helper_avatar_${profile.id}',
-                                child: Image.network(
-                                  profile.avatarUrl!,
-                                  fit: BoxFit.contain,
+                  onTap:
+                      profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => Scaffold(
+                                backgroundColor: Colors.black,
+                                appBar: AppBar(
+                                  backgroundColor: Colors.black,
+                                  iconTheme: const IconThemeData(
+                                    color: Colors.white,
+                                  ),
+                                  elevation: 0,
+                                ),
+                                body: Center(
+                                  child: InteractiveViewer(
+                                    child: Hero(
+                                      tag: 'helper_avatar_${profile.id}',
+                                      child: Image.network(
+                                        profile.avatarUrl!,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
+                              fullscreenDialog: true,
                             ),
-                          ),
-                        ),
-                        fullscreenDialog: true,
-                      ),
-                    );
-                  } : null,
+                          );
+                        }
+                      : null,
                   child: Hero(
                     tag: 'helper_avatar_${profile.id}',
                     child: CircleAvatar(
                       radius: 50,
                       backgroundColor: Theme.of(context).primaryColor,
-                      backgroundImage: profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty
+                      backgroundImage:
+                          profile.avatarUrl != null &&
+                              profile.avatarUrl!.isNotEmpty
                           ? NetworkImage(profile.avatarUrl!)
                           : null,
-                      child: profile.avatarUrl == null || profile.avatarUrl!.isEmpty
+                      child:
+                          profile.avatarUrl == null ||
+                              profile.avatarUrl!.isEmpty
                           ? Text(
-                              profile.firstName.isNotEmpty ? profile.firstName[0].toUpperCase() : '?',
-                              style: const TextStyle(color: Colors.white, fontSize: 40),
+                              profile.firstName.isNotEmpty
+                                  ? profile.firstName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 40,
+                              ),
                             )
                           : null,
                     ),
@@ -273,7 +354,10 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                 const SizedBox(height: 16),
                 Text(
                   profile.fullName,
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -282,30 +366,62 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                     const Icon(Icons.star, color: Colors.amber, size: 20),
                     const SizedBox(width: 4),
                     Text(
-                      profile.averageRating > 0 ? profile.averageRating.toStringAsFixed(1) : 'New',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      profile.averageRating > 0
+                          ? profile.averageRating.toStringAsFixed(1)
+                          : 'New',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     Text(
                       ' (${profile.reviewCount} reviews)',
                       style: const TextStyle(fontSize: 16, color: Colors.grey),
                     ),
-                    const SizedBox(width: 16),
-                    const Icon(Icons.work, color: Colors.grey, size: 18),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${profile.totalHires} hires',
-                      style: const TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: _openChat,
-                  icon: const Icon(Icons.chat),
-                  label: const Text('Contact Helper'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _openChat,
+                      icon: const Icon(Icons.chat, size: 18),
+                      label: const Text('Message'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _callHelper,
+                      icon: const Icon(Icons.phone, size: 18),
+                      label: const Text('Call'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                      ),
+                    ),
+                    if (profile.locationLatitude != null &&
+                        profile.locationLongitude != null)
+                      OutlinedButton.icon(
+                        onPressed: _getDirections,
+                        icon: const Icon(Icons.directions, size: 18),
+                        label: const Text('Directions'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -317,37 +433,91 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Details', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Details',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 16),
-                if (profile.serviceCategory != null && profile.serviceCategory!.isNotEmpty)
-                  _buildDetailRow(Icons.handyman, 'Service Category', profile.serviceCategory!),
-                _buildDetailRow(Icons.payments, 'Base Price', 'KES ${profile.helperPrice.toStringAsFixed(2)}'),
-                if (profile.serviceAreaMode == 'RADIUS' && profile.serviceRadiusKm != null && profile.serviceRadiusKm! > 0) ...[
-                  _buildDetailRow(Icons.my_location, 'Service Area', 'Within ${profile.serviceRadiusKm!.toStringAsFixed(0)} km radius of pinned location'),
+                if (profile.serviceCategory != null &&
+                    profile.serviceCategory!.isNotEmpty)
+                  _buildDetailRow(
+                    Icons.handyman,
+                    'Service Category',
+                    profile.serviceCategory!,
+                  ),
+                _buildDetailRow(
+                  Icons.payments,
+                  'Base Price',
+                  'KES ${profile.helperPrice.toStringAsFixed(2)}',
+                ),
+                if (profile.serviceAreaMode == 'RADIUS' &&
+                    profile.serviceRadiusKm != null &&
+                    profile.serviceRadiusKm! > 0) ...[
+                  _buildDetailRow(
+                    Icons.my_location,
+                    'Service Area',
+                    'Within ${profile.serviceRadiusKm!.toStringAsFixed(0)} km radius',
+                  ),
+                  if (profile.hideExactLocation)
+                    _buildDetailRow(
+                      Icons.location_off,
+                      'Exact Location',
+                      'Hidden by provider (Mobile service with no physical store)',
+                    ),
                 ] else ...[
                   if (profile.helperCoverageLevel != null)
-                    _buildDetailRow(Icons.map, 'Coverage Level', profile.helperCoverageLevel!),
+                    _buildDetailRow(
+                      Icons.map,
+                      'Coverage Level',
+                      profile.helperCoverageLevel!,
+                    ),
                   if (profile.helperCounty != null)
-                    _buildDetailRow(Icons.location_city, 'County', profile.helperCounty!),
+                    _buildDetailRow(
+                      Icons.location_city,
+                      'County',
+                      profile.helperCounty!,
+                    ),
                   if (profile.helperConstituencies.isNotEmpty)
-                    _buildDetailRow(Icons.holiday_village, 'Constituencies', profile.helperConstituencies.join(', ')),
+                    _buildDetailRow(
+                      Icons.holiday_village,
+                      'Constituencies',
+                      profile.helperConstituencies.join(', '),
+                    ),
                   if (profile.helperWards.isNotEmpty)
-                    _buildDetailRow(Icons.location_on, 'Wards', profile.helperWards.join(', ')),
+                    _buildDetailRow(
+                      Icons.location_on,
+                      'Wards',
+                      profile.helperWards.join(', '),
+                    ),
                 ],
                 if (profile.offeredServices.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  const Text('Offered Products & Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Offered Products & Services',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 8),
-                  ...profile.offeredServices.map((service) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(service, style: const TextStyle(fontSize: 15))),
-                      ],
+                  ...profile.offeredServices.map(
+                    (service) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              service,
+                              style: const TextStyle(fontSize: 15),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  )),
+                  ),
                 ],
               ],
             ),
@@ -360,8 +530,11 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Reviews', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                if (profile.canReview)
+                const Text(
+                  'Reviews',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                if (AuthService.currentUser?.id != widget.helperId)
                   TextButton.icon(
                     onPressed: _showRateDialog,
                     icon: const Icon(Icons.rate_review),
@@ -370,12 +543,15 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
               ],
             ),
           ),
-          
+
           if (_reviews.isEmpty)
             const Padding(
               padding: EdgeInsets.all(32.0),
               child: Center(
-                child: Text('No reviews yet.', style: TextStyle(color: Colors.grey)),
+                child: Text(
+                  'No reviews yet.',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
             )
           else
@@ -387,11 +563,16 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                 final review = _reviews[index];
                 return ListTile(
                   leading: CircleAvatar(
-                    child: Text(review.clientName.isNotEmpty ? review.clientName[0] : '?'),
+                    child: Text(
+                      review.clientName.isNotEmpty ? review.clientName[0] : '?',
+                    ),
                   ),
                   title: Row(
                     children: [
-                      Text(review.clientName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        review.clientName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       const SizedBox(width: 8),
                       Row(
                         children: List.generate(5, (i) {
@@ -415,7 +596,10 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                       const SizedBox(height: 4),
                       Text(
                         DateFormat.yMMMd().format(review.createdAt),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                       ),
                     ],
                   ),
@@ -439,7 +623,10 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(
+                  label,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
                 Text(value, style: const TextStyle(fontSize: 16)),
               ],
             ),

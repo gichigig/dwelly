@@ -7,6 +7,7 @@ import 'found_id_scan_page.dart';
 import 'search_lost_id_page.dart';
 import 'location_verification_sheet.dart';
 import '../data/id_scanner_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class LostIdView extends ConsumerStatefulWidget {
   const LostIdView({super.key});
@@ -19,25 +20,22 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
   final _searchController = TextEditingController();
   List<LostIdAlertModel>? _alerts;
   bool _isLoadingAlerts = false;
-  
+
   // Typewriter animation state
   String _hintText = '';
   int _currentHintIndex = 0;
   int _charIndex = 0;
   bool _isDeleting = false;
   Timer? _typewriterTimer;
-  
+
   // Location state
   bool _isGettingLocation = false;
   String? _currentLocation;
   String? _selectedWard;
   String? _selectedConstituency;
   String? _selectedCounty;
-  
-  final List<String> _hints = [
-    'Scan a lost ID',
-    'Search your dream rental',
-  ];
+
+  final List<String> _hints = ['Scan a lost ID', 'Search your dream rental'];
 
   @override
   void initState() {
@@ -56,33 +54,33 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
     _searchController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _checkAndRequestLocation() async {
     setState(() => _isGettingLocation = true);
-    
+
     try {
       // Check permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      
+
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         setState(() => _isGettingLocation = false);
         return;
       }
-      
+
       // Permission granted - get location and show verification sheet
       final locationResult = await DeviceLocationService.getCurrentLocation();
-      
+
       if (locationResult.success && locationResult.hasLocationData && mounted) {
         // Show verification sheet
         final verifiedLocation = await showLocationVerificationSheet(
           context,
           detectedLocation: locationResult,
         );
-        
+
         if (verifiedLocation != null && mounted) {
           setState(() {
             _currentLocation = verifiedLocation.displayName;
@@ -101,7 +99,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
       }
     }
   }
-  
+
   void _showIdOptionsDialog() {
     const nationalIdType = 'NATIONAL_ID';
     const schoolIdType = 'SCHOOL_ID';
@@ -127,10 +125,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
               const SizedBox(height: 16),
               const Text(
                 'What would you like to do?',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               ListTile(
@@ -146,9 +141,8 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const FoundIdScanPage(
-                        initialIdType: nationalIdType,
-                      ),
+                      builder: (context) =>
+                          const FoundIdScanPage(initialIdType: nationalIdType),
                     ),
                   );
                 },
@@ -167,9 +161,8 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const FoundIdScanPage(
-                        initialIdType: schoolIdType,
-                      ),
+                      builder: (context) =>
+                          const FoundIdScanPage(initialIdType: schoolIdType),
                     ),
                   );
                 },
@@ -188,9 +181,8 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const SearchLostIdPage(
-                        initialIdType: nationalIdType,
-                      ),
+                      builder: (context) =>
+                          const SearchLostIdPage(initialIdType: nationalIdType),
                     ),
                   );
                 },
@@ -209,9 +201,8 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const SearchLostIdPage(
-                        initialIdType: schoolIdType,
-                      ),
+                      builder: (context) =>
+                          const SearchLostIdPage(initialIdType: schoolIdType),
                     ),
                   );
                 },
@@ -222,20 +213,20 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
       ),
     );
   }
-  
+
   Future<void> _refreshLocation() async {
     setState(() => _isGettingLocation = true);
-    
+
     try {
       final locationResult = await DeviceLocationService.getCurrentLocation();
-      
+
       if (locationResult.success && locationResult.hasLocationData && mounted) {
         // Show verification sheet
         final verifiedLocation = await showLocationVerificationSheet(
           context,
           detectedLocation: locationResult,
         );
-        
+
         if (verifiedLocation != null && mounted) {
           setState(() {
             _currentLocation = verifiedLocation.displayName;
@@ -248,9 +239,9 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to get location: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to get location: $e')));
       }
     } finally {
       if (mounted) {
@@ -258,12 +249,14 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
       }
     }
   }
-  
+
   void _startTypewriterAnimation() {
-    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 100), (
+      timer,
+    ) {
       setState(() {
         final currentHint = _hints[_currentHintIndex];
-        
+
         if (!_isDeleting) {
           // Typing
           if (_charIndex < currentHint.length) {
@@ -309,7 +302,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: _searchController.text.isEmpty 
+              hintText: _searchController.text.isEmpty
                   ? (_hintText.isEmpty ? '' : '$_hintText|')
                   : null,
               hintStyle: TextStyle(
@@ -331,7 +324,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                       child: SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       ),
                     )
                   : IconButton(
@@ -347,7 +340,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
             onChanged: (_) => setState(() {}),
           ),
         ),
-        
+
         // Action buttons
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -389,12 +382,10 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
             ],
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
-        Expanded(
-          child: _buildContent(),
-        ),
+
+        Expanded(child: _buildContent()),
       ],
     );
   }
@@ -448,9 +439,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
 
   Widget _buildContent() {
     if (_isLoadingAlerts && _alerts == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     final alerts = _alerts ?? [];
@@ -467,7 +456,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
             Text(
               'Lost & Found ID Service',
               style: TextStyle(
-                color: Colors.grey[700], 
+                color: Colors.grey[700],
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -554,7 +543,10 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [Colors.blue.shade400, Colors.blue.shade700],
+                            colors: [
+                              Colors.blue.shade400,
+                              Colors.blue.shade700,
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -590,7 +582,11 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                             const SizedBox(height: 4),
                             Row(
                               children: [
-                                Icon(Icons.badge, size: 14, color: Colors.grey.shade500),
+                                Icon(
+                                  Icons.badge,
+                                  size: 14,
+                                  color: Colors.grey.shade500,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   'ID No: ${alert.idNumber}',
@@ -604,11 +600,16 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                             if (alert.whatsappAlertsEnabled) ...[
                               const SizedBox(height: 6),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.green.shade50,
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.green.shade200),
+                                  border: Border.all(
+                                    color: Colors.green.shade200,
+                                  ),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -647,7 +648,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
                             builder: (context) => AlertDialog(
                               title: const Text('Cancel ID Alert?'),
                               content: Text(
-                                'Are you sure you want to stop monitoring matching updates for ID card No. ${alert.idNumber}?'
+                                'Are you sure you want to stop monitoring matching updates for ID card No. ${alert.idNumber}?',
                               ),
                               actions: [
                                 TextButton(
@@ -688,7 +689,7 @@ class _LostIdViewState extends ConsumerState<LostIdView> {
       ),
     );
   }
-  
+
   Widget _buildInfoChip(IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -717,7 +718,7 @@ class _ActionCard extends StatelessWidget {
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
-  
+
   const _ActionCard({
     required this.icon,
     required this.title,
@@ -725,7 +726,7 @@ class _ActionCard extends StatelessWidget {
     required this.color,
     required this.onTap,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -755,10 +756,7 @@ class _ActionCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: color.withOpacity(0.7),
-                ),
+                style: TextStyle(fontSize: 12, color: color.withOpacity(0.7)),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -768,4 +766,3 @@ class _ActionCard extends StatelessWidget {
     );
   }
 }
-

@@ -67,6 +67,7 @@ class User {
   final double? serviceRadiusKm;
   final String? serviceAreaMode;
   final List<String> offeredServices;
+  final bool hideExactLocation;
 
   User({
     this.id,
@@ -106,6 +107,7 @@ class User {
     this.serviceRadiusKm,
     this.serviceAreaMode,
     this.offeredServices = const [],
+    this.hideExactLocation = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -158,6 +160,7 @@ class User {
       serviceRadiusKm: _toDouble(json['serviceRadiusKm']),
       serviceAreaMode: json['serviceAreaMode']?.toString(),
       offeredServices: _toStringList(json['offeredServices']),
+      hideExactLocation: json['hideExactLocation'] ?? false,
     );
   }
 
@@ -188,10 +191,13 @@ class User {
       if (premiumExpiresAt != null)
         'premiumExpiresAt': premiumExpiresAt!.toIso8601String(),
       if (realadminPremiumStartedAt != null)
-        'realadminPremiumStartedAt': realadminPremiumStartedAt!.toIso8601String(),
+        'realadminPremiumStartedAt': realadminPremiumStartedAt!
+            .toIso8601String(),
       if (realadminPremiumExpiresAt != null)
-        'realadminPremiumExpiresAt': realadminPremiumExpiresAt!.toIso8601String(),
-      if (helperCoverageLevel != null) 'helperCoverageLevel': helperCoverageLevel,
+        'realadminPremiumExpiresAt': realadminPremiumExpiresAt!
+            .toIso8601String(),
+      if (helperCoverageLevel != null)
+        'helperCoverageLevel': helperCoverageLevel,
       if (helperCounty != null) 'helperCounty': helperCounty,
       'helperConstituencies': helperConstituencies,
       'helperWards': helperWards,
@@ -202,6 +208,7 @@ class User {
       if (serviceRadiusKm != null) 'serviceRadiusKm': serviceRadiusKm,
       if (serviceAreaMode != null) 'serviceAreaMode': serviceAreaMode,
       'offeredServices': offeredServices,
+      'hideExactLocation': hideExactLocation,
     };
   }
 
@@ -302,8 +309,10 @@ class User {
       fypNicknames: fypNicknames ?? this.fypNicknames,
       premiumStartedAt: premiumStartedAt ?? this.premiumStartedAt,
       premiumExpiresAt: premiumExpiresAt ?? this.premiumExpiresAt,
-      realadminPremiumStartedAt: realadminPremiumStartedAt ?? this.realadminPremiumStartedAt,
-      realadminPremiumExpiresAt: realadminPremiumExpiresAt ?? this.realadminPremiumExpiresAt,
+      realadminPremiumStartedAt:
+          realadminPremiumStartedAt ?? this.realadminPremiumStartedAt,
+      realadminPremiumExpiresAt:
+          realadminPremiumExpiresAt ?? this.realadminPremiumExpiresAt,
       helperCoverageLevel: helperCoverageLevel ?? this.helperCoverageLevel,
       helperCounty: helperCounty ?? this.helperCounty,
       helperConstituencies: helperConstituencies ?? this.helperConstituencies,

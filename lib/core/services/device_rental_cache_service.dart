@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/rentals/domain/rental_filters.dart';
 import '../models/rental.dart';
+import 'dwelly_media_cache_manager.dart';
 
 class DeviceCachedRentals {
   final List<Rental> rentals;
@@ -17,9 +18,10 @@ class DeviceRentalCacheService {
 
   static const String _listKey = 'device_rentals_list_v1';
   static const String _detailsKey = 'device_rental_details_v1';
+  static const String _detailsMediaIndexKey = 'device_rental_media_index_v1';
   static const Duration _listTtl = Duration(minutes: 10);
   static const Duration _detailTtl = Duration(minutes: 20);
-  static const int _maxDetails = 20;
+  static const int _maxDetails = 30;
 
   static String signatureForFilters(RentalFilters filters) {
     final params = <String, dynamic>{
@@ -91,6 +93,7 @@ class DeviceRentalCacheService {
     if (cachedAt == null || DateTime.now().difference(cachedAt) > _detailTtl) {
       decoded.remove('$id');
       await prefs.setString(_detailsKey, jsonEncode(decoded));
+      await _syncMediaCacheWithDetails(prefs, decoded);
       return null;
     }
 
@@ -121,12 +124,56 @@ class DeviceRentalCacheService {
 
     _trimDetails(decoded);
     await prefs.setString(_detailsKey, jsonEncode(decoded));
+    await _syncMediaCacheWithDetails(prefs, decoded);
   }
 
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_listKey);
     await prefs.remove(_detailsKey);
+    await prefs.remove(_detailsMediaIndexKey);
+    await DwellyMediaCacheManager.instance.emptyCache();
+  }
+
+  static Future<void> _syncMediaCacheWithDetails(
+    SharedPreferences prefs,
+    Map<String, dynamic> detailEntries,
+  ) async {
+    final allowedMediaUrls = <String>{};
+
+    for (final entry in detailEntries.values) {
+      final entryMap = entry as Map<String, dynamic>?;
+      if (entryMap == null) continue;
+      final data = entryMap['data'] as Map<String, dynamic>?;
+      if (data == null) continue;
+
+      final mediaUrl = _extractPrimaryMediaUrl(data);
+      if (mediaUrl != null && mediaUrl.isNotEmpty) {
+        allowedMediaUrls.add(mediaUrl);
+      }
+    }
+
+    final previousUrls =
+        (prefs.getStringList(_detailsMediaIndexKey) ?? const <String>[])
+            .toSet();
+    final staleUrls = previousUrls.difference(allowedMediaUrls);
+
+    for (final url in staleUrls) {
+      await DwellyMediaCacheManager.instance.removeFile(url);
+    }
+
+    await prefs.setStringList(_detailsMediaIndexKey, allowedMediaUrls.toList());
+  }
+
+  static String? _extractPrimaryMediaUrl(Map<String, dynamic> data) {
+    final imageUrls = (data['imageUrls'] as List<dynamic>? ?? const <dynamic>[])
+        .map((e) => e.toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (imageUrls.isEmpty) {
+      return null;
+    }
+    return imageUrls.first;
   }
 
   static void _trimDetails(Map<String, dynamic> entries) {
@@ -136,11 +183,13 @@ class DeviceRentalCacheService {
 
     final sorted = entries.entries.toList()
       ..sort((a, b) {
-        final aTime = DateTime.tryParse(
+        final aTime =
+            DateTime.tryParse(
               (a.value as Map<String, dynamic>)['cachedAt']?.toString() ?? '',
             ) ??
             DateTime.fromMillisecondsSinceEpoch(0);
-        final bTime = DateTime.tryParse(
+        final bTime =
+            DateTime.tryParse(
               (b.value as Map<String, dynamic>)['cachedAt']?.toString() ?? '',
             ) ??
             DateTime.fromMillisecondsSinceEpoch(0);

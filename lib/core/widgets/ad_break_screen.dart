@@ -97,4 +97,3 @@ class _AdBreakScreenState extends State<AdBreakScreen> {
     );
   }
 }
-

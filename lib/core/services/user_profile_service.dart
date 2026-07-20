@@ -38,8 +38,12 @@ class PublicProfile {
       role: profileJson['role'] as String? ?? 'USER',
       userType: profileJson['userType'] as String?,
       verificationStatus: profileJson['verificationStatus'] as String?,
-      memberSince: profileJson['createdAt'] != null ? DateTime.tryParse(profileJson['createdAt'].toString()) : null,
-      activeListings: listingsJson.map((e) => Rental.fromJson(e as Map<String, dynamic>)).toList(),
+      memberSince: profileJson['createdAt'] != null
+          ? DateTime.tryParse(profileJson['createdAt'].toString())
+          : null,
+      activeListings: listingsJson
+          .map((e) => Rental.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -61,7 +65,10 @@ class PublicProfile {
 }
 
 class UserProfileService {
-  static Future<PublicProfile> getPublicProfile(int userId, {bool forceRefresh = false}) async {
+  static Future<PublicProfile> getPublicProfile(
+    int userId, {
+    bool forceRefresh = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final cacheKey = 'public_profile_$userId';
 
@@ -86,13 +93,19 @@ class UserProfileService {
         final decoded = jsonDecode(response.body);
         return PublicProfile.fromJson(decoded);
       }
-      
-      throw ApiService.parseHttpError(response, fallbackMessage: 'Failed to load public profile.');
+
+      throw ApiService.parseHttpError(
+        response,
+        fallbackMessage: 'Failed to load public profile.',
+      );
     } catch (e) {
-      throw ApiService.parseException(e, fallbackMessage: 'Failed to load public profile.');
+      throw ApiService.parseException(
+        e,
+        fallbackMessage: 'Failed to load public profile.',
+      );
     }
   }
-  
+
   static Future<void> clearProfileCache(int userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('public_profile_$userId');

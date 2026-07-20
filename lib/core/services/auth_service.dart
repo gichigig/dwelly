@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
@@ -18,6 +19,7 @@ import 'device_location_service.dart';
 import 'notification_service.dart';
 import 'contact_service.dart';
 import 'premium_service.dart';
+import 'video_unlock_session_service.dart';
 
 class AuthService {
   static const String _tokenKey = 'auth_token';
@@ -34,13 +36,14 @@ class AuthService {
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    serverClientId: '452516814543-4jltg8psfbeb00f31kk71jtas50tifpd.apps.googleusercontent.com',
+    serverClientId:
+        '452516814543-4jltg8psfbeb00f31kk71jtas50tifpd.apps.googleusercontent.com',
   );
   static final PasskeyAuthenticator _passkeyAuthenticator =
       PasskeyAuthenticator();
   static const String _bluvberryCallbackScheme = String.fromEnvironment(
     'BLUVBERRY_CALLBACK_SCHEME',
-    defaultValue: 'dwelly',
+    defaultValue: 'dwellyauth',
   );
 
   static String? get token => _token;
@@ -131,7 +134,11 @@ class AuthService {
     }
   }
 
-  static Future<AuthResponse> login(String email, String password, {bool forceLogin = false}) async {
+  static Future<AuthResponse> login(
+    String email,
+    String password, {
+    bool forceLogin = false,
+  }) async {
     final initResult = await loginInit(email, password, forceLogin: forceLogin);
     if (initResult.status == LoginInitStatus.authenticated &&
         initResult.authResponse != null) {
@@ -145,8 +152,7 @@ class AuthService {
 
   static Future<LoginInitResult> loginInit(
     String email,
-    String password,
-    {
+    String password, {
     bool persistAuthenticatedSession = true,
     bool forceLogin = false,
   }) async {
@@ -177,7 +183,9 @@ class AuthService {
           if (decoded['error'] == 'CONCURRENT_LOGIN_DETECTED') {
             throw AppError(
               code: AppErrorCode.concurrentLogin,
-              message: decoded['message'] ?? 'You are already logged in on another device.',
+              message:
+                  decoded['message'] ??
+                  'You are already logged in on another device.',
               statusCode: 409,
             );
           }
@@ -204,13 +212,16 @@ class AuthService {
     }
   }
 
-  static Future<MfaChallenge> passkeyLoginInit(String email, {bool forceLogin = false}) async {
+  static Future<MfaChallenge> passkeyLoginInit(
+    String email, {
+    bool forceLogin = false,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/login/passkey/init'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'email': email, 
+          'email': email,
           'clientType': _resolveClientType(),
           'forceLogin': forceLogin,
         }),
@@ -232,7 +243,9 @@ class AuthService {
           if (decoded['error'] == 'CONCURRENT_LOGIN_DETECTED') {
             throw AppError(
               code: AppErrorCode.concurrentLogin,
-              message: decoded['message'] ?? 'You are already logged in on another device.',
+              message:
+                  decoded['message'] ??
+                  'You are already logged in on another device.',
               statusCode: 409,
             );
           }
@@ -525,6 +538,7 @@ class AuthService {
     required String firstName,
     required String lastName,
     String? phone,
+    bool persistSession = true,
   }) async {
     try {
       final response = await http.post(
@@ -541,7 +555,9 @@ class AuthService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final authResponse = AuthResponse.fromJson(jsonDecode(response.body));
-        await _saveAuth(authResponse);
+        if (persistSession) {
+          await _saveAuth(authResponse);
+        }
         return authResponse;
       }
       if (response.statusCode == 409) {
@@ -567,7 +583,9 @@ class AuthService {
 
   // ==================== Bluvberry Sign-In ====================
 
-  static Future<AuthResponse> bluvberryLogin({bool persistSession = true}) async {
+  static Future<AuthResponse> bluvberryLogin({
+    bool persistSession = true,
+  }) async {
     try {
       final clientType = _resolveClientType();
       final authorizeUrl =
@@ -576,6 +594,10 @@ class AuthService {
       final result = await FlutterWebAuth2.authenticate(
         url: authorizeUrl,
         callbackUrlScheme: _bluvberryCallbackScheme,
+        options: const FlutterWebAuth2Options(
+          preferEphemeral: true,
+          intentFlags: ephemeralIntentFlags,
+        ),
       );
 
       final callbackUri = Uri.parse(result);
@@ -620,7 +642,9 @@ class AuthService {
 
   // ==================== RealAdmin SSO ====================
 
-  static Future<AuthResponse> realAdminSsoLogin({bool persistSession = true}) async {
+  static Future<AuthResponse> realAdminSsoLogin({
+    bool persistSession = true,
+  }) async {
     try {
       // Typically, an environment variable or config would dictate the RealAdmin frontend URL.
       // Pointing directly to production SSO
@@ -628,11 +652,15 @@ class AuthService {
 
       final result = await FlutterWebAuth2.authenticate(
         url: authorizeUrl,
-        callbackUrlScheme: 'dwelly',
+        callbackUrlScheme: 'dwellyauth',
+        options: const FlutterWebAuth2Options(
+          preferEphemeral: true,
+          intentFlags: ephemeralIntentFlags,
+        ),
       );
 
       final callbackUri = Uri.parse(result);
-      final code = callbackUri.queryParameters['code'];
+      final code = callbackUri.queryParameters['code']?.trim();
       if (code == null || code.isEmpty) {
         throw const AppError.server(
           message: 'RealAdmin SSO did not return a valid code.',
@@ -652,9 +680,13 @@ class AuthService {
         }
         return authResponse;
       } else {
+        _logDebug(
+          'RealAdmin SSO exchange failed: ${response.statusCode}',
+          response.body,
+        );
         throw ApiService.parseHttpError(
           response,
-          fallbackMessage: 'RealAdmin SSO failed.',
+          fallbackMessage: 'RealAdmin SSO failed (${response.statusCode}).',
         );
       }
     } catch (e) {
@@ -698,10 +730,7 @@ class AuthService {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/google'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'idToken': idToken,
-          'forceLogin': forceLogin,
-        }),
+        body: jsonEncode({'idToken': idToken, 'forceLogin': forceLogin}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -719,7 +748,9 @@ class AuthService {
             unawaited(googleSignOut());
             throw AppError(
               code: AppErrorCode.concurrentLogin,
-              message: decoded['message'] ?? 'You are already logged in on another device.',
+              message:
+                  decoded['message'] ??
+                  'You are already logged in on another device.',
               statusCode: 409,
             );
           }
@@ -984,11 +1015,11 @@ class AuthService {
               (data['fypNicknames'] as List<dynamic>?)?.cast<String>() ??
               user.fypNicknames,
           premiumStartedAt: data['premiumStartedAt'] != null
-            ? DateTime.tryParse(data['premiumStartedAt'].toString())
-            : _currentUser!.premiumStartedAt,
+              ? DateTime.tryParse(data['premiumStartedAt'].toString())
+              : _currentUser!.premiumStartedAt,
           premiumExpiresAt: data['premiumExpiresAt'] != null
-            ? DateTime.tryParse(data['premiumExpiresAt'].toString())
-            : _currentUser!.premiumExpiresAt,
+              ? DateTime.tryParse(data['premiumExpiresAt'].toString())
+              : _currentUser!.premiumExpiresAt,
         );
         _currentUser = updatedUser;
         final prefs = await SharedPreferences.getInstance();
@@ -1089,15 +1120,21 @@ class AuthService {
     // Notify the backend to revoke the token if possible.
     if (_token != null && _refreshToken != null) {
       try {
-        await http.post(
-          Uri.parse('${ApiService.baseUrl}/auth/logout'),
-          headers: ApiService.getHeaders(token: _token),
-        ).timeout(const Duration(seconds: 3));
+        await http
+            .post(
+              Uri.parse('${ApiService.baseUrl}/auth/logout'),
+              headers: ApiService.getHeaders(token: _token),
+            )
+            .timeout(const Duration(seconds: 3));
       } catch (_) {}
     }
 
     if (tokenToUnregister != null) {
-      unawaited(NotificationService.unregisterDevice(token: tokenToUnregister).catchError((_) => false));
+      unawaited(
+        NotificationService.unregisterDevice(
+          token: tokenToUnregister,
+        ).catchError((_) => false),
+      );
     }
     _token = null;
     _refreshToken = null;
@@ -1106,11 +1143,19 @@ class AuthService {
     PremiumService.notifyPremiumStatusChanged();
     CacheManager.clearAll();
     ApiService.clearCachedGets();
+    VideoUnlockSessionService.clearSession();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_userKey);
     await prefs.remove(_tenantModeKey);
+    try {
+      if (Platform.isAndroid) {
+        await const MethodChannel(
+          'com.ishinadwelly.app/native_notification',
+        ).invokeMethod('clearAuthToken');
+      }
+    } catch (_) {}
     await googleSignOut();
   }
 
@@ -1155,6 +1200,17 @@ class AuthService {
     }
     await prefs.setString(_userKey, jsonEncode(_currentUser!.toJson()));
     await prefs.setString('last_login_at', DateTime.now().toIso8601String());
+    try {
+      if (Platform.isAndroid) {
+        await const MethodChannel(
+          'com.ishinadwelly.app/native_notification',
+        ).invokeMethod('saveAuthToken', {
+          'token': auth.token,
+          'refreshToken': auth.refreshToken ?? '',
+          'apiBaseUrl': ApiService.baseUrl,
+        });
+      }
+    } catch (_) {}
 
     // Notify premium status change so ad widgets react immediately.
     PremiumService.notifyPremiumStatusChanged();

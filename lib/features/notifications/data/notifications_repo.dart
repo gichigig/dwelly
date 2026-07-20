@@ -7,4 +7,3 @@ abstract class NotificationsRepo {
   Future<void> markAllAsRead();
   Future<void> delete(String id);
 }
-

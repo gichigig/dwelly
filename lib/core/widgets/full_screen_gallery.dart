@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'shimmer_placeholder.dart';
 import '../services/google_ad_service.dart';
+import '../services/video_unlock_session_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class FullScreenGallery extends StatefulWidget {
+  final int? rentalId;
   final List<String> imageUrls;
+  final List<String> thumbnailUrls;
+  final List<String> mediumUrls;
   final String? videoUrl;
   final int initialIndex;
   final bool showVideoFirst;
@@ -11,7 +17,10 @@ class FullScreenGallery extends StatefulWidget {
 
   const FullScreenGallery({
     super.key,
+    this.rentalId,
     required this.imageUrls,
+    this.thumbnailUrls = const [],
+    this.mediumUrls = const [],
     this.videoUrl,
     this.initialIndex = 0,
     this.showVideoFirst = false,
@@ -31,7 +40,12 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   @override
   void initState() {
     super.initState();
-    _hasUnlockedVideo = widget.isPremium;
+    _hasUnlockedVideo =
+        widget.isPremium ||
+        VideoUnlockSessionService.isVideoUnlocked(
+          rentalId: widget.rentalId,
+          videoUrl: widget.videoUrl,
+        );
     _pageController = PageController(initialPage: widget.initialIndex);
     if (widget.videoUrl != null && _hasUnlockedVideo) {
       _initializeVideo();
@@ -39,13 +53,14 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   }
 
   void _initializeVideo() {
-    _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
-      ..initialize().then((_) {
-        _videoController!.setLooping(true);
-        _videoController!.setVolume(0.0); // Mute by default
-        _videoController!.play();
-        if (mounted) setState(() {});
-      });
+    _videoController =
+        VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
+          ..initialize().then((_) {
+            _videoController!.setLooping(true);
+            _videoController!.setVolume(0.0); // Mute by default
+            _videoController!.play();
+            if (mounted) setState(() {});
+          });
   }
 
   Future<void> _unlockVideoWithAd() async {
@@ -53,6 +68,10 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
       context,
       onReward: () {
         if (mounted) {
+          VideoUnlockSessionService.unlockVideo(
+            rentalId: widget.rentalId,
+            videoUrl: widget.videoUrl,
+          );
           setState(() => _hasUnlockedVideo = true);
           _initializeVideo();
         }
@@ -67,7 +86,8 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
     super.dispose();
   }
 
-  int get _itemCount => widget.imageUrls.length + (widget.videoUrl != null ? 1 : 0);
+  int get _itemCount =>
+      widget.imageUrls.length + (widget.videoUrl != null ? 1 : 0);
   int get _videoIndex => widget.showVideoFirst ? 0 : widget.imageUrls.length;
 
   @override
@@ -94,7 +114,11 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+                        const Icon(
+                          Icons.lock_outline,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
                         const SizedBox(height: 16),
                         const Text(
                           'Watch Ad to Unlock Video',
@@ -112,7 +136,10 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Theme.of(context).primaryColor,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ],
@@ -122,7 +149,8 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
               );
             }
 
-            if (_videoController != null && _videoController!.value.isInitialized) {
+            if (_videoController != null &&
+                _videoController!.value.isInitialized) {
               return Center(
                 child: AspectRatio(
                   aspectRatio: _videoController!.value.aspectRatio,
@@ -145,7 +173,11 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           color: Colors.transparent,
                           child: _isPlaying
                               ? const SizedBox.shrink()
-                              : const Icon(Icons.play_circle_fill, color: Colors.white54, size: 80),
+                              : const Icon(
+                                  Icons.play_circle_fill,
+                                  color: Colors.white54,
+                                  size: 80,
+                                ),
                         ),
                       ),
                       Positioned(
@@ -173,17 +205,33 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                 ),
               );
             }
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: DwellyOrbitingLoader());
           }
 
-          final imageIndex = (widget.videoUrl != null && index > _videoIndex) ? index - 1 : (widget.videoUrl != null && index < _videoIndex) ? index : index;
+          final imageIndex = (widget.videoUrl != null && index > _videoIndex)
+              ? index - 1
+              : (widget.videoUrl != null && index < _videoIndex)
+              ? index
+              : index;
           return InteractiveViewer(
             minScale: 1.0,
             maxScale: 4.0,
             child: Center(
-              child: Image.network(
-                widget.imageUrls[imageIndex],
+              child: DwellyNetworkImage(
+                imageUrl: widget.imageUrls[imageIndex],
+                thumbnailUrl: imageIndex < widget.thumbnailUrls.length
+                    ? widget.thumbnailUrls[imageIndex]
+                    : null,
+                mediumUrl: imageIndex < widget.mediumUrls.length
+                    ? widget.mediumUrls[imageIndex]
+                    : null,
+                loadFull: true,
                 fit: BoxFit.contain,
+                errorWidget: const Icon(
+                  Icons.image_not_supported_outlined,
+                  color: Colors.white54,
+                  size: 48,
+                ),
               ),
             ),
           );

@@ -83,12 +83,13 @@ class _NetworkBannerState extends State<NetworkBanner> {
             return Positioned(
               left: 16,
               right: 16,
-              bottom: 24,
+              top: 12,
               child: SafeArea(
+                bottom: false,
                 child: AnimatedSlide(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
-                  offset: _isVisible ? Offset.zero : const Offset(0, 1.5),
+                  offset: _isVisible ? Offset.zero : const Offset(0, -1.5),
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 250),
                     opacity: _isVisible ? 1.0 : 0.0,
@@ -99,14 +100,13 @@ class _NetworkBannerState extends State<NetworkBanner> {
                         borderRadius: BorderRadius.circular(8),
                         color: const Color(0xFF323232),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                            horizontal: 16,
+                          ),
                           child: Row(
                             children: [
-                              Icon(
-                                bannerIcon,
-                                color: iconColor,
-                                size: 20,
-                              ),
+                              Icon(bannerIcon, color: iconColor, size: 20),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
@@ -133,4 +133,3 @@ class _NetworkBannerState extends State<NetworkBanner> {
     );
   }
 }
-

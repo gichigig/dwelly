@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class SimpleVideoPreview extends StatefulWidget {
   final String videoUrl;
@@ -23,15 +24,17 @@ class _SimpleVideoPreviewState extends State<SimpleVideoPreview> {
   void initState() {
     super.initState();
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
+      ..initialize()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _isInitialized = true;
+              });
+            }
+          })
+          .catchError((e) {
+            debugPrint('Error initializing video: $e');
           });
-        }
-      }).catchError((e) {
-        debugPrint('Error initializing video: $e');
-      });
   }
 
   @override
@@ -61,8 +64,8 @@ class _SimpleVideoPreviewState extends State<SimpleVideoPreview> {
               ),
             )
           else
-            const CircularProgressIndicator(color: Colors.white),
-          
+            const DwellyOrbitingLoader(glowColor: Colors.white),
+
           // Play/Pause overlay
           if (_isInitialized)
             GestureDetector(
@@ -79,13 +82,15 @@ class _SimpleVideoPreviewState extends State<SimpleVideoPreview> {
                 color: Colors.transparent, // Capture taps over the video
                 alignment: Alignment.center,
                 child: Icon(
-                  _controller.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                  _controller.value.isPlaying
+                      ? Icons.pause_circle_filled
+                      : Icons.play_circle_fill,
                   size: 50,
                   color: Colors.white.withOpacity(0.8),
                 ),
               ),
             ),
-          
+
           // Remove button
           Positioned(
             top: 4,

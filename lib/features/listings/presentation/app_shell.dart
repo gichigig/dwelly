@@ -60,9 +60,7 @@ class _PlaceholderPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: Text(title, style: const TextStyle(fontSize: 22)),
-        ),
+        child: Center(child: Text(title, style: const TextStyle(fontSize: 22))),
       ),
     );
   }

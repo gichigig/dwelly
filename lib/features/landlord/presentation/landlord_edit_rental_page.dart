@@ -10,11 +10,16 @@ import '../../../core/services/auth_service.dart';
 import 'widgets/simple_video_preview.dart';
 
 import '../../../core/models/rental.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class LandlordEditRentalPage extends StatefulWidget {
   final Rental rental;
   final List<dynamic> buildings;
-  const LandlordEditRentalPage({super.key, required this.rental, required this.buildings});
+  const LandlordEditRentalPage({
+    super.key,
+    required this.rental,
+    required this.buildings,
+  });
 
   @override
   State<LandlordEditRentalPage> createState() => _LandlordEditRentalPageState();
@@ -22,7 +27,7 @@ class LandlordEditRentalPage extends StatefulWidget {
 
 class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
   final _formKey = GlobalKey<FormState>();
-  
+
   String? _selectedBuildingId;
   late String _propertyType;
   late int _bedrooms;
@@ -38,15 +43,81 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
   late bool _requiresApproval;
   late String _cardDisplayPreference;
   String? _availableFrom;
-  
+
   File? _imageFile;
   File? _videoFile;
   File? _compoundVideoFile;
   bool _isLoading = false;
 
   final List<String> _availableAmenities = [
-    'Wi-Fi', 'Air Conditioning', 'Pool', 'Gym', 'Security', 'Borehole', 'Solar Heating', 'Elevator', 'Backup Generator', 'Balcony'
+    'Wi-Fi',
+    'Air Conditioning',
+    'Pool',
+    'Gym',
+    'Security',
+    'Borehole',
+    'Solar Heating',
+    'Elevator',
+    'Backup Generator',
+    'Balcony',
   ];
+
+  static const List<String> _propertyTypes = [
+    'APARTMENT',
+    'HOUSE',
+    'STUDIO',
+    'BEDSITTER',
+    'SINGLE_ROOM',
+    'DOUBLE_ROOM',
+    'ROOM',
+    'CONDO',
+    'TOWNHOUSE',
+    'VILLA',
+    'AIR_BNB',
+    'PENTHOUSE',
+    'DUPLEX',
+    'OFFICE',
+    'SHOP',
+    'WAREHOUSE',
+    'OTHER',
+  ];
+
+  static bool _isNoBedBath(String type) {
+    return [
+      'BEDSITTER',
+      'SINGLE_ROOM',
+      'DOUBLE_ROOM',
+      'ROOM',
+      'STUDIO',
+      'OFFICE',
+      'SHOP',
+      'WAREHOUSE',
+    ].contains(type.toUpperCase());
+  }
+
+  static String _formatPropertyType(String type) {
+    const labels = {
+      'BEDSITTER': 'Bedsitter',
+      'SINGLE_ROOM': 'Single Room',
+      'DOUBLE_ROOM': 'Double Room',
+      'ROOM': 'Room',
+      'STUDIO': 'Studio',
+      'APARTMENT': 'Apartment',
+      'HOUSE': 'House',
+      'CONDO': 'Condo',
+      'TOWNHOUSE': 'Townhouse',
+      'VILLA': 'Villa',
+      'AIR_BNB': 'Air BnB',
+      'PENTHOUSE': 'Penthouse',
+      'DUPLEX': 'Duplex',
+      'OFFICE': 'Office',
+      'SHOP': 'Shop',
+      'WAREHOUSE': 'Warehouse',
+      'OTHER': 'Other',
+    };
+    return labels[type] ??
+        (type.isNotEmpty ? type[0] + type.substring(1).toLowerCase() : type);
+  }
 
   @override
   void initState() {
@@ -54,27 +125,41 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
     _propertyType = widget.rental.propertyType;
     _bedrooms = widget.rental.bedrooms;
     _bathrooms = widget.rental.bathrooms;
-    _priceController = TextEditingController(text: widget.rental.price.toStringAsFixed(0));
+    _priceController = TextEditingController(
+      text: widget.rental.price.toStringAsFixed(0),
+    );
     _descController = TextEditingController(text: widget.rental.description);
-    _squareFeetController = TextEditingController(text: widget.rental.squareFeet.toString());
-    _floorController = TextEditingController(text: widget.rental.floor?.toString() ?? '');
+    _squareFeetController = TextEditingController(
+      text: widget.rental.squareFeet.toString(),
+    );
+    _floorController = TextEditingController(
+      text: widget.rental.floor?.toString() ?? '',
+    );
     _amenities = List.from(widget.rental.amenities);
     _petsAllowed = widget.rental.petsAllowed;
     _parkingAvailable = widget.rental.parkingAvailable;
     _requiresApproval = widget.rental.requiresApproval;
-    _cardDisplayPreference = widget.rental.cardDisplayPreference ?? 'One Picture';
+    _cardDisplayPreference =
+        widget.rental.cardDisplayPreference ?? 'One Picture';
     _availableFrom = widget.rental.availableFrom;
 
     // Normalize propertyType to upper case to match dropdown values
     _propertyType = widget.rental.propertyType.toUpperCase();
-    if (!['APARTMENT', 'HOUSE', 'STUDIO', 'BEDSITTER'].contains(_propertyType)) {
+    if (!_propertyTypes.contains(_propertyType)) {
       _propertyType = 'APARTMENT';
+    }
+    if (_isNoBedBath(_propertyType)) {
+      _bedrooms = 0;
+      _bathrooms = 0;
     }
   }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
     if (picked != null) {
       setState(() {
         _imageFile = File(picked.path);
@@ -105,17 +190,14 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
     if (override.isNotEmpty) {
       baseUrl = override;
     }
-    
-    final params = <String, String>{
-      'type': 'REALADMIN_PRO',
-      'amount': '1000',
-    };
-    
+
+    final params = <String, String>{'type': 'REALADMIN_PRO', 'amount': '1000'};
+
     final token = AuthService.token;
     if (token != null) {
       params['token'] = token;
     }
-    
+
     final uri = Uri.parse(baseUrl).replace(queryParameters: params);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -130,33 +212,56 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedBuildingId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a building')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a building')));
       return;
     }
 
     setState(() => _isLoading = true);
     try {
       String? imageUrl;
+      String? imageThumbnailUrl;
+      String? imageMediumUrl;
       String? videoUrl;
       String? compoundVideoUrl;
 
       if (_imageFile != null) {
-        imageUrl = await ApiService.uploadFile(_imageFile!, '/files/upload', token: AuthService.token);
+        final uploaded = await ApiService.uploadFileWithMetadata(
+          _imageFile!,
+          '/files/upload-property',
+          token: AuthService.token,
+        );
+        // Always use the compressed original as the primary image URL
+        imageUrl = uploaded.url;
+        imageThumbnailUrl = uploaded.thumbnailUrl;
+        imageMediumUrl = uploaded.mediumUrl;
       }
       if (_videoFile != null) {
-        videoUrl = await ApiService.uploadFile(_videoFile!, '/files/upload', token: AuthService.token);
+        videoUrl = await ApiService.uploadFile(
+          _videoFile!,
+          '/files/upload-video',
+          token: AuthService.token,
+        );
       }
       if (_compoundVideoFile != null) {
-        compoundVideoUrl = await ApiService.uploadFile(_compoundVideoFile!, '/files/upload', token: AuthService.token);
+        compoundVideoUrl = await ApiService.uploadFile(
+          _compoundVideoFile!,
+          '/files/upload-video',
+          token: AuthService.token,
+        );
       }
 
-      final building = widget.buildings.firstWhere((b) => b['id'].toString() == _selectedBuildingId);
+      final building = widget.buildings.firstWhere(
+        (b) => b['id'].toString() == _selectedBuildingId,
+      );
 
       final response = await ApiService.timedPut(
         Uri.parse('${ApiService.baseUrl}/rentals/${widget.rental.id}'),
         headers: LandlordService.jsonHeadersWithAuth(),
         body: json.encode({
-          if (_selectedBuildingId != null) 'buildingId': int.parse(_selectedBuildingId!),
+          if (_selectedBuildingId != null)
+            'buildingId': int.parse(_selectedBuildingId!),
           'propertyType': _propertyType,
           'bedrooms': _bedrooms,
           'bathrooms': _bathrooms,
@@ -171,6 +276,8 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
           'cardDisplayPreference': _cardDisplayPreference,
           'availableFrom': _availableFrom,
           if (imageUrl != null) 'imageUrls': [imageUrl],
+          if (imageThumbnailUrl != null) 'thumbnailUrls': [imageThumbnailUrl],
+          if (imageMediumUrl != null) 'mediumUrls': [imageMediumUrl],
           if (videoUrl != null) 'videoUrl': videoUrl,
           if (compoundVideoUrl != null) 'compoundVideoUrl': compoundVideoUrl,
           if (videoUrl != null || compoundVideoUrl != null) 'hasVideo': true,
@@ -185,7 +292,9 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -214,7 +323,7 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Rental')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : Padding(
               padding: const EdgeInsets.all(16.0),
               child: Form(
@@ -224,38 +333,94 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                     if (widget.buildings.isNotEmpty)
                       DropdownButtonFormField<String>(
                         value: _selectedBuildingId,
-                        decoration: const InputDecoration(labelText: 'Building (Optional to Change)', border: OutlineInputBorder()),
-                        items: widget.buildings.map((b) => DropdownMenuItem<String>(
-                          value: b['id'].toString(),
-                          child: Text(b['name'] ?? 'Unnamed Building'),
-                        )).toList(),
-                        onChanged: (v) => setState(() => _selectedBuildingId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Building (Optional to Change)',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: widget.buildings
+                            .map(
+                              (b) => DropdownMenuItem<String>(
+                                value: b['id'].toString(),
+                                child: Text(b['name'] ?? 'Unnamed Building'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedBuildingId = v),
                       ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _propertyType,
-                      decoration: const InputDecoration(labelText: 'Property Type', border: OutlineInputBorder()),
-                      items: ['APARTMENT', 'HOUSE', 'STUDIO', 'BEDSITTER'].map((t) => DropdownMenuItem(value: t, child: Text(t[0] + t.substring(1).toLowerCase()))).toList(),
-                      onChanged: (v) => setState(() => _propertyType = v!),
+                      decoration: const InputDecoration(
+                        labelText: 'Property Type',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _propertyTypes
+                          .map(
+                            (t) => DropdownMenuItem(
+                              value: t,
+                              child: Text(_formatPropertyType(t)),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() {
+                            _propertyType = v;
+                            if (_isNoBedBath(v)) {
+                              _bedrooms = 0;
+                              _bathrooms = 0;
+                            }
+                          });
+                        }
+                      },
                     ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
                           child: TextFormField(
-                            decoration: const InputDecoration(labelText: 'Bedrooms', border: OutlineInputBorder()),
+                            key: ValueKey(
+                              'bedrooms_${_isNoBedBath(_propertyType)}',
+                            ),
+                            decoration: InputDecoration(
+                              labelText: _isNoBedBath(_propertyType)
+                                  ? 'Bedrooms (N/A)'
+                                  : 'Bedrooms',
+                              border: const OutlineInputBorder(),
+                              filled: _isNoBedBath(_propertyType),
+                            ),
+                            enabled: !_isNoBedBath(_propertyType),
                             keyboardType: TextInputType.number,
-                            initialValue: _bedrooms.toString(),
-                            onChanged: (v) => _bedrooms = int.tryParse(v) ?? 1,
+                            initialValue: _isNoBedBath(_propertyType)
+                                ? '0'
+                                : _bedrooms.toString(),
+                            onChanged: (v) => _bedrooms =
+                                int.tryParse(v) ??
+                                (_isNoBedBath(_propertyType) ? 0 : 1),
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: TextFormField(
-                            decoration: const InputDecoration(labelText: 'Bathrooms', border: OutlineInputBorder()),
+                            key: ValueKey(
+                              'bathrooms_${_isNoBedBath(_propertyType)}',
+                            ),
+                            decoration: InputDecoration(
+                              labelText: _isNoBedBath(_propertyType)
+                                  ? 'Bathrooms (N/A)'
+                                  : 'Bathrooms',
+                              border: const OutlineInputBorder(),
+                              filled: _isNoBedBath(_propertyType),
+                            ),
+                            enabled: !_isNoBedBath(_propertyType),
                             keyboardType: TextInputType.number,
-                            initialValue: _bathrooms.toString(),
-                            onChanged: (v) => _bathrooms = int.tryParse(v) ?? 1,
+                            initialValue: _isNoBedBath(_propertyType)
+                                ? '0'
+                                : _bathrooms.toString(),
+                            onChanged: (v) => _bathrooms =
+                                int.tryParse(v) ??
+                                (_isNoBedBath(_propertyType) ? 0 : 1),
                           ),
                         ),
                       ],
@@ -263,16 +428,24 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _priceController,
-                      decoration: const InputDecoration(labelText: 'Price (KES)', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'Price (KES)',
+                        border: OutlineInputBorder(),
+                      ),
                       keyboardType: TextInputType.number,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _descController,
-                      decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        border: OutlineInputBorder(),
+                      ),
                       maxLines: 3,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -280,7 +453,10 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                         Expanded(
                           child: TextFormField(
                             controller: _squareFeetController,
-                            decoration: const InputDecoration(labelText: 'Square Feet', border: OutlineInputBorder()),
+                            decoration: const InputDecoration(
+                              labelText: 'Square Feet',
+                              border: OutlineInputBorder(),
+                            ),
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -288,14 +464,20 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                         Expanded(
                           child: TextFormField(
                             controller: _floorController,
-                            decoration: const InputDecoration(labelText: 'Floor (Optional)', border: OutlineInputBorder()),
+                            decoration: const InputDecoration(
+                              labelText: 'Floor (Optional)',
+                              border: OutlineInputBorder(),
+                            ),
                             keyboardType: TextInputType.number,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Text('Amenities', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Amenities',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     Wrap(
                       spacing: 8.0,
                       children: _availableAmenities.map((amenity) {
@@ -326,20 +508,33 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                       value: _parkingAvailable,
                       onChanged: (v) => setState(() => _parkingAvailable = v),
                     ),
-                    SwitchListTile(
-                      title: const Text('Requires Super Admin Approval (Private)'),
-                      value: _requiresApproval,
-                      onChanged: (v) => setState(() => _requiresApproval = v),
-                    ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _cardDisplayPreference,
-                      decoration: const InputDecoration(labelText: 'Card Display Preference', border: OutlineInputBorder()),
-                      items: ['One Picture', 'Double Pictures', 'Three Pictures', 'Video'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                      onChanged: (v) => setState(() => _cardDisplayPreference = v!),
+                      decoration: const InputDecoration(
+                        labelText: 'Card Display Preference',
+                        border: OutlineInputBorder(),
+                      ),
+                      items:
+                          [
+                                'One Picture',
+                                'Double Pictures',
+                                'Three Pictures',
+                                'Video',
+                              ]
+                              .map(
+                                (t) =>
+                                    DropdownMenuItem(value: t, child: Text(t)),
+                              )
+                              .toList(),
+                      onChanged: (v) =>
+                          setState(() => _cardDisplayPreference = v!),
                     ),
                     const SizedBox(height: 16),
-                    const Text('Images & Media', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Images & Media',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     GestureDetector(
                       onTap: _pickImage,
@@ -349,32 +544,55 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                           border: Border.all(color: Colors.grey),
                           borderRadius: BorderRadius.circular(8),
                           image: _imageFile != null
-                              ? DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover)
+                              ? DecorationImage(
+                                  image: FileImage(_imageFile!),
+                                  fit: BoxFit.cover,
+                                )
                               : (widget.rental.imageUrls.isNotEmpty
-                                  ? DecorationImage(
-                                      image: NetworkImage(ApiService.resolveMediaUrl(widget.rental.imageUrls.first) ?? ''),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null),
+                                    ? DecorationImage(
+                                        image: NetworkImage(
+                                          ApiService.resolveMediaUrl(
+                                                widget.rental.imageUrls.first,
+                                              ) ??
+                                              '',
+                                        ),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null),
                         ),
-                        child: _imageFile == null && widget.rental.imageUrls.isEmpty
-                            ? const Center(child: Text('Tap to pick cover image'))
-                            : _imageFile == null && widget.rental.imageUrls.isNotEmpty
-                                ? Center(
-                                    child: Container(
-                                      color: Colors.black54,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      child: const Text('Tap to change cover image', style: TextStyle(color: Colors.white)),
-                                    ),
-                                  )
-                                : null,
+                        child:
+                            _imageFile == null &&
+                                widget.rental.imageUrls.isEmpty
+                            ? const Center(
+                                child: Text('Tap to pick cover image'),
+                              )
+                            : _imageFile == null &&
+                                  widget.rental.imageUrls.isNotEmpty
+                            ? Center(
+                                child: Container(
+                                  color: Colors.black54,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  child: const Text(
+                                    'Tap to change cover image',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text('Video Tours', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Video Tours',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     if (isPro) ...[
-                      if (widget.rental.videoUrl != null || widget.rental.compoundVideoUrl != null)
+                      if (widget.rental.videoUrl != null ||
+                          widget.rental.compoundVideoUrl != null)
                         Container(
                           padding: const EdgeInsets.all(12),
                           margin: const EdgeInsets.only(bottom: 12),
@@ -385,15 +603,18 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.check_circle, color: Colors.green),
+                              const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'This listing already has ${[
-                                    if (widget.rental.videoUrl != null) 'a Main Video',
-                                    if (widget.rental.compoundVideoUrl != null) 'a Compound Video'
-                                  ].join(' and ')} attached.',
-                                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w500),
+                                  'This listing already has ${[if (widget.rental.videoUrl != null) 'a Main Video', if (widget.rental.compoundVideoUrl != null) 'a Compound Video'].join(' and ')} attached.',
+                                  style: const TextStyle(
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
                             ],
@@ -403,8 +624,13 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: SimpleVideoPreview(
-                            videoUrl: ApiService.resolveMediaUrl(widget.rental.videoUrl) ?? '',
-                            onRemove: () {}, // Deletion not supported by backend yet, only replacement
+                            videoUrl:
+                                ApiService.resolveMediaUrl(
+                                  widget.rental.videoUrl,
+                                ) ??
+                                '',
+                            onRemove:
+                                () {}, // Deletion not supported by backend yet, only replacement
                           ),
                         ),
                       Row(
@@ -414,12 +640,20 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                               onPressed: () => _pickVideo(false),
                               icon: const Icon(Icons.video_call),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _videoFile != null ? Colors.green : null,
-                                foregroundColor: _videoFile != null ? Colors.white : null,
+                                backgroundColor: _videoFile != null
+                                    ? Colors.green
+                                    : null,
+                                foregroundColor: _videoFile != null
+                                    ? Colors.white
+                                    : null,
                               ),
-                              label: Text(_videoFile != null 
-                                ? 'New Video Picked' 
-                                : (widget.rental.videoUrl != null ? 'Replace Main Video' : 'Upload Main Video')),
+                              label: Text(
+                                _videoFile != null
+                                    ? 'New Video Picked'
+                                    : (widget.rental.videoUrl != null
+                                          ? 'Replace Main Video'
+                                          : 'Upload Main Video'),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -428,22 +662,36 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                               onPressed: () => _pickVideo(true),
                               icon: const Icon(Icons.video_library),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _compoundVideoFile != null ? Colors.green : null,
-                                foregroundColor: _compoundVideoFile != null ? Colors.white : null,
+                                backgroundColor: _compoundVideoFile != null
+                                    ? Colors.green
+                                    : null,
+                                foregroundColor: _compoundVideoFile != null
+                                    ? Colors.white
+                                    : null,
                               ),
-                              label: Text(_compoundVideoFile != null 
-                                ? 'New Video Picked' 
-                                : (widget.rental.compoundVideoUrl != null ? 'Replace Compound Video' : 'Upload Compound Video')),
+                              label: Text(
+                                _compoundVideoFile != null
+                                    ? 'New Video Picked'
+                                    : (widget.rental.compoundVideoUrl != null
+                                          ? 'Replace Compound Video'
+                                          : 'Upload Compound Video'),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      if (widget.rental.compoundVideoUrl != null && _compoundVideoFile == null)
+                      if (widget.rental.compoundVideoUrl != null &&
+                          _compoundVideoFile == null)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
                           child: SimpleVideoPreview(
-                            videoUrl: ApiService.resolveMediaUrl(widget.rental.compoundVideoUrl) ?? '',
-                            onRemove: () {}, // Deletion not supported by backend yet, only replacement
+                            videoUrl:
+                                ApiService.resolveMediaUrl(
+                                  widget.rental.compoundVideoUrl,
+                                ) ??
+                                '',
+                            onRemove:
+                                () {}, // Deletion not supported by backend yet, only replacement
                           ),
                         ),
                     ] else ...[
@@ -456,11 +704,18 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                         ),
                         child: Column(
                           children: [
-                            const Icon(Icons.workspace_premium, color: Colors.amber, size: 40),
+                            const Icon(
+                              Icons.workspace_premium,
+                              color: Colors.amber,
+                              size: 40,
+                            ),
                             const SizedBox(height: 8),
                             const Text(
                               'Unlock Video Uploads',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                             const Text(
                               'Upgrade to RealAdmin Pro to add video tours to your listings.',
@@ -468,9 +723,14 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                             ),
                             const SizedBox(height: 12),
                             ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber,
+                                foregroundColor: Colors.black,
+                              ),
                               onPressed: _openRealAdminProPayment,
-                              child: const Text('Unlock RealAdmin Pro (KES 1000)'),
+                              child: const Text(
+                                'Unlock RealAdmin Pro (KES 1000)',
+                              ),
                             ),
                           ],
                         ),
@@ -479,7 +739,9 @@ class _LandlordEditRentalPageState extends State<LandlordEditRentalPage> {
                     const SizedBox(height: 32),
                     ElevatedButton(
                       onPressed: _submit,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
                       child: const Text('Save Changes'),
                     ),
                   ],

@@ -10,37 +10,68 @@ class NetworkService {
   NetworkService._();
   static final NetworkService instance = NetworkService._();
 
-  final ValueNotifier<NetworkStatus> status = ValueNotifier(NetworkStatus.online);
+  final ValueNotifier<NetworkStatus> status = ValueNotifier(
+    NetworkStatus.online,
+  );
 
   StreamSubscription? _connectivitySubscription;
   Timer? _pollingTimer;
   bool _isChecking = false;
+  bool _isForeground = true;
+
+  static const Duration _foregroundPollingInterval = Duration(seconds: 45);
 
   void initialize() {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
       // The new API returns a list of ConnectivityResult
       final hasConnection = results.any((r) => r != ConnectivityResult.none);
       if (!hasConnection) {
         _updateStatus(NetworkStatus.offline);
       } else {
-        checkNetwork();
+        if (_isForeground) {
+          checkNetwork();
+        }
       }
     });
 
-    // Periodic check to recover if the OS fails to deliver connectivity events
-    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (status.value == NetworkStatus.offline || status.value == NetworkStatus.slow) {
-        checkNetwork();
-      }
-    });
+    _startPolling();
 
     checkNetwork();
   }
 
+  void setAppForeground(bool isForeground) {
+    if (_isForeground == isForeground) return;
+    _isForeground = isForeground;
+    if (_isForeground) {
+      _startPolling();
+      checkNetwork();
+    } else {
+      _stopPolling();
+    }
+  }
+
   void dispose() {
     _connectivitySubscription?.cancel();
-    _pollingTimer?.cancel();
+    _stopPolling();
     status.dispose();
+  }
+
+  void _startPolling() {
+    _stopPolling();
+    // Periodic check to recover if the OS fails to deliver connectivity events.
+    _pollingTimer = Timer.periodic(_foregroundPollingInterval, (_) {
+      if (status.value == NetworkStatus.offline ||
+          status.value == NetworkStatus.slow) {
+        checkNetwork();
+      }
+    });
+  }
+
+  void _stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
   }
 
   Future<void> checkNetwork() async {
@@ -49,12 +80,16 @@ class NetworkService {
 
     try {
       final stopwatch = Stopwatch()..start();
-      
+
       // Try connecting to a highly available server on standard HTTP port 80
       // TCP Port 53 to 8.8.8.8 is often blocked by mobile carrier firewalls!
-      final socket = await Socket.connect('example.com', 80, timeout: const Duration(seconds: 3));
+      final socket = await Socket.connect(
+        'example.com',
+        80,
+        timeout: const Duration(seconds: 3),
+      );
       socket.destroy();
-      
+
       stopwatch.stop();
 
       // If it takes more than 1.5 seconds, we consider it 'slow'
@@ -75,7 +110,8 @@ class NetworkService {
     if (status.value == newStatus) return;
 
     // If we are recovering from offline/slow, show "Back Online" briefly
-    if ((status.value == NetworkStatus.offline || status.value == NetworkStatus.slow) && 
+    if ((status.value == NetworkStatus.offline ||
+            status.value == NetworkStatus.slow) &&
         newStatus == NetworkStatus.online) {
       status.value = NetworkStatus.backOnline;
       Future.delayed(const Duration(seconds: 3), () {

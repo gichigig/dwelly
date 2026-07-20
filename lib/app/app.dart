@@ -11,7 +11,7 @@ class RentPulseApp extends ConsumerWidget {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'RentPulse KE',
+      title: 'IshinaDwelly',
       theme: appTheme(),
       routerConfig: router,
     );

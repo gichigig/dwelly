@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/report_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class MyReportsPage extends StatefulWidget {
   const MyReportsPage({super.key});
@@ -57,7 +58,7 @@ class _MyReportsPageState extends State<MyReportsPage> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     if (_error != null) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../features/landlord/services/landlord_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class CreateGroupDialog extends StatefulWidget {
   const CreateGroupDialog({super.key});
@@ -52,7 +53,7 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
       content: _isLoading
           ? const SizedBox(
               height: 100,
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: DwellyOrbitingLoader()),
             )
           : Column(
               mainAxisSize: MainAxisSize.min,
@@ -79,10 +80,12 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
                         value: null,
                         child: Text('None'),
                       ),
-                      ..._buildings.map((b) => DropdownMenuItem<String>(
-                            value: b['id'].toString(),
-                            child: Text(b['name'] ?? 'Unnamed Building'),
-                          )),
+                      ..._buildings.map(
+                        (b) => DropdownMenuItem<String>(
+                          value: b['id'].toString(),
+                          child: Text(b['name'] ?? 'Unnamed Building'),
+                        ),
+                      ),
                     ],
                     onChanged: (v) {
                       setState(() {
@@ -104,12 +107,14 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
               : () {
                   final name = _nameController.text.trim();
                   if (name.isEmpty) return;
-                  
+
                   final result = <String, dynamic>{
                     'name': name,
-                    'buildingId': _selectedBuildingId != null ? int.tryParse(_selectedBuildingId!) : null,
+                    'buildingId': _selectedBuildingId != null
+                        ? int.tryParse(_selectedBuildingId!)
+                        : null,
                   };
-                  
+
                   Navigator.pop(context, result);
                 },
           child: const Text('Create'),

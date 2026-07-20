@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -122,6 +123,7 @@ class RingBucket {
 class RentalFilters {
   final String? area;
   final String? constituency;
+  final String? county;
   final List<String>? nearbyAreas;
   final double? minPrice;
   final double? maxPrice;
@@ -133,6 +135,7 @@ class RentalFilters {
   RentalFilters({
     this.area,
     this.constituency,
+    this.county,
     this.nearbyAreas,
     this.minPrice,
     this.maxPrice,
@@ -145,6 +148,7 @@ class RentalFilters {
   RentalFilters copyWith({
     String? area,
     String? constituency,
+    String? county,
     List<String>? nearbyAreas,
     double? minPrice,
     double? maxPrice,
@@ -156,6 +160,7 @@ class RentalFilters {
     return RentalFilters(
       area: area ?? this.area,
       constituency: constituency ?? this.constituency,
+      county: county ?? this.county,
       nearbyAreas: nearbyAreas ?? this.nearbyAreas,
       minPrice: minPrice ?? this.minPrice,
       maxPrice: maxPrice ?? this.maxPrice,
@@ -231,15 +236,19 @@ class RentalService {
     RentalFilters? filters,
     String sortBy = 'createdAt',
     String sortDirection = 'DESC',
+    bool forceNetwork = false,
   }) async {
     // Keep args for compatibility; backend paginated feed is newest-first.
     assert(sortBy.isNotEmpty);
     assert(sortDirection.isNotEmpty);
     try {
+      final viewerKey = await _getFeedViewerKey();
       return await _getPaginatedFromAll(
         page: page,
         size: size,
         filters: filters,
+        viewerKey: viewerKey,
+        forceNetwork: forceNetwork,
       );
     } catch (e) {
       final appError = ApiService.parseException(
@@ -256,29 +265,76 @@ class RentalService {
     int page = 0,
     int size = 20,
     RentalFilters? filters,
+    String? viewerKey,
+    bool forceNetwork = false,
   }) async {
-    final signature = SqliteCacheService.generateSignature(filters, size);
+    final signature = SqliteCacheService.generateSignature(
+      filters,
+      size,
+      viewerKey: viewerKey,
+    );
 
-    // Instant load from SQLite for the first page
-    if (page == 0) {
-      final localData = await SqliteCacheService.instance.getPaginatedFeed(signature, page);
-      if (localData != null) {
-        _seedCache(localData.rentals);
+    // Instant load from SQLite for any cached/prefetched page
+    final localData = forceNetwork
+        ? null
+        : await SqliteCacheService.instance.getPaginatedFeed(signature, page);
+    if (localData != null) {
+      _seedCache(localData.rentals);
+      if (page == 0) {
         // Fetch in background to update DB for next time
-        _networkFetchPaginated(page, size, filters, signature).catchError((_) => localData);
-        return localData;
+        _networkFetchPaginated(
+          page,
+          size,
+          filters,
+          signature,
+          clientId: viewerKey,
+        ).catchError((_) => localData);
       }
+      return localData;
     }
 
-    return await _networkFetchPaginated(page, size, filters, signature);
+    try {
+      return await _networkFetchPaginated(
+        page,
+        size,
+        filters,
+        signature,
+        clientId: viewerKey,
+      );
+    } catch (e) {
+      if (page > 0) {
+        final fallbackData = forceNetwork
+            ? null
+            : await SqliteCacheService.instance.getPaginatedFeed(
+                signature,
+                page,
+              );
+        if (fallbackData != null) {
+          _seedCache(fallbackData.rentals);
+          return fallbackData;
+        }
+      }
+      rethrow;
+    }
   }
 
-  static Future<PaginatedRentals> _networkFetchPaginated(int page, int size, RentalFilters? filters, String signature) async {
+  static Future<PaginatedRentals> _networkFetchPaginated(
+    int page,
+    int size,
+    RentalFilters? filters,
+    String signature, {
+    String? clientId,
+  }) async {
     try {
+      final queryParameters = <String, String>{
+        'page': page.toString(),
+        'size': size.toString(),
+        if (clientId != null && clientId.isNotEmpty) 'clientId': clientId,
+      };
       // Prefer backend endpoint that already returns active + approved rentals.
       final paginatedResponse = await ApiService.cachedGet(
         Uri.parse(
-          '${ApiService.baseUrl}/rentals/paginated?page=$page&size=$size',
+          '${ApiService.baseUrl}/rentals/paginated?${queryParameters.entries.map((entry) => '${entry.key}=${Uri.encodeQueryComponent(entry.value)}').join('&')}',
         ),
         headers: _acceptHeadersWithAuth(),
         ttl: page == 0
@@ -309,8 +365,12 @@ class RentalService {
           currentPage: data['currentPage'] ?? page,
           hasMore: data['hasMore'] ?? false,
         );
-        
-        await SqliteCacheService.instance.savePaginatedFeed(signature, page, result);
+
+        await SqliteCacheService.instance.savePaginatedFeed(
+          signature,
+          page,
+          result,
+        );
         return result;
       }
 
@@ -366,8 +426,12 @@ class RentalService {
           currentPage: page,
           hasMore: end < allRentals.length,
         );
-        
-        await SqliteCacheService.instance.savePaginatedFeed(signature, page, result);
+
+        await SqliteCacheService.instance.savePaginatedFeed(
+          signature,
+          page,
+          result,
+        );
         return result;
       } else {
         throw ApiService.parseHttpError(
@@ -579,6 +643,16 @@ class RentalService {
     }
   }
 
+  static Future<String> _getFeedViewerKey() async {
+    final userId = AuthService.currentUser?.id;
+    if (userId != null) {
+      return 'user:$userId';
+    }
+
+    final clientId = await ClientIdentityService.getClientId();
+    return 'client:$clientId';
+  }
+
   /// Local fallback for FYP recommendations when backend is unavailable
   static Future<PaginatedRentals> _getLocalRecommendations({
     int page = 0,
@@ -735,10 +809,16 @@ class RentalService {
 
   /// Smart location search that calls backend with nickname/ward
   /// Returns rentals in tiered order: target ward, neighbors, then expanded nearby areas
-    static Future<List<Rental>> getMapRadarListings(double latitude, double longitude, {double radiusMeters = 1500}) async {
+  static Future<List<Rental>> getMapRadarListings(
+    double latitude,
+    double longitude, {
+    double radiusMeters = 1500,
+  }) async {
     try {
       final response = await ApiService.timedGet(
-        Uri.parse('${ApiService.baseUrl}/rentals/search/map-radar?latitude=$latitude&longitude=$longitude&radiusMeters=$radiusMeters'),
+        Uri.parse(
+          '${ApiService.baseUrl}/rentals/search/map-radar?latitude=$latitude&longitude=$longitude&radiusMeters=$radiusMeters',
+        ),
         headers: _jsonHeadersWithAuth(),
       );
       if (response.statusCode == 200) {
@@ -753,7 +833,7 @@ class RentalService {
     }
   }
 
-static Future<SmartLocationSearchResult> smartLocationSearch({
+  static Future<SmartLocationSearchResult> smartLocationSearch({
     String? nickname,
     String? ward,
     String? constituency,
@@ -769,8 +849,54 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
     int? bedrooms,
     String? propertyType,
     bool includeNearby = true,
+    bool forceNetwork = false,
   }) async {
     try {
+      final signature = SqliteCacheService.generateSignature(
+        RentalFilters(
+          area: county ?? nickname,
+          constituency: constituency,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+          bedrooms: bedrooms,
+          propertyType: propertyType,
+        ),
+        size,
+      );
+
+      if (!forceNetwork) {
+        final localData = await SqliteCacheService.instance.getPaginatedFeed(
+          signature,
+          page,
+        );
+        if (localData != null && localData.rentals.isNotEmpty) {
+          _seedCache(localData.rentals);
+          if (page == 0) {
+            unawaited(
+              smartLocationSearch(
+                nickname: nickname,
+                ward: ward,
+                constituency: constituency,
+                strictConstituency: strictConstituency,
+                county: county,
+                latitude: latitude,
+                longitude: longitude,
+                sortByDistance: sortByDistance,
+                page: page,
+                size: size,
+                minPrice: minPrice,
+                maxPrice: maxPrice,
+                bedrooms: bedrooms,
+                propertyType: propertyType,
+                includeNearby: includeNearby,
+                forceNetwork: true,
+              ),
+            );
+          }
+          return SmartLocationSearchResult(rentals: localData);
+        }
+      }
+
       final requestBody = {
         if (nickname != null) 'nickname': nickname,
         if (ward != null) 'ward': ward,
@@ -806,14 +932,21 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
 
         _seedCache(rentals);
 
+        final paginatedResult = PaginatedRentals(
+          rentals: rentals,
+          totalElements: data['totalElements'] ?? rentals.length,
+          totalPages: data['totalPages'] ?? 1,
+          currentPage: data['currentPage'] ?? page,
+          hasMore: data['hasMore'] ?? false,
+        );
+        await SqliteCacheService.instance.savePaginatedFeed(
+          signature,
+          page,
+          paginatedResult,
+        );
+
         return SmartLocationSearchResult(
-          rentals: PaginatedRentals(
-            rentals: rentals,
-            totalElements: data['totalElements'] ?? rentals.length,
-            totalPages: data['totalPages'] ?? 1,
-            currentPage: data['currentPage'] ?? page,
-            hasMore: data['hasMore'] ?? false,
-          ),
+          rentals: paginatedResult,
           resolvedWard: data['resolvedWard'],
           resolvedConstituency: data['resolvedConstituency'],
           resolvedCounty: data['resolvedCounty'],
@@ -846,10 +979,7 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
                     }
                     if (e is Map) {
                       return RingBucket.fromJson(
-                        e.map(
-                          (key, value) =>
-                              MapEntry(key.toString(), value),
-                        ),
+                        e.map((key, value) => MapEntry(key.toString(), value)),
                       );
                     }
                     return null;
@@ -858,15 +988,12 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
                   .toList() ??
               const [],
           searchSequence: data['searchSequence']?.toString(),
-          tierCounts:
-              (data['tierCounts'] is Map<String, dynamic>)
-                  ? (data['tierCounts'] as Map<String, dynamic>).map(
-                      (key, value) => MapEntry(
-                        key,
-                        int.tryParse(value.toString()) ?? 0,
-                      ),
-                    )
-                  : const {},
+          tierCounts: (data['tierCounts'] is Map<String, dynamic>)
+              ? (data['tierCounts'] as Map<String, dynamic>).map(
+                  (key, value) =>
+                      MapEntry(key, int.tryParse(value.toString()) ?? 0),
+                )
+              : const {},
           searchExhausted: data['searchExhausted'] == true,
           nextAction: data['nextAction']?.toString(),
           locationNotFound: data['locationNotFound'] ?? false,
@@ -906,6 +1033,57 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
     }
   }
 
+  static Future<HashtagSearchResult> searchByHashtag({
+    required String hashtag,
+    int page = 0,
+    int size = 20,
+  }) async {
+    try {
+      final encodedTag = Uri.encodeComponent(hashtag);
+      final response = await ApiService.timedGet(
+        Uri.parse(
+          '${ApiService.baseUrl}/rentals/hashtags/search?hashtag=$encodedTag&page=$page&size=$size',
+        ),
+        headers: _jsonHeadersWithAuth(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return HashtagSearchResult.fromJson(data);
+      }
+    } catch (e) {
+      _logDebug('Error in hashtag search', e);
+    }
+    return HashtagSearchResult(
+      rentals: [],
+      nearbyRentals: [],
+      relatedHashtags: [],
+      relatedAreas: [],
+      totalElements: 0,
+      totalPages: 0,
+      currentPage: page,
+      hasMore: false,
+    );
+  }
+
+  static Future<List<String>> getPopularHashtags({int limit = 10}) async {
+    try {
+      final response = await ApiService.timedGet(
+        Uri.parse(
+          '${ApiService.baseUrl}/rentals/hashtags/popular?limit=$limit',
+        ),
+        headers: _jsonHeadersWithAuth(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((e) => e.toString()).toList();
+      }
+    } catch (e) {
+      _logDebug('Error loading popular hashtags', e);
+    }
+    return [];
+  }
+
   static Future<Rental?> getById(int id, {bool forceRefresh = false}) async {
     // Check cache first
     if (!forceRefresh) {
@@ -917,6 +1095,13 @@ static Future<SmartLocationSearchResult> smartLocationSearch({
       if (deviceCached != null) {
         CacheManager.rentalById.set('$id', deviceCached);
         return deviceCached;
+      }
+      final feedCached = await SqliteCacheService.instance
+          .getRentalFromFeedCache(id);
+      if (feedCached != null) {
+        CacheManager.rentalById.set('$id', feedCached);
+        await DeviceRentalCacheService.setCachedDetail(feedCached);
+        return feedCached;
       }
     }
 
@@ -1121,6 +1306,57 @@ class PopularAreaResult {
       constituency: json['constituency'],
       county: json['county'],
       listingCount: json['listingCount'] ?? 0,
+    );
+  }
+}
+
+class HashtagSearchResult {
+  final List<Rental> rentals;
+  final List<Rental> nearbyRentals;
+  final List<String> relatedHashtags;
+  final List<String> relatedAreas;
+  final int totalElements;
+  final int totalPages;
+  final int currentPage;
+  final bool hasMore;
+
+  HashtagSearchResult({
+    required this.rentals,
+    required this.nearbyRentals,
+    required this.relatedHashtags,
+    required this.relatedAreas,
+    required this.totalElements,
+    required this.totalPages,
+    required this.currentPage,
+    required this.hasMore,
+  });
+
+  factory HashtagSearchResult.fromJson(Map<String, dynamic> json) {
+    return HashtagSearchResult(
+      rentals:
+          (json['rentals'] as List<dynamic>?)
+              ?.map((e) => Rental.fromJson(e))
+              .toList() ??
+          [],
+      nearbyRentals:
+          (json['nearbyRentals'] as List<dynamic>?)
+              ?.map((e) => Rental.fromJson(e))
+              .toList() ??
+          [],
+      relatedHashtags:
+          (json['relatedHashtags'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      relatedAreas:
+          (json['relatedAreas'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      totalElements: json['totalElements'] ?? 0,
+      totalPages: json['totalPages'] ?? 1,
+      currentPage: json['currentPage'] ?? 0,
+      hasMore: json['hasMore'] ?? false,
     );
   }
 }

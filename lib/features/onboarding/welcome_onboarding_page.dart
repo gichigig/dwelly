@@ -37,6 +37,24 @@ class _WelcomeOnboardingPageState extends State<WelcomeOnboardingPage> {
   final _locationController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _skipIfAlreadyCompleted();
+  }
+
+  Future<void> _skipIfAlreadyCompleted() async {
+    final done = await WelcomeOnboardingPage.isOnboardingComplete();
+    if (!done || !mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => widget.child),
+      );
+    });
+  }
+
+  @override
   void dispose() {
     _pageController.dispose();
     _locationController.dispose();
@@ -147,9 +165,9 @@ class _WelcomeOnboardingPageState extends State<WelcomeOnboardingPage> {
     await _persistLocationSelection();
     await WelcomeOnboardingPage.setOnboardingComplete();
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => widget.child),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => widget.child));
     }
   }
 
@@ -160,57 +178,66 @@ class _WelcomeOnboardingPageState extends State<WelcomeOnboardingPage> {
     required String buttonText,
     required VoidCallback onPressed,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-          Icon(icon, size: 100, color: Colors.blue),
-          const SizedBox(height: 48),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 16,
-              height: 1.5,
-            ),
-          ),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onPressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40.0),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(),
+                  Icon(icon, size: 84, color: Colors.blue),
+                  const SizedBox(height: 32),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 15,
+                      height: 1.4,
+                    ),
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: onPressed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        buttonText,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: Text(
-                buttonText,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -220,258 +247,270 @@ class _WelcomeOnboardingPageState extends State<WelcomeOnboardingPage> {
     required String buttonText,
     required VoidCallback onPressed,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-          const PremiumMapAnimation(size: 260),
-          const SizedBox(height: 48),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 16,
-              height: 1.5,
-            ),
-          ),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onPressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                buttonText,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLocationSlide() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Spacer(),
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.location_on,
-              size: 48,
-              color: Colors.blue,
-            ),
-          ),
-          const SizedBox(height: 28),
-          const Text(
-            'Where are you located?',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'We\'ll show you rentals near your area so you find a home faster.',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 15,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 28),
-          TextField(
-            controller: _locationController,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              labelText: 'Your Location',
-              labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-              hintText: 'e.g., Kilimani, Nairobi',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              prefixIcon: Icon(
-                _locationDetected
-                    ? Icons.check_circle
-                    : Icons.location_on_outlined,
-                color: _locationDetected ? Colors.green : Colors.white70,
-              ),
-              suffixIcon: _isDetecting
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40.0),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(),
+                  const PremiumMapAnimation(size: 210),
+                  const SizedBox(height: 32),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 15,
+                      height: 1.4,
+                    ),
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: onPressed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.my_location, color: Colors.blue),
-                      tooltip: 'Detect my location',
-                      onPressed: _detectLocation,
-                    ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.blue, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.05),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (!_locationDetected)
-            OutlinedButton.icon(
-              onPressed: _isDetecting ? null : _detectLocation,
-              icon: _isDetecting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                      ),
-                    )
-                  : const Icon(Icons.my_location, color: Colors.blue),
-              label: Text(
-                _isDetecting ? 'Detecting...' : 'Use My Current Location',
-                style: const TextStyle(color: Colors.blue),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                side: const BorderSide(color: Colors.blue),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          if (_locationDenied) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.orange.withOpacity(0.5)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.info_outline,
-                    color: Colors.orange,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Could not detect location. You can type it manually or skip for now.',
-                      style: TextStyle(
-                        color: Colors.orange.shade200,
-                        fontSize: 13,
+                      child: Text(
+                        buttonText,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ],
-          if (_locationDetected && _detectedLocation != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(
-                  Icons.check,
-                  color: Colors.green,
-                  size: 18,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Location detected! You can edit it above.',
-                    style: TextStyle(
-                      color: Colors.green.shade400,
-                      fontSize: 13,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLocationSlide() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40.0),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Spacer(),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Container(
+                      width: 84,
+                      height: 84,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.location_on, size: 42, color: Colors.blue),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
-          const Spacer(),
-          ElevatedButton(
-            onPressed: _finishOnboarding,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              'Get Started',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Where are you located?',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'We\'ll show you rentals near your area so you find a home faster.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 15,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: _locationController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Your Location',
+                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      hintText: 'e.g., Kilimani, Nairobi',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      prefixIcon: Icon(
+                        _locationDetected
+                            ? Icons.check_circle
+                            : Icons.location_on_outlined,
+                        color: _locationDetected ? Colors.green : Colors.white70,
+                      ),
+                      suffixIcon: _isDetecting
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.blue,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : IconButton(
+                              icon: const Icon(Icons.my_location, color: Colors.blue),
+                              tooltip: 'Detect my location',
+                              onPressed: _detectLocation,
+                            ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.blue, width: 2),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (!_locationDetected)
+                    OutlinedButton.icon(
+                      onPressed: _isDetecting ? null : _detectLocation,
+                      icon: _isDetecting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                              ),
+                            )
+                          : const Icon(Icons.my_location, color: Colors.blue),
+                      label: Text(
+                        _isDetecting ? 'Detecting...' : 'Use My Current Location',
+                        style: const TextStyle(color: Colors.blue),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Colors.blue),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  if (_locationDenied) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            color: Colors.orange,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Could not detect location. You can type it manually or skip for now.',
+                              style: TextStyle(
+                                color: Colors.orange.shade200,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (_locationDetected && _detectedLocation != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.check, color: Colors.green, size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Location detected! You can edit it above.',
+                            style: TextStyle(
+                              color: Colors.green.shade400,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: _finishOnboarding,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Finish',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: _finishOnboarding,
+                    child: Text(
+                      'Skip & Finish',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: _finishOnboarding,
-            child: Text(
-              'Skip for now',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 15,
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -482,10 +521,27 @@ class _WelcomeOnboardingPageState extends State<WelcomeOnboardingPage> {
       body: SafeArea(
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: _finishOnboarding,
+                    icon: const Icon(Icons.check_circle_outline, color: Colors.blueAccent, size: 20),
+                    label: const Text(
+                      'Finish',
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: PageView(
                 controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(), // Force buttons to navigate
+                physics:
+                    const NeverScrollableScrollPhysics(), // Force buttons to navigate
                 onPageChanged: (index) {
                   setState(() {
                     _currentPage = index;
@@ -495,27 +551,31 @@ class _WelcomeOnboardingPageState extends State<WelcomeOnboardingPage> {
                   _buildSlide(
                     icon: Icons.home_work_rounded,
                     title: 'Welcome to Dwelly',
-                    subtitle: 'Your ultimate companion for finding the perfect rental property hassle-free.',
+                    subtitle:
+                        'Your ultimate companion for finding the perfect rental property hassle-free.',
                     buttonText: 'Next',
                     onPressed: _nextPage,
                   ),
                   _buildSlide(
                     icon: Icons.travel_explore,
                     title: 'Discover Premium Rentals',
-                    subtitle: 'Explore high-quality listings tailored to your preferences, budget, and lifestyle.',
+                    subtitle:
+                        'Explore high-quality listings tailored to your preferences, budget, and lifestyle.',
                     buttonText: 'Next',
                     onPressed: _nextPage,
                   ),
                   _buildSlide(
                     icon: Icons.security_rounded,
                     title: 'Secure & Fast Communication',
-                    subtitle: 'Chat directly with verified property owners securely within the app.',
+                    subtitle:
+                        'Chat directly with verified property owners securely within the app.',
                     buttonText: 'Next',
                     onPressed: _nextPage,
                   ),
                   _buildAnimationSlide(
                     title: 'Premium AR Cone Search',
-                    subtitle: 'Physically rotate your phone to discover hidden listings around you using Augmented Reality.',
+                    subtitle:
+                        'Physically rotate your phone to discover hidden listings around you using Augmented Reality.',
                     buttonText: 'Next',
                     onPressed: _nextPage,
                   ),

@@ -53,9 +53,11 @@ class ContactService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        final loadedContacts = data.map((json) => SavedContact.fromJson(json)).toList();
+        final loadedContacts = data
+            .map((json) => SavedContact.fromJson(json))
+            .toList();
         contacts.value = loadedContacts;
-        
+
         _contactMap.clear();
         for (var contact in loadedContacts) {
           _contactMap[contact.contactUserId] = contact;
@@ -78,15 +80,12 @@ class ContactService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${AuthService.token}',
         },
-        body: json.encode({
-          'contactUserId': userId,
-          'customName': customName,
-        }),
+        body: json.encode({'contactUserId': userId, 'customName': customName}),
       );
 
       if (response.statusCode == 200) {
         final newContact = SavedContact.fromJson(json.decode(response.body));
-        
+
         // Update local state
         final current = List<SavedContact>.from(contacts.value);
         final index = current.indexWhere((c) => c.contactUserId == userId);
@@ -97,7 +96,7 @@ class ContactService {
         }
         contacts.value = current;
         _contactMap[userId] = newContact;
-        
+
         return newContact;
       }
     } catch (e) {
@@ -106,7 +105,11 @@ class ContactService {
     return null;
   }
 
-  static String getDisplayName(int userId, String? fallbackName, {String? username}) {
+  static String getDisplayName(
+    int userId,
+    String? fallbackName, {
+    String? username,
+  }) {
     final contact = _contactMap[userId];
     if (contact != null) {
       return contact.customName;

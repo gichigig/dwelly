@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class OnboardingVideoStep extends StatefulWidget {
   final String assetPath;
@@ -162,9 +163,7 @@ class _OnboardingVideoStepState extends State<OnboardingVideoStep> {
     if (_isLoading ||
         _controller == null ||
         !_controller!.value.isInitialized) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      );
+      return const Center(child: DwellyOrbitingLoader(glowColor: Colors.white));
     }
 
     final controller = _controller!;

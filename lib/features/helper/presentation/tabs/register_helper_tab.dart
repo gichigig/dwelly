@@ -5,6 +5,7 @@ import 'package:realestate/core/services/helper_service.dart';
 import 'package:realestate/core/services/device_location_service.dart';
 import 'package:realestate/core/widgets/location_autocomplete.dart';
 import '../services_list_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class RegisterHelperTab extends StatefulWidget {
   const RegisterHelperTab({super.key});
@@ -19,7 +20,7 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
 
   final TextEditingController _priceController = TextEditingController();
   String _selectedCoverageLevel = 'COUNTY'; // COUNTY, CONSTITUENCY, WARD
-  
+
   String? _selectedCounty;
   String? _selectedServiceCategory;
   List<String> _selectedConstituencies = [];
@@ -35,6 +36,7 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
   double _serviceRadiusKm = 10.0;
   bool _isLocating = false;
   String? _pinnedLocationLabel;
+  bool _hideExactLocation = false;
 
   // Landlord-style location autocomplete controllers
   final TextEditingController _wardController = TextEditingController();
@@ -71,8 +73,10 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
         _offeredServices = List.from(user.offeredServices);
       }
       if (user.locationLatitude != null && user.locationLongitude != null) {
-        _pinnedLocationLabel = 'Lat: ${user.locationLatitude!.toStringAsFixed(4)}, Lon: ${user.locationLongitude!.toStringAsFixed(4)} (${user.formattedLocation})';
+        _pinnedLocationLabel =
+            'Lat: ${user.locationLatitude!.toStringAsFixed(4)}, Lon: ${user.locationLongitude!.toStringAsFixed(4)} (${user.formattedLocation})';
       }
+      _hideExactLocation = user.hideExactLocation;
       if (user.helperWards.isNotEmpty) {
         _wardController.text = user.helperWards.first;
       }
@@ -99,22 +103,26 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
   Future<void> _pinCurrentLocation() async {
     setState(() => _isLocating = true);
     try {
-      final loc = await DeviceLocationService.getCurrentLocation(forcePrompt: true);
-      if (loc != null && loc.latitude != null && loc.longitude != null) {
+      final loc = await DeviceLocationService.getCurrentLocation(
+        forcePrompt: true,
+      );
+      if (loc != null) {
         final currentUser = AuthService.currentUser;
         if (currentUser != null) {
           final updatedUser = currentUser.copyWith(
             locationLatitude: loc.latitude,
             locationLongitude: loc.longitude,
             locationWard: loc.ward ?? currentUser.locationWard,
-            locationConstituency: loc.constituency ?? currentUser.locationConstituency,
+            locationConstituency:
+                loc.constituency ?? currentUser.locationConstituency,
             locationCounty: loc.county ?? currentUser.locationCounty,
             locationAreaName: loc.areaName ?? currentUser.locationAreaName,
           );
           await AuthService.updateUser(updatedUser);
         }
         setState(() {
-          _pinnedLocationLabel = 'Lat: ${loc.latitude!.toStringAsFixed(4)}, Lon: ${loc.longitude!.toStringAsFixed(4)} (${loc.formattedLocation})';
+          _pinnedLocationLabel =
+              'Lat: ${loc.latitude.toStringAsFixed(4)}, Lon: ${loc.longitude.toStringAsFixed(4)} (${loc.formattedLocation})';
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -124,15 +132,19 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not fetch location. Please check location permissions.')),
+            const SnackBar(
+              content: Text(
+                'Could not fetch location. Please check location permissions.',
+              ),
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error pinning location: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error pinning location: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLocating = false);
@@ -142,9 +154,15 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_serviceAreaMode == 'RADIUS' && _pinnedLocationLabel == null && AuthService.currentUser?.locationLatitude == null) {
+    if (_serviceAreaMode == 'RADIUS' &&
+        _pinnedLocationLabel == null &&
+        AuthService.currentUser?.locationLatitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please pin or use your current location first for Radius mode.')),
+        const SnackBar(
+          content: Text(
+            'Please pin or use your current location first for Radius mode.',
+          ),
+        ),
       );
       return;
     }
@@ -152,17 +170,25 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
     if (_serviceAreaMode == 'ADMIN_AREAS') {
       if (_selectedCounty == null && _countyController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a county or use ward autocomplete')),
+          const SnackBar(
+            content: Text('Please select a county or use ward autocomplete'),
+          ),
         );
         return;
       }
-      if (_selectedCoverageLevel == 'CONSTITUENCY' && _selectedConstituencies.isEmpty && _constituencyController.text.isEmpty) {
+      if (_selectedCoverageLevel == 'CONSTITUENCY' &&
+          _selectedConstituencies.isEmpty &&
+          _constituencyController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select at least one constituency')),
+          const SnackBar(
+            content: Text('Please select at least one constituency'),
+          ),
         );
         return;
       }
-      if (_selectedCoverageLevel == 'WARD' && _selectedWards.isEmpty && _wardController.text.isEmpty) {
+      if (_selectedCoverageLevel == 'WARD' &&
+          _selectedWards.isEmpty &&
+          _wardController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please select at least one ward')),
         );
@@ -177,9 +203,15 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
         await AuthService.setPrimaryRole('helper');
       }
 
-      final countyVal = _countyController.text.isNotEmpty ? _countyController.text : _selectedCounty;
-      final constituenciesVal = _constituencyController.text.isNotEmpty ? [_constituencyController.text] : _selectedConstituencies;
-      final wardsVal = _wardController.text.isNotEmpty ? [_wardController.text] : _selectedWards;
+      final countyVal = _countyController.text.isNotEmpty
+          ? _countyController.text
+          : _selectedCounty;
+      final constituenciesVal = _constituencyController.text.isNotEmpty
+          ? [_constituencyController.text]
+          : _selectedConstituencies;
+      final wardsVal = _wardController.text.isNotEmpty
+          ? [_wardController.text]
+          : _selectedWards;
 
       await HelperService.updateHelperProfile(
         price: double.parse(_priceController.text),
@@ -191,6 +223,7 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
         serviceRadiusKm: _serviceAreaMode == 'RADIUS' ? _serviceRadiusKm : null,
         serviceAreaMode: _serviceAreaMode,
         offeredServices: _offeredServices,
+        hideExactLocation: _hideExactLocation,
       );
 
       if (mounted) {
@@ -200,9 +233,9 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -228,9 +261,9 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              AuthService.currentUser?.primaryRole == 'helper' 
-                ? 'Update your pricing, products/services, and coverage area below.'
-                : 'Set your pricing and coverage area to start accepting jobs.',
+              AuthService.currentUser?.primaryRole == 'helper'
+                  ? 'Update your pricing, products/services, and coverage area below.'
+                  : 'Set your pricing and coverage area to start accepting jobs.',
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 24),
@@ -238,23 +271,35 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
             // Service Category
             DropdownButtonFormField<String>(
               value: _selectedServiceCategory,
+              isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Specialized Service Category (Optional)',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.handyman_rounded),
-                helperText: 'Select a category if offering specialized services (e.g., Plumber, Gas delivery)',
+                helperText:
+                    'Select a category if offering specialized services (e.g., Plumber, Gas delivery)',
               ),
               items: [
                 const DropdownMenuItem<String>(
                   value: null,
-                  child: Text('General Helper / Household Help'),
+                  child: Text(
+                    'General Helper / Household Help',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 ...kServiceCategoriesList
                     .where((c) => c.name != 'All')
-                    .map((c) => DropdownMenuItem(
-                          value: c.name,
-                          child: Text(c.name),
-                        )),
+                    .map(
+                      (c) => DropdownMenuItem(
+                        value: c.name,
+                        child: Text(
+                          c.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
               ],
               onChanged: (value) {
                 setState(() {
@@ -267,24 +312,34 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
             // Base Pricing
             TextFormField(
               controller: _priceController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Base Price per Job / Service (KES)',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.attach_money),
               ),
               validator: (value) {
-                if (value == null || value.isEmpty) return 'Please enter a price';
-                if (double.tryParse(value) == null) return 'Please enter a valid number';
+                if (value == null || value.isEmpty)
+                  return 'Please enter a price';
+                if (double.tryParse(value) == null)
+                  return 'Please enter a valid number';
                 return null;
               },
             ),
             const SizedBox(height: 24),
 
             // Offered Products & Services Section
-            const Text('Offered Products & Services (Optional)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              'Offered Products & Services (Optional)',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 4),
-            const Text('Add specific services or products you offer with their prices:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const Text(
+              'Add specific services or products you offer with their prices:',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -305,7 +360,9 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
                   flex: 2,
                   child: TextField(
                     controller: _productPriceController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Price (KES)',
                       hintText: 'e.g. 1500',
@@ -351,9 +408,15 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
             const SizedBox(height: 24),
 
             // Service Area Mode
-            const Text('Service Area Mode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              'Service Area Mode',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 4),
-            const Text('Choose how you want customers to find your service area:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const Text(
+              'Choose how you want customers to find your service area:',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
             const SizedBox(height: 12),
             SegmentedButton<String>(
               segments: const [
@@ -388,23 +451,50 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Service Radius Configuration', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const Text(
+                      'Service Radius Configuration',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      _pinnedLocationLabel ?? 'No location pinned yet. Click below to use your current location.',
-                      style: TextStyle(color: _pinnedLocationLabel != null ? Colors.black87 : Colors.red, fontSize: 13),
+                      _pinnedLocationLabel ??
+                          'No location pinned yet. Click below to use your current location.',
+                      style: TextStyle(
+                        color: _pinnedLocationLabel != null
+                            ? Colors.black87
+                            : Colors.red,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: _isLocating ? null : _pinCurrentLocation,
-                        icon: _isLocating ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.my_location),
-                        label: Text(_isLocating ? 'Locating...' : (_pinnedLocationLabel != null ? 'Update Pinned Location' : 'Pin Current Location')),
+                        icon: _isLocating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: DwellyOrbitingLoader(),
+                              )
+                            : const Icon(Icons.my_location),
+                        label: Text(
+                          _isLocating
+                              ? 'Locating...'
+                              : (_pinnedLocationLabel != null
+                                    ? 'Update Pinned Location'
+                                    : 'Pin Current Location'),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text('Service Radius: ${_serviceRadiusKm.toStringAsFixed(0)} km', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      'Service Radius: ${_serviceRadiusKm.toStringAsFixed(0)} km',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     Slider(
                       value: _serviceRadiusKm,
                       min: 2,
@@ -417,13 +507,35 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
                         });
                       },
                     ),
+                    const Divider(height: 24),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        'Hide exact pinned location from clients',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Turn on if you operate remotely or mobile without a physical shop/office. Clients will see your service radius without exact coordinates or the Directions button.',
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                      value: _hideExactLocation,
+                      onChanged: (val) {
+                        setState(() {
+                          _hideExactLocation = val;
+                        });
+                      },
+                    ),
                   ],
                 ),
               ),
             ] else ...[
               // Administrative Areas (Landlord style autocomplete + dropdowns)
               LocationAutocomplete(
-                labelText: 'Search Ward Location (Autofills Constituency & County)',
+                labelText:
+                    'Search Ward Location (Autofills Constituency & County)',
                 hintText: 'Type ward name as landlord uses...',
                 required: false,
                 initialValue: _wardController.text,
@@ -436,7 +548,9 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
                       _selectedCounty = loc.county;
                     }
                     if (loc.constituency != null) {
-                      if (!_selectedConstituencies.contains(loc.constituency!)) {
+                      if (!_selectedConstituencies.contains(
+                        loc.constituency!,
+                      )) {
                         _selectedConstituencies.clear();
                         _selectedConstituencies.add(loc.constituency!);
                       }
@@ -469,15 +583,37 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
               // Coverage Level
               DropdownButtonFormField<String>(
                 value: _selectedCoverageLevel,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Coverage Level',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.layers),
                 ),
                 items: const [
-                  DropdownMenuItem(value: 'COUNTY', child: Text('Entire County')),
-                  DropdownMenuItem(value: 'CONSTITUENCY', child: Text('Specific Constituencies (Max 2)')),
-                  DropdownMenuItem(value: 'WARD', child: Text('Specific Wards (Max 5)')),
+                  DropdownMenuItem(
+                    value: 'COUNTY',
+                    child: Text(
+                      'Entire County',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'CONSTITUENCY',
+                    child: Text(
+                      'Specific Constituencies (Max 2)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'WARD',
+                    child: Text(
+                      'Specific Wards (Max 5)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
                 onChanged: (value) {
                   if (value != null) {
@@ -494,13 +630,21 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
               // County Selection (Required for all levels)
               DropdownButtonFormField<String>(
                 value: _selectedCounty,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'County',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.location_city),
                 ),
                 items: KenyaLocations.counties.map((county) {
-                  return DropdownMenuItem(value: county, child: Text(county));
+                  return DropdownMenuItem(
+                    value: county,
+                    child: Text(
+                      county,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
                 }).toList(),
                 onChanged: (value) {
                   setState(() {
@@ -512,52 +656,75 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
               ),
 
               // Constituency Selection
-              if (_selectedCoverageLevel == 'CONSTITUENCY' && _selectedCounty != null) ...[
+              if (_selectedCoverageLevel == 'CONSTITUENCY' &&
+                  _selectedCounty != null) ...[
                 const SizedBox(height: 16),
-                const Text('Select Constituencies (Max 2)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'Select Constituencies (Max 2)',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8.0,
                   runSpacing: 8.0,
-                  children: KenyaLocations.getConstituencies(_selectedCounty!).map((constituency) {
-                    final isSelected = _selectedConstituencies.contains(constituency);
-                    return FilterChip(
-                      label: Text(constituency),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            if (_selectedConstituencies.length < 2) {
-                              _selectedConstituencies.add(constituency);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Maximum 2 constituencies allowed')),
-                              );
-                            }
-                          } else {
-                            _selectedConstituencies.remove(constituency);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
+                  children: KenyaLocations.getConstituencies(_selectedCounty!)
+                      .map((constituency) {
+                        final isSelected = _selectedConstituencies.contains(
+                          constituency,
+                        );
+                        return FilterChip(
+                          label: Text(constituency),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() {
+                              if (selected) {
+                                if (_selectedConstituencies.length < 2) {
+                                  _selectedConstituencies.add(constituency);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Maximum 2 constituencies allowed',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                _selectedConstituencies.remove(constituency);
+                              }
+                            });
+                          },
+                        );
+                      })
+                      .toList(),
                 ),
               ],
 
               // Ward Selection
-              if (_selectedCoverageLevel == 'WARD' && _selectedCounty != null) ...[
+              if (_selectedCoverageLevel == 'WARD' &&
+                  _selectedCounty != null) ...[
                 const SizedBox(height: 16),
-                const Text('Select Wards (Max 5)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'Select Wards (Max 5)',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
-                ...KenyaLocations.getConstituencies(_selectedCounty!).map((constituency) {
+                ...KenyaLocations.getConstituencies(_selectedCounty!).map((
+                  constituency,
+                ) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(constituency, style: const TextStyle(color: Colors.grey)),
+                      Text(
+                        constituency,
+                        style: const TextStyle(color: Colors.grey),
+                      ),
                       Wrap(
                         spacing: 8.0,
                         runSpacing: 8.0,
-                        children: KenyaLocations.getWards(constituency).map((ward) {
+                        children: KenyaLocations.getWards(constituency).map((
+                          ward,
+                        ) {
                           final isSelected = _selectedWards.contains(ward);
                           return FilterChip(
                             label: Text(ward),
@@ -569,7 +736,11 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
                                     _selectedWards.add(ward);
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Maximum 5 wards allowed')),
+                                      const SnackBar(
+                                        content: Text(
+                                          'Maximum 5 wards allowed',
+                                        ),
+                                      ),
                                     );
                                   }
                                 } else {
@@ -594,12 +765,12 @@ class _RegisterHelperTabState extends State<RegisterHelperTab> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _submit,
                 child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const DwellyOrbitingLoader(glowColor: Colors.white)
                     : Text(
                         AuthService.currentUser?.primaryRole == 'helper'
-                          ? 'Update Profile'
-                          : 'Save Profile & Register',
-                        style: const TextStyle(fontSize: 16)
+                            ? 'Update Profile'
+                            : 'Save Profile & Register',
+                        style: const TextStyle(fontSize: 16),
                       ),
               ),
             ),

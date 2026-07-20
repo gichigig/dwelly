@@ -8,6 +8,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/widgets/full_screen_image_avatar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class MutedBlockedContactsPage extends StatefulWidget {
   const MutedBlockedContactsPage({super.key});
@@ -200,7 +201,7 @@ class _MutedBlockedContactsPageState extends State<MutedBlockedContactsPage> {
     }
 
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     if (_error != null) {

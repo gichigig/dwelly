@@ -37,20 +37,25 @@ class _DwellyOrbitingLoaderState extends State<DwellyOrbitingLoader>
     )..repeat();
 
     // 0.0 to 1.0 continuous rotation
-    _orbitAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.linear),
-    );
+    _orbitAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
 
     // Smooth breathing/bobbing pulse (0.92 -> 1.05 -> 0.92)
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.92, end: 1.05)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween<double>(
+          begin: 0.92,
+          end: 1.05,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 50.0,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.05, end: 0.92)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween<double>(
+          begin: 1.05,
+          end: 0.92,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 50.0,
       ),
     ]).animate(_controller);
@@ -140,7 +145,8 @@ class _OrbitPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width / 2) - (size.width * 0.08); // Slight padding from edge
+    final radius =
+        (size.width / 2) - (size.width * 0.08); // Slight padding from edge
     final dotRadius = math.max(3.0, size.width * 0.07);
 
     // 1. Draw subtle orbit track line
@@ -183,11 +189,13 @@ class _OrbitPainter extends CustomPainter {
       center.dy + radius * math.sin(currentAngle),
     );
 
-    // Outer glow
+    final glowRadius = dotRadius * 2.5;
     final glowPaint = Paint()
-      ..color = color
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, dotRadius * 1.5);
-    canvas.drawCircle(dotCenter, dotRadius, glowPaint);
+      ..shader = RadialGradient(
+        colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.0)],
+        stops: const [0.2, 1.0],
+      ).createShader(Rect.fromCircle(center: dotCenter, radius: glowRadius));
+    canvas.drawCircle(dotCenter, glowRadius, glowPaint);
 
     // Solid core dot
     final corePaint = Paint()

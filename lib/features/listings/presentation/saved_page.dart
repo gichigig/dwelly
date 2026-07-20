@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:realestate/features/listings/presentation/map_explore_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/models/rental.dart';
 import '../../../core/services/saved_rental_service.dart';
@@ -6,6 +8,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/telegram/telegram_section_state.dart';
 import '../../../core/widgets/telegram/telegram_top_bar.dart';
 import '../../../core/services/google_ad_service.dart';
+import '../../../core/widgets/shimmer_placeholder.dart';
 import 'rental_detail_page.dart';
 
 class SavedPage extends StatefulWidget {
@@ -191,7 +194,7 @@ class SavedPageState extends State<SavedPage> {
     }
 
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     if (_error != null) {
@@ -212,7 +215,7 @@ class SavedPageState extends State<SavedPage> {
           if (index >= _savedRentals.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: DwellyOrbitingLoader()),
             );
           }
 
@@ -320,7 +323,9 @@ class _SavedRentalCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      color: Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -330,13 +335,24 @@ class _SavedRentalCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: rental.imageUrls.isNotEmpty
-                    ? Image.network(
-                        rental.imageUrls.first,
+                child:
+                    (rental.imageUrls.isNotEmpty ||
+                        rental.thumbnailUrls.isNotEmpty)
+                    ? SizedBox(
                         width: 64,
                         height: 64,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const _SavedPlaceholder(),
+                        child: DwellyNetworkImage(
+                          imageUrl: rental.imageUrls.isNotEmpty
+                              ? rental.imageUrls.first
+                              : rental.thumbnailUrls.first,
+                          thumbnailUrl: rental.thumbnailUrls.isNotEmpty
+                              ? rental.thumbnailUrls.first
+                              : null,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          errorWidget: const _SavedPlaceholder(),
+                        ),
                       )
                     : const _SavedPlaceholder(),
               ),
@@ -349,21 +365,29 @@ class _SavedRentalCard extends StatelessWidget {
                       rental.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      details, 
-                      maxLines: 1, 
+                      details,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       rental.fullAddress,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontSize: 13,
+                      ),
                     ),
                     if (savedRental.notes != null &&
                         savedRental.notes!.trim().isNotEmpty)
@@ -373,7 +397,11 @@ class _SavedRentalCard extends StatelessWidget {
                           savedRental.notes!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.amber[900], fontSize: 12, fontStyle: FontStyle.italic),
+                          style: TextStyle(
+                            color: Colors.amber[900],
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
                       ),
                   ],

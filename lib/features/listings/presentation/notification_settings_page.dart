@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import '../../../core/services/notification_preferences_service.dart';
 import '../../../core/services/notification_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -106,7 +107,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Notification Settings')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -250,7 +251,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: DwellyOrbitingLoader(),
                           )
                         : const Text('Save settings'),
                   ),

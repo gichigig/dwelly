@@ -124,9 +124,9 @@ class AdBreakPayload {
       available: json['available'] == true,
       ads: rawAds
           .whereType<Map>()
-          .map((entry) => Advertisement.fromJson(
-                Map<String, dynamic>.from(entry),
-              ))
+          .map(
+            (entry) => Advertisement.fromJson(Map<String, dynamic>.from(entry)),
+          )
           .toList(),
       policy: AdBreakPolicy.fromJson(
         json['policy'] is Map<String, dynamic>
@@ -166,7 +166,7 @@ class AdService {
   AdDisplayConfig? _cachedConfig;
   Duration _lastAdRequestLatency = Duration.zero;
   int _consecutiveAdTimeouts = 0;
-  
+
   // In-Memory cache to avoid repeated SharedPreferences decoding
   final Map<String, List<Advertisement>> _memoryAdsCache = {};
   final Map<String, DateTime> _memoryAdsCacheTimestamp = {};
@@ -234,6 +234,9 @@ class AdService {
         await _cacheAds(cacheKey, timestampKey, ads);
         _memoryAdsCache[cacheKey] = ads;
         _memoryAdsCacheTimestamp[timestampKey] = DateTime.now();
+        if (ads.isNotEmpty) {
+          cacheFallbackAd(ads.first);
+        }
         _markAdNetworkSuccess();
 
         return ads;
@@ -241,12 +244,45 @@ class AdService {
 
       // On error, try to return stale cache
       _markAdNetworkFailure();
-      return await _getStaleCache(cacheKey, timestampKey) ?? [];
+      final stale = await _getStaleCache(cacheKey, timestampKey) ?? [];
+      if (stale.isNotEmpty) {
+        cacheFallbackAd(stale.first);
+      }
+      return stale;
     } catch (e) {
       // On network error, return stale cache if available
       _markAdNetworkFailure();
-      return await _getStaleCache(cacheKey, timestampKey) ?? [];
+      final stale = await _getStaleCache(cacheKey, timestampKey) ?? [];
+      if (stale.isNotEmpty) {
+        cacheFallbackAd(stale.first);
+      }
+      return stale;
     }
+  }
+
+  static Advertisement? _cachedFallbackAd;
+
+  static void cacheFallbackAd(Advertisement ad) {
+    _cachedFallbackAd = ad;
+  }
+
+  Future<Advertisement?> getCachedOrStaleAd(AdPlacement placement) async {
+    final cacheKey = '$_cacheKeyPrefix${placement.name}';
+    final timestampKey = '${cacheKey}_timestamp';
+    final cachedList =
+        await _getCachedAds(cacheKey, timestampKey) ??
+        await _getStaleCache(cacheKey, timestampKey);
+    if (cachedList != null && cachedList.isNotEmpty) {
+      _cachedFallbackAd = cachedList.first;
+      return cachedList.first;
+    }
+    for (final ads in _memoryAdsCache.values) {
+      if (ads.isNotEmpty) {
+        _cachedFallbackAd = ads.first;
+        return ads.first;
+      }
+    }
+    return _cachedFallbackAd;
   }
 
   /// Get a single ad by ID
@@ -538,7 +574,9 @@ class AdService {
       if (cached != null) {
         try {
           _cachedConfig = AdDisplayConfig.fromJson(jsonDecode(cached));
-          PremiumService.notifyPremiumPageEnabled(_cachedConfig!.premiumPageEnabled);
+          PremiumService.notifyPremiumPageEnabled(
+            _cachedConfig!.premiumPageEnabled,
+          );
           return _cachedConfig!;
         } catch (e) {
           // Invalid cache, continue to fetch
@@ -556,7 +594,9 @@ class AdService {
         _cachedConfig = AdDisplayConfig.fromJson(data);
         await _prefs.setString(_configCacheKey, response.body);
         _markAdNetworkSuccess();
-        PremiumService.notifyPremiumPageEnabled(_cachedConfig!.premiumPageEnabled);
+        PremiumService.notifyPremiumPageEnabled(
+          _cachedConfig!.premiumPageEnabled,
+        );
         return _cachedConfig!;
       }
     } catch (e) {
@@ -629,7 +669,8 @@ class AdService {
     final backgroundDuration = DateTime.now().difference(
       DateTime.fromMillisecondsSinceEpoch(backgroundAt),
     );
-    if (backgroundDuration.inSeconds < config.launchAdResumeMinBackgroundSeconds) {
+    if (backgroundDuration.inSeconds <
+        config.launchAdResumeMinBackgroundSeconds) {
       return false;
     }
 
@@ -712,7 +753,8 @@ class AdService {
   }
 
   String _resolveMediaHint() {
-    final degraded = _consecutiveAdTimeouts >= 2 ||
+    final degraded =
+        _consecutiveAdTimeouts >= 2 ||
         _lastAdRequestLatency > const Duration(milliseconds: 1800);
     return degraded ? 'LIGHT' : 'FULL';
   }
@@ -815,7 +857,7 @@ class AdService {
     final now = DateTime.now();
     _memoryTargetedAdCache[cacheKey] = ad;
     _memoryTargetedAdTimestamp[timestampKey] = now;
-    
+
     await _prefs.setString(cacheKey, jsonEncode(ad.toJson()));
     await _prefs.setInt(timestampKey, now.millisecondsSinceEpoch);
   }
@@ -824,7 +866,8 @@ class AdService {
     String cacheKey,
     String timestampKey,
   ) async {
-    if (_memoryTargetedAdCache.containsKey(cacheKey) && _memoryTargetedAdTimestamp.containsKey(timestampKey)) {
+    if (_memoryTargetedAdCache.containsKey(cacheKey) &&
+        _memoryTargetedAdTimestamp.containsKey(timestampKey)) {
       final memTimestamp = _memoryTargetedAdTimestamp[timestampKey]!;
       if (DateTime.now().difference(memTimestamp) <= _targetedFreshExpiry) {
         return _memoryTargetedAdCache[cacheKey];
@@ -850,7 +893,8 @@ class AdService {
   }
 
   Advertisement? _getStaleTargetedAd(String cacheKey, String timestampKey) {
-    if (_memoryTargetedAdCache.containsKey(cacheKey) && _memoryTargetedAdTimestamp.containsKey(timestampKey)) {
+    if (_memoryTargetedAdCache.containsKey(cacheKey) &&
+        _memoryTargetedAdTimestamp.containsKey(timestampKey)) {
       final memTimestamp = _memoryTargetedAdTimestamp[timestampKey]!;
       if (DateTime.now().difference(memTimestamp) <= _targetedStaleAllowed) {
         return _memoryTargetedAdCache[cacheKey];
@@ -996,9 +1040,12 @@ class AdService {
   // Cache helpers
 
   Future<List<Advertisement>?> _getCachedAds(
-      String cacheKey, String timestampKey) async {
+    String cacheKey,
+    String timestampKey,
+  ) async {
     // Check in-memory cache first
-    if (_memoryAdsCache.containsKey(cacheKey) && _memoryAdsCacheTimestamp.containsKey(timestampKey)) {
+    if (_memoryAdsCache.containsKey(cacheKey) &&
+        _memoryAdsCacheTimestamp.containsKey(timestampKey)) {
       final memTimestamp = _memoryAdsCacheTimestamp[timestampKey]!;
       if (DateTime.now().difference(memTimestamp) <= _cacheExpiry) {
         return _memoryAdsCache[cacheKey];
@@ -1021,11 +1068,11 @@ class AdService {
       final ads = adsJson
           .map((json) => Advertisement.fromJson(jsonDecode(json)))
           .toList();
-      
+
       // Update memory cache
       _memoryAdsCache[cacheKey] = ads;
       _memoryAdsCacheTimestamp[timestampKey] = timestamp;
-      
+
       return ads;
     } catch (_) {
       return null;
@@ -1033,9 +1080,12 @@ class AdService {
   }
 
   Future<List<Advertisement>?> _getStaleCache(
-      String cacheKey, String timestampKey) async {
+    String cacheKey,
+    String timestampKey,
+  ) async {
     // Check in-memory cache for stale data as well
-    if (_memoryAdsCache.containsKey(cacheKey) && _memoryAdsCacheTimestamp.containsKey(timestampKey)) {
+    if (_memoryAdsCache.containsKey(cacheKey) &&
+        _memoryAdsCacheTimestamp.containsKey(timestampKey)) {
       final memTimestamp = _memoryAdsCacheTimestamp[timestampKey]!;
       if (DateTime.now().difference(memTimestamp) <= _staleAllowed) {
         return _memoryAdsCache[cacheKey];
@@ -1058,11 +1108,11 @@ class AdService {
       final ads = adsJson
           .map((json) => Advertisement.fromJson(jsonDecode(json)))
           .toList();
-          
+
       // Update memory cache
       _memoryAdsCache[cacheKey] = ads;
       _memoryAdsCacheTimestamp[timestampKey] = timestamp;
-      
+
       return ads;
     } catch (_) {
       return null;

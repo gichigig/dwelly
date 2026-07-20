@@ -3,4 +3,10 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Match the Flutter splash gradient starting color -->
     <item android:drawable="@color/splash_background" />
+    <!-- Centered app icon -->
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@mipmap/ic_launcher" />
+    </item>
 </layer-list>

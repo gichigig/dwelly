@@ -14,6 +14,7 @@ import '../../../core/services/auth_service.dart';
 import 'security_setup_wizard_page.dart';
 import '../../auth/presentation/forgot_password_screen.dart';
 import '../../../core/models/user.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class SecurityCenterPage extends StatefulWidget {
   const SecurityCenterPage({super.key});
@@ -302,6 +303,15 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
         await AuthService.logout();
         if (!mounted) return;
         Navigator.of(context).pop();
+      } else {
+        if (!mounted) return;
+        showErrorSnackBar(
+          context,
+          Exception(
+            'Failed to delete account (Status: ${response.statusCode})',
+          ),
+          fallbackMessage: 'Could not delete account. Please try again later.',
+        );
       }
     } finally {
       if (mounted) {
@@ -454,19 +464,26 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
         body: jsonEncode({'enabled': enable}),
       );
       if (response.statusCode == 200) {
-        await _fetchSecurityMethods();
+        await _load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text(enable
+              content: Text(
+                enable
                     ? 'Tap to Verify (Push 2FA) enabled'
-                    : 'Tap to Verify (Push 2FA) disabled')),
+                    : 'Tap to Verify (Push 2FA) disabled',
+              ),
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
-        showErrorSnackBar(context, e, fallbackMessage: 'Failed to update push verification setting.');
+        showErrorSnackBar(
+          context,
+          e,
+          fallbackMessage: 'Failed to update push verification setting.',
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -662,8 +679,7 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
                         showErrorSnackBar(
                           context,
                           e,
-                          fallbackMessage:
-                              'Failed to download recovery codes.',
+                          fallbackMessage: 'Failed to download recovery codes.',
                         );
                       }
                     },
@@ -897,7 +913,7 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Security Center')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -914,7 +930,8 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
                 Card(
                   child: Column(
                     children: [
-                      if ((user?.authProvider ?? 'LOCAL').toUpperCase() == 'LOCAL')
+                      if ((user?.authProvider ?? 'LOCAL').toUpperCase() ==
+                          'LOCAL')
                         ListTile(
                           leading: const Icon(Icons.lock_outline),
                           title: const Text('Change Password'),
@@ -977,31 +994,11 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
                         Text(
                           _securityMethods == null
                               ? 'Unable to load MFA settings'
-                              : 'Enabled: ${_securityMethods!.mfaEnabled ? "Yes" : "No"} | Tap to Verify: ${_securityMethods!.pushEnabled ? "On" : "Off"} | TOTP: ${_securityMethods!.totpEnabled ? "On" : "Off"} | Passkey: ${_securityMethods!.passkeyEnabled ? "On" : "Off"}',
+                              : 'Enabled: ${_securityMethods!.mfaEnabled ? "Yes" : "No"} | TOTP: ${_securityMethods!.totpEnabled ? "On" : "Off"} | Passkey: ${_securityMethods!.passkeyEnabled ? "On" : "Off"}',
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Recovery codes remaining: ${_securityMethods?.recoveryCodesRemaining ?? 0}',
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _busy
-                                    ? null
-                                    : () => _togglePushMfa(
-                                          !(_securityMethods?.pushEnabled ?? false),
-                                        ),
-                                icon: const Icon(Icons.touch_app_outlined),
-                                label: Text(
-                                  (_securityMethods?.pushEnabled ?? false)
-                                      ? 'Disable Tap to Verify'
-                                      : 'Enable Tap to Verify',
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                         const SizedBox(height: 8),
                         Row(

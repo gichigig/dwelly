@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/mpesa_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class DonatePage extends StatefulWidget {
   const DonatePage({super.key});
@@ -114,7 +115,7 @@ class _DonatePageState extends State<DonatePage> {
             _isProcessing = false;
             _processingMessage = null;
           });
-          
+
           if (success) {
             _showSuccessDialog(message);
           } else {
@@ -177,7 +178,8 @@ class _DonatePageState extends State<DonatePage> {
       path: contactEmail,
       queryParameters: {
         'subject': 'Large Donation Inquiry - Dwelly',
-        'body': 'Hello,\n\nI would like to make a large donation to support Dwelly.\n\nPlease contact me to discuss the details.\n\nThank you!',
+        'body':
+            'Hello,\n\nI would like to make a large donation to support Dwelly.\n\nPlease contact me to discuss the details.\n\nThank you!',
       },
     );
     if (await canLaunchUrl(uri)) {
@@ -198,10 +200,7 @@ class _DonatePageState extends State<DonatePage> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Support Dwelly'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Support Dwelly'), centerTitle: true),
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -283,7 +282,9 @@ class _DonatePageState extends State<DonatePage> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            ..._suggestedAmounts.map((amount) => _buildAmountChip(amount)),
+                            ..._suggestedAmounts.map(
+                              (amount) => _buildAmountChip(amount),
+                            ),
                             _buildCustomAmountChip(),
                           ],
                         ),
@@ -293,7 +294,9 @@ class _DonatePageState extends State<DonatePage> {
                           TextField(
                             controller: _customAmountController,
                             keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                             decoration: InputDecoration(
                               labelText: 'Enter amount',
                               prefixText: 'KES ',
@@ -314,11 +317,15 @@ class _DonatePageState extends State<DonatePage> {
                           decoration: InputDecoration(
                             labelText: 'M-Pesa Phone Number',
                             hintText: '07XX XXX XXX',
-                            prefixIcon: const Icon(Icons.phone, color: Color(0xFF4CAF50)),
+                            prefixIcon: const Icon(
+                              Icons.phone,
+                              color: Color(0xFF4CAF50),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            helperText: 'Enter Safaricom number registered with M-Pesa',
+                            helperText:
+                                'Enter Safaricom number registered with M-Pesa',
                           ),
                         ),
 
@@ -328,21 +335,22 @@ class _DonatePageState extends State<DonatePage> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: (_isProcessing || _donationAmount < 1) ? null : _initiateSTKPush,
-                            icon: _isProcessing 
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.send),
+                            onPressed: (_isProcessing || _donationAmount < 1)
+                                ? null
+                                : _initiateSTKPush,
+                            icon: _isProcessing
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: DwellyOrbitingLoader(
+                                      glowColor: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.send),
                             label: Text(
-                              _isProcessing 
-                                ? (_processingMessage ?? 'Processing...')
-                                : _donationAmount > 0 
+                              _isProcessing
+                                  ? (_processingMessage ?? 'Processing...')
+                                  : _donationAmount > 0
                                   ? 'Donate KES $_donationAmount'
                                   : 'Select Amount to Donate',
                             ),
@@ -366,11 +374,17 @@ class _DonatePageState extends State<DonatePage> {
                           decoration: BoxDecoration(
                             color: Colors.blue.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.blue.withOpacity(0.3),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -414,13 +428,19 @@ class _DonatePageState extends State<DonatePage> {
                               _buildPaybillRow(
                                 'Paybill Number',
                                 mpesaPaybill,
-                                onCopy: () => _copyToClipboard(mpesaPaybill, 'Paybill number'),
+                                onCopy: () => _copyToClipboard(
+                                  mpesaPaybill,
+                                  'Paybill number',
+                                ),
                               ),
                               const Divider(height: 24),
                               _buildPaybillRow(
                                 'Account Number',
                                 mpesaAccountNumber,
-                                onCopy: () => _copyToClipboard(mpesaAccountNumber, 'Account number'),
+                                onCopy: () => _copyToClipboard(
+                                  mpesaAccountNumber,
+                                  'Account number',
+                                ),
                               ),
                             ],
                           ),
@@ -444,12 +464,27 @@ class _DonatePageState extends State<DonatePage> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              _buildInstructionStep('1', 'Go to M-Pesa on your phone'),
-                              _buildInstructionStep('2', 'Select "Lipa na M-Pesa"'),
+                              _buildInstructionStep(
+                                '1',
+                                'Go to M-Pesa on your phone',
+                              ),
+                              _buildInstructionStep(
+                                '2',
+                                'Select "Lipa na M-Pesa"',
+                              ),
                               _buildInstructionStep('3', 'Select "Pay Bill"'),
-                              _buildInstructionStep('4', 'Enter Business Number: $mpesaPaybill'),
-                              _buildInstructionStep('5', 'Enter Account Number: $mpesaAccountNumber'),
-                              _buildInstructionStep('6', 'Enter Amount and confirm'),
+                              _buildInstructionStep(
+                                '4',
+                                'Enter Business Number: $mpesaPaybill',
+                              ),
+                              _buildInstructionStep(
+                                '5',
+                                'Enter Account Number: $mpesaAccountNumber',
+                              ),
+                              _buildInstructionStep(
+                                '6',
+                                'Enter Amount and confirm',
+                              ),
                             ],
                           ),
                         ),
@@ -502,7 +537,9 @@ class _DonatePageState extends State<DonatePage> {
                                 icon: const Icon(Icons.email_outlined),
                                 label: const Text('Email Us'),
                                 style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -516,7 +553,9 @@ class _DonatePageState extends State<DonatePage> {
                                 icon: const Icon(Icons.phone_outlined),
                                 label: const Text('Call Us'),
                                 style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -680,10 +719,7 @@ class _DonatePageState extends State<DonatePage> {
           children: [
             Text(
               label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
             const SizedBox(height: 4),
             Text(
@@ -763,12 +799,7 @@ class _DonatePageState extends State<DonatePage> {
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 13),
-            ),
-          ),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );
@@ -831,7 +862,8 @@ class _MpesaPinDialog extends StatefulWidget {
   State<_MpesaPinDialog> createState() => _MpesaPinDialogState();
 }
 
-class _MpesaPinDialogState extends State<_MpesaPinDialog> with SingleTickerProviderStateMixin {
+class _MpesaPinDialogState extends State<_MpesaPinDialog>
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   StreamSubscription? _statusSubscription;
   String _statusMessage = 'Waiting for M-Pesa PIN...';
@@ -844,40 +876,52 @@ class _MpesaPinDialogState extends State<_MpesaPinDialog> with SingleTickerProvi
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    
+
     _startPolling();
   }
 
   void _startPolling() {
-    _statusSubscription = MpesaService.waitForPayment(widget.checkoutRequestId).listen(
-      (status) {
-        if (_isCompleted) return;
-        
-        switch (status.status) {
-          case MpesaStatus.completed:
-            _isCompleted = true;
-            widget.onComplete(true, 'Donation of KES ${widget.amount} received successfully!\nReceipt: ${status.mpesaReceiptNumber}');
-            break;
-          case MpesaStatus.cancelled:
-            _isCompleted = true;
-            widget.onComplete(false, 'Payment was cancelled');
-            break;
-          case MpesaStatus.failed:
-            _isCompleted = true;
-            widget.onComplete(false, status.resultDesc.isNotEmpty ? status.resultDesc : 'Payment failed. Please try again.');
-            break;
-          case MpesaStatus.pending:
-            // Still waiting
-            break;
-        }
-      },
-      onError: (error) {
-        if (!_isCompleted) {
-          _isCompleted = true;
-          widget.onComplete(false, 'An error occurred. Please check your M-Pesa messages.');
-        }
-      },
-    );
+    _statusSubscription = MpesaService.waitForPayment(widget.checkoutRequestId)
+        .listen(
+          (status) {
+            if (_isCompleted) return;
+
+            switch (status.status) {
+              case MpesaStatus.completed:
+                _isCompleted = true;
+                widget.onComplete(
+                  true,
+                  'Donation of KES ${widget.amount} received successfully!\nReceipt: ${status.mpesaReceiptNumber}',
+                );
+                break;
+              case MpesaStatus.cancelled:
+                _isCompleted = true;
+                widget.onComplete(false, 'Payment was cancelled');
+                break;
+              case MpesaStatus.failed:
+                _isCompleted = true;
+                widget.onComplete(
+                  false,
+                  status.resultDesc.isNotEmpty
+                      ? status.resultDesc
+                      : 'Payment failed. Please try again.',
+                );
+                break;
+              case MpesaStatus.pending:
+                // Still waiting
+                break;
+            }
+          },
+          onError: (error) {
+            if (!_isCompleted) {
+              _isCompleted = true;
+              widget.onComplete(
+                false,
+                'An error occurred. Please check your M-Pesa messages.',
+              );
+            }
+          },
+        );
   }
 
   @override
@@ -894,7 +938,7 @@ class _MpesaPinDialogState extends State<_MpesaPinDialog> with SingleTickerProvi
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 16),
-          
+
           // Animated phone icon
           AnimatedBuilder(
             animation: _pulseController,
@@ -904,7 +948,9 @@ class _MpesaPinDialogState extends State<_MpesaPinDialog> with SingleTickerProvi
                 child: Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF4CAF50).withOpacity(0.1 + (_pulseController.value * 0.1)),
+                    color: const Color(
+                      0xFF4CAF50,
+                    ).withOpacity(0.1 + (_pulseController.value * 0.1)),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -916,9 +962,9 @@ class _MpesaPinDialogState extends State<_MpesaPinDialog> with SingleTickerProvi
               );
             },
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           Text(
             'KES ${widget.amount}',
             style: const TextStyle(
@@ -927,36 +973,30 @@ class _MpesaPinDialogState extends State<_MpesaPinDialog> with SingleTickerProvi
               color: Color(0xFF4CAF50),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           Text(
             _statusMessage,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           Text(
             'Please check your phone and enter your M-Pesa PIN to complete the donation.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           const LinearProgressIndicator(
             backgroundColor: Color(0xFFE8F5E9),
             valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
           ),
-          
+
           const SizedBox(height: 16),
         ],
       ),

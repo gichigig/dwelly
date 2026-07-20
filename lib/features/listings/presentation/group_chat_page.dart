@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../../../core/models/chat_group.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/group_service.dart';
+import '../../../core/services/sqlite_cache_service.dart';
 import '../../../core/services/chat_service.dart';
+import '../../../core/services/chat_realtime_service.dart';
 import '../../../core/services/contact_service.dart';
 import '../../../core/widgets/full_screen_image_view.dart';
 import 'contacts_list_page.dart';
@@ -12,6 +16,7 @@ import '../../user_profile/presentation/user_public_profile_page.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -22,6 +27,7 @@ import '../../../core/services/api_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:linkify/linkify.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class GroupChatPage extends StatefulWidget {
   final ChatGroup group;
@@ -42,7 +48,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool _isSending = false;
   String? _error;
   Timer? _pollingTimer;
-  
+  final _realtimeService = ChatRealtimeService();
+  bool _isRealtimeConnected = false;
+  StompUnsubscribe? _messagesUnsubscribe;
+  StompUnsubscribe? _detailsUnsubscribe;
+
   bool _isEmojiPickerVisible = false;
   final FocusNode _focusNode = FocusNode();
 
@@ -65,12 +75,75 @@ class _GroupChatPageState extends State<GroupChatPage> {
     });
     _scrollController.addListener(_onScroll);
     _loadMessages();
+    _refreshGroupDetails();
     _startPolling();
+    _connectRealtime();
+  }
+
+  Future<void> _connectRealtime() async {
+    final currentUserId = AuthService.currentUser?.id;
+    if (currentUserId == null) return;
+
+    await _realtimeService.connect(
+      onConnected: () {
+        if (!mounted) return;
+        setState(() => _isRealtimeConnected = true);
+
+        _messagesUnsubscribe?.call();
+        _messagesUnsubscribe = _realtimeService.subscribeGroupMessages(
+          _group.id,
+          (newMsg) {
+            if (!mounted) return;
+            setState(() {
+              final exists = _messages.any((m) =>
+                  m.id == newMsg.id ||
+                  (m.clientMessageId != null &&
+                      m.clientMessageId == newMsg.clientMessageId));
+              if (!exists) {
+                _messages.add(newMsg);
+              }
+            });
+            _scrollToBottom();
+          },
+        );
+
+        _detailsUnsubscribe?.call();
+        _detailsUnsubscribe = _realtimeService.subscribeGroupDetails(
+          _group.id,
+          (updatedGroup) {
+            if (!mounted) return;
+            setState(() {
+              _group = updatedGroup;
+            });
+          },
+        );
+
+        // Thundering herd protection: check if reconnecting after a significant drop (>= 5s)
+        final lastDisconnect = _realtimeService.lastDisconnectedAt;
+        _realtimeService.clearDisconnectTimestamp();
+        if (lastDisconnect != null &&
+            DateTime.now().difference(lastDisconnect).inSeconds >= 5) {
+          // Add query smoothing jitter (0-1.5s) before catch-up REST sync
+          Future.delayed(Duration(milliseconds: Random().nextInt(1500)), () {
+            if (mounted && _isRealtimeConnected) {
+              _pollForNewMessages();
+            }
+          });
+        }
+      },
+      onError: (_) {
+        if (!mounted) return;
+        setState(() => _isRealtimeConnected = false);
+      },
+    );
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _messagesUnsubscribe?.call();
+    _detailsUnsubscribe?.call();
+    _realtimeService.disconnect();
     _messageController.dispose();
     _focusNode.dispose();
     _scrollController.removeListener(_onScroll);
@@ -79,7 +152,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels <= 100 &&
+    if (_scrollController.position.pixels <= 150 &&
         !_isLoadingMore &&
         _hasMoreMessages &&
         !_isLoading) {
@@ -88,16 +161,43 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (_isRealtimeConnected) return;
       _pollForNewMessages();
+      _refreshGroupDetails();
     });
   }
 
-  void _showContactOptionsDialog(int userId, String currentName, String? username) {
+  Future<void> _refreshGroupDetails() async {
+    if (_isRealtimeConnected) return;
+    try {
+      final freshGroup = await GroupService.getGroupDetails(_group.id);
+      if (mounted) {
+        setState(() {
+          _group = freshGroup;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to refresh group details: $e');
+    }
+  }
+
+  void _showContactOptionsDialog(
+    int userId,
+    String currentName,
+    String? username,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(ContactService.getDisplayName(userId, currentName, username: username)),
+        title: Text(
+          ContactService.getDisplayName(
+            userId,
+            currentName,
+            username: username,
+          ),
+        ),
         content: const Text('Choose an option:'),
         actions: [
           TextButton(
@@ -128,7 +228,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  void _showSaveContactFormDialog(int userId, String currentName, String? username) {
+  void _showSaveContactFormDialog(
+    int userId,
+    String currentName,
+    String? username,
+  ) {
     final controller = TextEditingController(text: currentName);
     showDialog(
       context: context,
@@ -166,7 +270,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _pollForNewMessages() async {
-    if (_isLoading || _isSending) return;
+    if (_isRealtimeConnected || _isLoading || _isSending) return;
 
     try {
       final result = await GroupService.getGroupMessagesPaginated(
@@ -181,10 +285,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
       final updatedMessages = List<GroupMessage>.from(_messages);
 
       for (final message in latestMessages) {
-        final existingIndex = updatedMessages.indexWhere((m) =>
-            m.id == message.id ||
-            (m.clientMessageId != null &&
-                m.clientMessageId == message.clientMessageId));
+        final existingIndex = updatedMessages.indexWhere(
+          (m) =>
+              m.id == message.id ||
+              (m.clientMessageId != null &&
+                  m.clientMessageId == message.clientMessageId),
+        );
 
         if (existingIndex >= 0) {
           if (updatedMessages[existingIndex].metadata != message.metadata ||
@@ -200,7 +306,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
       }
 
       if (changed) {
-        final wasAtBottom = _scrollController.hasClients &&
+        final wasAtBottom =
+            _scrollController.hasClients &&
             _scrollController.position.pixels >=
                 _scrollController.position.maxScrollExtent - 100;
         setState(() {
@@ -234,7 +341,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
       final hasMore = result['hasMore'] == true;
 
       setState(() {
-        _messages = messages..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        _messages = messages
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
         _hasMoreMessages = hasMore;
         _isLoading = false;
       });
@@ -254,8 +362,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
       _isLoadingMore = true;
     });
 
-    final previousOffset =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final previousOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
     final previousMaxExtent = _scrollController.hasClients
         ? _scrollController.position.maxScrollExtent
         : 0.0;
@@ -271,7 +380,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
       final hasMore = result['hasMore'] == true;
 
       setState(() {
-        _messages = [...olderMessages, ..._messages];
+        final existingIds = _messages.map((m) => m.id).whereType<int>().toSet();
+        final uniqueOlder = olderMessages
+            .where((m) => m.id == null || !existingIds.contains(m.id))
+            .toList();
+        _messages = [...uniqueOlder, ..._messages];
+        _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         _currentPage = nextPage;
         _hasMoreMessages = hasMore;
       });
@@ -327,7 +441,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
     if (_group.adminOnlyMessage && myMember.role != 'ADMIN') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only admins can send messages in this group')),
+        const SnackBar(
+          content: Text('Only admins can send messages in this group'),
+        ),
       );
       return;
     }
@@ -366,7 +482,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
       );
       if (!mounted) return;
       setState(() {
-        final index = _messages.indexWhere((m) => m.clientMessageId == clientMessageId);
+        final index = _messages.indexWhere(
+          (m) => m.clientMessageId == clientMessageId,
+        );
         if (index >= 0) {
           _messages[index] = result;
         } else {
@@ -378,7 +496,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        final index = _messages.indexWhere((m) => m.clientMessageId == clientMessageId);
+        final index = _messages.indexWhere(
+          (m) => m.clientMessageId == clientMessageId,
+        );
         if (index >= 0) {
           final failed = _messages[index];
           _messages[index] = GroupMessage(
@@ -397,9 +517,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
           );
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to send message.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to send message.')));
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
@@ -407,23 +527,36 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
-  Future<void> _deleteMessage(GroupMessage message) async {
+  Future<void> _deleteMessage(
+    GroupMessage message, {
+    bool deleteForAll = false,
+  }) async {
     if (message.id < 0) return;
     try {
-      await GroupService.deleteMessage(_group.id, message.id);
+      await GroupService.deleteMessage(
+        _group.id,
+        message.id,
+        deleteForAll: deleteForAll,
+      );
       if (mounted) {
         setState(() {
-          _messages.removeWhere((m) => m.id == message.id);
+          if (deleteForAll) {
+            message.content = 'This message was deleted';
+            message.messageType = 'DELETED';
+            message.mediaUrl = null;
+          } else {
+            _messages.removeWhere((m) => m.id == message.id);
+          }
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message deleted')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Message deleted')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete message: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to delete message: $e')));
       }
     }
   }
@@ -472,9 +605,13 @@ class _GroupChatPageState extends State<GroupChatPage> {
             children: [
               Text(
                 _group.name,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              if (_group.description != null && _group.description!.isNotEmpty) ...[
+              if (_group.description != null &&
+                  _group.description!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
                   _group.description!,
@@ -493,14 +630,28 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   itemCount: _group.members.length,
                   itemBuilder: (context, index) {
                     final member = _group.members[index];
-                    final displayName = '${member.firstName} ${member.lastName}';
+                    final displayName =
+                        '${member.firstName} ${member.lastName}';
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundImage: member.userAvatar != null && member.userAvatar!.isNotEmpty
-                            ? CachedNetworkImageProvider(ApiService.resolveMediaUrl(member.userAvatar!)!) as ImageProvider
+                        backgroundImage:
+                            member.userAvatar != null &&
+                                member.userAvatar!.isNotEmpty
+                            ? CachedNetworkImageProvider(
+                                    ApiService.resolveMediaUrl(
+                                      member.userAvatar!,
+                                    )!,
+                                  )
+                                  as ImageProvider
                             : null,
-                        child: member.userAvatar == null || member.userAvatar!.isEmpty
-                            ? Text(member.firstName.isNotEmpty ? member.firstName[0].toUpperCase() : '?')
+                        child:
+                            member.userAvatar == null ||
+                                member.userAvatar!.isEmpty
+                            ? Text(
+                                member.firstName.isNotEmpty
+                                    ? member.firstName[0].toUpperCase()
+                                    : '?',
+                              )
                             : null,
                       ),
                       title: Text(displayName),
@@ -510,7 +661,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => UserPublicProfilePage(userId: member.userId),
+                            builder: (context) =>
+                                UserPublicProfilePage(userId: member.userId),
                           ),
                         );
                       },
@@ -539,7 +691,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   void _showCreatePollDialog() {
     final questionController = TextEditingController();
-    final optionsControllers = [TextEditingController(), TextEditingController()];
+    final optionsControllers = [
+      TextEditingController(),
+      TextEditingController(),
+    ];
 
     showDialog(
       context: context,
@@ -565,12 +720,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             Expanded(
                               child: TextField(
                                 controller: entry.value,
-                                decoration: InputDecoration(labelText: 'Option ${entry.key + 1}'),
+                                decoration: InputDecoration(
+                                  labelText: 'Option ${entry.key + 1}',
+                                ),
                               ),
                             ),
                             if (optionsControllers.length > 2)
                               IconButton(
-                                icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                icon: const Icon(
+                                  Icons.remove_circle,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () {
                                   setState(() {
                                     optionsControllers.removeAt(entry.key);
@@ -658,29 +818,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 onTap: () async {
                   Navigator.pop(context);
                   final picker = ImagePicker();
-                  final xfile = await picker.pickImage(source: ImageSource.gallery);
-                  if (xfile != null && mounted) {
-                    setState(() => _isSending = true);
-                    try {
-                      final url = await ApiService.uploadFile(
-                        File(xfile.path),
-                        '/files/upload',
-                        token: AuthService.token,
-                      );
-                      await _sendMessage(
-                        content: 'Sent an image',
-                        messageType: 'IMAGE',
-                        mediaUrl: url,
-                      );
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to upload image: $e')),
-                        );
-                      }
-                    } finally {
-                      if (mounted) setState(() => _isSending = false);
-                    }
+                  final xfile = await picker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (xfile != null) {
+                    await _processAndSendImage(xfile);
                   }
                 },
               ),
@@ -694,90 +836,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 onTap: () async {
                   Navigator.pop(context);
                   final picker = ImagePicker();
-                  final xfile = await picker.pickImage(source: ImageSource.camera);
-                  if (xfile != null && mounted) {
-                    setState(() => _isSending = true);
-                    try {
-                      final url = await ApiService.uploadFile(
-                        File(xfile.path),
-                        '/files/upload',
-                        token: AuthService.token,
-                      );
-                      await _sendMessage(
-                        content: 'Sent an image',
-                        messageType: 'IMAGE',
-                        mediaUrl: url,
-                      );
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to upload image: $e')),
-                        );
-                      }
-                    } finally {
-                      if (mounted) setState(() => _isSending = false);
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.green,
-                  child: Icon(Icons.location_on, color: Colors.white),
-                ),
-                title: const Text('Current Location'),
-                subtitle: const Text('Share your current location'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  try {
-                    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                    if (!serviceEnabled) throw Exception('Location disabled');
-                    LocationPermission permission = await Geolocator.checkPermission();
-                    if (permission == LocationPermission.denied) {
-                      permission = await Geolocator.requestPermission();
-                      if (permission == LocationPermission.denied) throw Exception('Permission denied');
-                    }
-                    final pos = await Geolocator.getCurrentPosition();
-                    _messageController.text = '📍 Shared Location: https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
-                    _sendMessage();
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Could not get location: $e')),
-                      );
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.orange,
-                  child: Icon(Icons.share_location, color: Colors.white),
-                ),
-                title: const Text('Live Location'),
-                subtitle: const Text('Share your real-time location'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  try {
-                    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                    if (!serviceEnabled) throw Exception('Location disabled');
-                    LocationPermission permission = await Geolocator.checkPermission();
-                    if (permission == LocationPermission.denied) {
-                      permission = await Geolocator.requestPermission();
-                      if (permission == LocationPermission.denied) throw Exception('Permission denied');
-                    }
-                    final pos = await Geolocator.getCurrentPosition();
-                    await _sendMessage(
-                      content: 'Shared Live Location',
-                      messageType: 'LIVE_LOCATION',
-                      metadata: '{"lat": ${pos.latitude}, "lng": ${pos.longitude}}',
-                    );
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Could not share live location: $e')),
-                      );
-                    }
+                  final xfile = await picker.pickImage(
+                    source: ImageSource.camera,
+                  );
+                  if (xfile != null) {
+                    await _processAndSendImage(xfile);
                   }
                 },
               ),
@@ -802,13 +865,20 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 subtitle: const Text('Share a contact'),
                 onTap: () async {
                   Navigator.pop(context);
-                  final status = await FlutterContacts.permissions.request(PermissionType.read);
+                  final status = await FlutterContacts.permissions.request(
+                    PermissionType.read,
+                  );
                   if (status == PermissionStatus.granted) {
                     final contact = await FlutterContacts.native.showPicker();
                     if (contact != null && contact.id != null) {
-                      final fullContact = await FlutterContacts.get(contact.id!, properties: {ContactProperty.phone});
+                      final fullContact = await FlutterContacts.get(
+                        contact.id!,
+                        properties: {ContactProperty.phone},
+                      );
                       if (fullContact != null && mounted) {
-                        final phone = fullContact.phones.isNotEmpty ? fullContact.phones.first.number : '';
+                        final phone = fullContact.phones.isNotEmpty
+                            ? fullContact.phones.first.number
+                            : '';
                         final name = fullContact.displayName;
                         await _sendMessage(
                           content: 'Shared Contact',
@@ -820,7 +890,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   } else {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Contact permission denied')),
+                        const SnackBar(
+                          content: Text('Contact permission denied'),
+                        ),
                       );
                     }
                   }
@@ -831,6 +903,83 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _processAndSendImage(XFile xfile) async {
+    CroppedFile? croppedFile = await ImageCropper().cropImage(
+      sourcePath: xfile.path,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Edit Photo',
+          toolbarColor: Theme.of(context).primaryColor,
+          toolbarWidgetColor: Colors.white,
+          initAspectRatio: CropAspectRatioPreset.original,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(title: 'Edit Photo'),
+      ],
+    );
+
+    if (croppedFile != null && mounted) {
+      String? caption = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          String input = '';
+          return AlertDialog(
+            title: const Text('Add Caption'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.file(File(croppedFile.path), height: 150),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: (val) => input = val,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter a caption (optional)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, input),
+                child: const Text('Send'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (caption != null && mounted) {
+        setState(() => _isSending = true);
+        try {
+          final url = await ApiService.uploadFile(
+            File(croppedFile.path),
+            '/files/upload',
+            token: AuthService.token,
+          );
+          await _sendMessage(
+            content: caption.isNotEmpty ? caption : 'Sent an image',
+            messageType: 'IMAGE',
+            mediaUrl: url,
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to upload image: $e')),
+            );
+          }
+        } finally {
+          if (mounted) setState(() => _isSending = false);
+        }
+      }
+    }
   }
 
   void _handleAvatarTap(bool isAdmin) {
@@ -896,7 +1045,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Widget build(BuildContext context) {
     final myMember = _group.members.firstWhere(
       (m) => m.userId == AuthService.currentUser?.id,
-      orElse: () => GroupMember(userId: 0, firstName: '', lastName: '', email: '', role: 'MEMBER', status: ''),
+      orElse: () => GroupMember(
+        userId: 0,
+        firstName: '',
+        lastName: '',
+        email: '',
+        role: 'MEMBER',
+        status: '',
+      ),
     );
     final isAdmin = myMember.role == 'ADMIN';
 
@@ -914,13 +1070,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   children: [
                     CircleAvatar(
                       radius: 18,
-                      backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
-                      backgroundImage: _group.avatarUrl != null ? CachedNetworkImageProvider(ApiService.resolveMediaUrl(_group.avatarUrl)!) : null,
-                      child: _group.avatarUrl == null ? Icon(
-                        Icons.group,
-                        color: Theme.of(context).colorScheme.onTertiaryContainer,
-                        size: 20,
-                      ) : null,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.tertiaryContainer,
+                      backgroundImage: _group.avatarUrl != null
+                          ? CachedNetworkImageProvider(
+                              ApiService.resolveMediaUrl(_group.avatarUrl)!,
+                            )
+                          : null,
+                      child: _group.avatarUrl == null
+                          ? Icon(
+                              Icons.group,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onTertiaryContainer,
+                              size: 20,
+                            )
+                          : null,
                     ),
                     if (isAdmin)
                       Positioned(
@@ -949,7 +1115,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   children: [
                     Text(
                       _group.name,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
@@ -971,9 +1140,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const ContactsListPage(
-                    initialSelectionMode: true,
-                  ),
+                  builder: (context) =>
+                      const ContactsListPage(initialSelectionMode: true),
                 ),
               ).then((selectedUserIds) async {
                 if (selectedUserIds != null && selectedUserIds is List<int>) {
@@ -983,7 +1151,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     for (final userId in selectedUserIds) {
                       if (userId == AuthService.currentUser?.id) continue;
                       try {
-                        await GroupService.addMember(_group.id, userId.toString());
+                        await GroupService.addMember(
+                          _group.id,
+                          userId.toString(),
+                        );
                         addedCount++;
                       } catch (e) {
                         debugPrint('Failed to add member $userId: $e');
@@ -991,15 +1162,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     }
                     if (mounted && addedCount > 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Successfully added $addedCount members.')),
+                        SnackBar(
+                          content: Text(
+                            'Successfully added $addedCount members.',
+                          ),
+                        ),
                       );
-                      // In a real app we'd refresh the group details here
-                      // GroupService.getGroupDetails...
+                      await _refreshGroupDetails();
+                      await SqliteCacheService.instance.removeChatCache(
+                        'my_groups_page_0',
+                      );
                     }
                   } catch (e) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error adding some members: $e')),
+                        SnackBar(
+                          content: Text('Error adding some members: $e'),
+                        ),
                       );
                     }
                   } finally {
@@ -1024,7 +1203,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Widget _buildMessagesArea() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     if (_error != null) {
@@ -1043,27 +1222,41 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
 
     if (_messages.isEmpty) {
-      return const Center(
-        child: Text('No messages yet. Say hi!'),
-      );
+      return const Center(child: Text('No messages yet. Say hi!'));
     }
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(8),
-      itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
+      itemCount:
+          _messages.length + (_isLoadingMore || _hasMoreMessages ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == 0 && _isLoadingMore) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
-            ),
-          );
+        if (_isLoadingMore || _hasMoreMessages) {
+          if (index == 0) {
+            if (_isLoadingMore) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: DwellyOrbitingLoader(),
+                ),
+              );
+            } else {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: _loadMoreMessages,
+                    icon: const Icon(Icons.history, size: 16),
+                    label: const Text('Load earlier messages'),
+                  ),
+                ),
+              );
+            }
+          }
+          index -= 1;
         }
 
-        final messageIndex = _isLoadingMore ? index - 1 : index;
-        final message = _messages[messageIndex];
+        final message = _messages[index];
         final isMe = message.senderId == AuthService.currentUser?.id;
 
         return _buildMessageBubble(message, isMe);
@@ -1092,14 +1285,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
-                color: isMe ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                color: isMe
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 12),
             ...options.map((opt) {
               final optId = opt['id'].toString();
               final optText = opt['text'].toString();
-              final voteCount = votes.values.where((v) => v.toString() == optId).length;
+              final voteCount = votes.values
+                  .where((v) => v.toString() == optId)
+                  .length;
               final progress = totalVotes > 0 ? voteCount / totalVotes : 0.0;
               final isMyVote = votes[currentUserId] == optId;
 
@@ -1108,7 +1305,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 child: GestureDetector(
                   onTap: () async {
                     try {
-                      await GroupService.voteOnPoll(_group.id, message.id, optId);
+                      await GroupService.voteOnPoll(
+                        _group.id,
+                        message.id,
+                        optId,
+                      );
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1124,7 +1325,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         decoration: BoxDecoration(
                           color: isMe
                               ? Colors.white.withValues(alpha: 0.2)
-                              : Theme.of(context).colorScheme.surface.withValues(alpha: 0.5),
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.surface.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
@@ -1135,7 +1338,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           decoration: BoxDecoration(
                             color: isMe
                                 ? Colors.white.withValues(alpha: 0.4)
-                                : Theme.of(context).colorScheme.primaryContainer,
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
@@ -1150,8 +1355,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                 child: Text(
                                   optText,
                                   style: TextStyle(
-                                    fontWeight: isMyVote ? FontWeight.bold : FontWeight.normal,
-                                    color: isMe ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                                    fontWeight: isMyVote
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    color: isMe
+                                        ? Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1161,7 +1374,13 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                   '$voteCount',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: isMe ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                                    color: isMe
+                                        ? Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
                                   ),
                                 ),
                             ],
@@ -1179,7 +1398,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
               style: TextStyle(
                 fontSize: 12,
                 color: isMe
-                    ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7)
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.onPrimary.withValues(alpha: 0.7)
                     : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -1193,160 +1414,282 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Widget _buildMessageBubble(GroupMessage message, bool isMe) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     // Check if user is an admin for delete permissions
     final myMember = _group.members.firstWhere(
       (m) => m.userId == AuthService.currentUser?.id,
-      orElse: () => GroupMember(userId: 0, firstName: '', lastName: '', email: '', role: 'MEMBER', status: ''),
+      orElse: () => GroupMember(
+        userId: 0,
+        firstName: '',
+        lastName: '',
+        email: '',
+        role: 'MEMBER',
+        status: '',
+      ),
     );
     final isAdmin = myMember.role == 'ADMIN';
+    final bool isMediaOnly =
+        (message.messageType == 'IMAGE') &&
+        (message.content.isEmpty || message.content == 'Sent an image');
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: () {
-          if (message.messageType == 'TEXT') {
-            showModalBottomSheet(
-              context: context,
-              builder: (context) => SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+          showModalBottomSheet(
+            context: context,
+            builder: (context) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.copy),
+                    title: const Text('Copy Text'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Clipboard.setData(ClipboardData(text: message.content));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Text copied')),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.orange,
+                    ),
+                    title: const Text(
+                      'Delete for me',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _deleteMessage(message, deleteForAll: false);
+                    },
+                  ),
+                  if (isMe || isAdmin)
                     ListTile(
-                      leading: const Icon(Icons.copy),
-                      title: const Text('Copy Text'),
+                      leading: const Icon(
+                        Icons.delete_forever,
+                        color: Colors.red,
+                      ),
+                      title: const Text(
+                        'Delete for everyone',
+                        style: TextStyle(color: Colors.red),
+                      ),
                       onTap: () {
                         Navigator.pop(context);
-                        Clipboard.setData(ClipboardData(text: message.content));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Text copied')),
-                        );
+                        _deleteMessage(message, deleteForAll: true);
                       },
                     ),
-                    if (isMe || isAdmin)
-                      ListTile(
-                        leading: const Icon(Icons.delete, color: Colors.red),
-                        title: const Text('Delete Message', style: TextStyle(color: Colors.red)),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _deleteMessage(message);
-                        },
-                      ),
-                  ],
-                ),
+                ],
               ),
-            );
-          }
+            ),
+          );
         },
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          padding: isMediaOnly
+              ? const EdgeInsets.all(2)
+              : const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
           decoration: BoxDecoration(
-            color: isMe ? colorScheme.primary : colorScheme.surfaceContainerHighest,
+            color: isMediaOnly
+                ? Colors.transparent
+                : (isMe
+                      ? colorScheme.primary
+                      : colorScheme.surfaceContainerHighest),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            if (!isMe)
-              GestureDetector(
-                onTap: () => _showContactOptionsDialog(message.senderId, message.senderName, message.senderUsername),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0),
-                  child: Text(
-                    ContactService.getDisplayName(message.senderId, message.senderName, username: message.senderUsername),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurfaceVariant,
-                      decoration: TextDecoration.underline,
-                      decorationColor: colorScheme.onSurfaceVariant.withOpacity(0.5),
+              if (!isMe && !isMediaOnly)
+                GestureDetector(
+                  onTap: () => _showContactOptionsDialog(
+                    message.senderId,
+                    message.senderName,
+                    message.senderUsername,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Text(
+                      ContactService.getDisplayName(
+                        message.senderId,
+                        message.senderName,
+                        username: message.senderUsername,
+                      ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurfaceVariant,
+                        decoration: TextDecoration.underline,
+                        decorationColor: colorScheme.onSurfaceVariant
+                            .withOpacity(0.5),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            if (message.messageType == 'IMAGE' && message.mediaUrl != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 4),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: message.mediaUrl!.startsWith('http')
-                        ? message.mediaUrl!
-                        : '${ApiService.effectiveBaseUrl.replaceAll('/api', '')}${message.mediaUrl}',
-                    width: 200,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => const SizedBox(
-                      width: 200,
-                      height: 200,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    errorWidget: (context, url, error) => const Icon(Icons.error),
+              if (message.messageType == 'IMAGE' && message.mediaUrl != null)
+                Padding(
+                  padding: EdgeInsets.only(
+                    top: isMediaOnly ? 0 : 4,
+                    bottom: isMediaOnly ? 0 : 4,
                   ),
-                ),
-              )
-            else if (message.messageType == 'LIVE_LOCATION' && message.metadata != null)
-              _buildLocationBubble(message, isMe)
-            else if (message.messageType == 'CONTACT' && message.metadata != null)
-              _buildContactBubble(message, isMe)
-            else if (message.messageType == 'POLL' && message.metadata != null)
-              _buildPollBubble(message, isMe)
-            else
-              Linkify(
-                onOpen: (link) async {
-                  final url = Uri.parse(link.url);
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url);
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Could not open link')),
+                  child: GestureDetector(
+                    onTap: () {
+                      final imageUrl = message.mediaUrl!.startsWith('http')
+                          ? message.mediaUrl!
+                          : '${ApiService.effectiveBaseUrl.replaceAll('/api', '')}${message.mediaUrl}';
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              FullScreenImageView(imageUrl: imageUrl),
+                        ),
                       );
-                    }
-                  }
-                },
-                text: message.content,
-                style: TextStyle(
-                  color: isMe ? colorScheme.onPrimary : colorScheme.onSurface,
-                ),
-                linkStyle: TextStyle(
-                  color: isMe ? colorScheme.onPrimary : colorScheme.primary,
-                  decoration: TextDecoration.underline,
-                ),
-                options: const LinkifyOptions(humanize: false),
-                linkifiers: const [EmailLinkifier(), UrlLinkifier(), PhoneNumberLinkifier()],
-              ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatTime(message.createdAt),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: isMe
-                        ? colorScheme.onPrimary.withValues(alpha: 0.7)
-                        : colorScheme.onSurfaceVariant,
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(isMediaOnly ? 14 : 8),
+                      child: Stack(
+                        children: [
+                          Hero(
+                            tag: message.mediaUrl!.startsWith('http')
+                                ? message.mediaUrl!
+                                : '${ApiService.effectiveBaseUrl.replaceAll('/api', '')}${message.mediaUrl}',
+                            child: CachedNetworkImage(
+                              imageUrl: message.mediaUrl!.startsWith('http')
+                                  ? message.mediaUrl!
+                                  : '${ApiService.effectiveBaseUrl.replaceAll('/api', '')}${message.mediaUrl}',
+                              width: isMediaOnly ? 250 : 200,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const SizedBox(
+                                width: 200,
+                                height: 200,
+                                child: Center(child: DwellyOrbitingLoader()),
+                              ),
+                              errorWidget: (context, url, error) =>
+                                  const Icon(Icons.error),
+                            ),
+                          ),
+                          if (isMediaOnly)
+                            Positioned(
+                              bottom: 6,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black45,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _formatTime(message.createdAt),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (isMe) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        message.deliveryStatus == 'failed'
+                                            ? Icons.error
+                                            : message.deliveryStatus ==
+                                                  'pending'
+                                            ? Icons.schedule
+                                            : Icons.done_all,
+                                        size: 12,
+                                        color:
+                                            message.deliveryStatus == 'failed'
+                                            ? Colors.red
+                                            : Colors.white70,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
+                )
+              else if (message.messageType == 'LIVE_LOCATION' &&
+                  message.metadata != null)
+                _buildLocationBubble(message, isMe)
+              else if (message.messageType == 'CONTACT' &&
+                  message.metadata != null)
+                _buildContactBubble(message, isMe)
+              else if (message.messageType == 'POLL' &&
+                  message.metadata != null)
+                _buildPollBubble(message, isMe)
+              else if (message.messageType == 'TEXT' ||
+                  (!isMediaOnly && message.messageType == 'IMAGE'))
+                Linkify(
+                  onOpen: (link) async {
+                    final url = Uri.parse(link.url);
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url);
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Could not open link')),
+                        );
+                      }
+                    }
+                  },
+                  text: message.content,
+                  style: TextStyle(
+                    color: isMe ? colorScheme.onPrimary : colorScheme.onSurface,
+                  ),
+                  linkStyle: TextStyle(
+                    color: isMe ? colorScheme.onPrimary : colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                  options: const LinkifyOptions(humanize: false),
+                  linkifiers: const [
+                    EmailLinkifier(),
+                    UrlLinkifier(),
+                    PhoneNumberLinkifier(),
+                  ],
                 ),
-                if (isMe) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    message.deliveryStatus == 'failed'
-                        ? Icons.error
-                        : message.deliveryStatus == 'pending'
+              const SizedBox(height: 4),
+              if (!isMediaOnly)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatTime(message.createdAt),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isMe
+                            ? colorScheme.onPrimary.withValues(alpha: 0.7)
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        message.deliveryStatus == 'failed'
+                            ? Icons.error
+                            : message.deliveryStatus == 'pending'
                             ? Icons.schedule
                             : Icons.done_all,
-                    size: 12,
-                    color: message.deliveryStatus == 'failed'
-                        ? Colors.red
-                        : colorScheme.onPrimary.withValues(alpha: 0.7),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
+                        size: 12,
+                        color: message.deliveryStatus == 'failed'
+                            ? Colors.red
+                            : colorScheme.onPrimary.withValues(alpha: 0.7),
+                      ),
+                    ],
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1369,7 +1712,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
           width: 200,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: isMe ? colorScheme.onPrimary.withValues(alpha: 0.1) : Colors.white,
+            color: isMe
+                ? colorScheme.onPrimary.withValues(alpha: 0.1)
+                : Colors.white,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: colorScheme.outlineVariant),
           ),
@@ -1389,7 +1734,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 'Tap to open map',
                 style: TextStyle(
                   fontSize: 10,
-                  color: isMe ? colorScheme.onPrimary.withOpacity(0.8) : colorScheme.onSurfaceVariant,
+                  color: isMe
+                      ? colorScheme.onPrimary.withOpacity(0.8)
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -1397,7 +1744,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
       );
     } catch (_) {
-      return Text('Invalid location data', style: TextStyle(color: colorScheme.error));
+      return Text(
+        'Invalid location data',
+        style: TextStyle(color: colorScheme.error),
+      );
     }
   }
 
@@ -1411,15 +1761,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
         width: 200,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isMe ? colorScheme.onPrimary.withValues(alpha: 0.1) : Colors.white,
+          color: isMe
+              ? colorScheme.onPrimary.withValues(alpha: 0.1)
+              : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: Row(
           children: [
-            const CircleAvatar(
-              child: Icon(Icons.person),
-            ),
+            const CircleAvatar(child: Icon(Icons.person)),
             const SizedBox(width: 8),
             Expanded(
               child: Column(
@@ -1429,7 +1779,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     name,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: isMe ? colorScheme.onPrimary : colorScheme.onSurface,
+                      color: isMe
+                          ? colorScheme.onPrimary
+                          : colorScheme.onSurface,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1438,7 +1790,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       phone,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isMe ? colorScheme.onPrimary.withOpacity(0.8) : colorScheme.onSurfaceVariant,
+                        color: isMe
+                            ? colorScheme.onPrimary.withOpacity(0.8)
+                            : colorScheme.onSurfaceVariant,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1449,7 +1803,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
       );
     } catch (_) {
-      return Text('Invalid contact data', style: TextStyle(color: colorScheme.error));
+      return Text(
+        'Invalid contact data',
+        style: TextStyle(color: colorScheme.error),
+      );
     }
   }
 
@@ -1509,81 +1866,91 @@ class _GroupChatPageState extends State<GroupChatPage> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton(
-                  icon: Icon(
-                    _isEmojiPickerVisible 
-                        ? Icons.keyboard 
-                        : Icons.emoji_emotions_outlined,
-                    color: Colors.grey[600],
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _isEmojiPickerVisible = !_isEmojiPickerVisible;
-                      if (_isEmojiPickerVisible) {
-                        _focusNode.unfocus();
-                      } else {
-                        _focusNode.requestFocus();
-                      }
-                    });
-                  },
-                ),
-                IconButton(
-                  icon: Icon(Icons.add_circle_outline, color: Colors.grey[600]),
-                  onPressed: _showAttachmentOptions,
-                ),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
                     focusNode: _focusNode,
-                decoration: InputDecoration(
-                  hintText: 'Message ${_group.name}...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+                    decoration: InputDecoration(
+                      prefixIcon: IconButton(
+                        icon: Icon(
+                          _isEmojiPickerVisible
+                              ? Icons.keyboard
+                              : Icons.emoji_emotions_outlined,
+                          color: Colors.grey[600],
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isEmojiPickerVisible = !_isEmojiPickerVisible;
+                            if (_isEmojiPickerVisible) {
+                              _focusNode.unfocus();
+                            } else {
+                              _focusNode.requestFocus();
+                            }
+                          });
+                        },
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          Icons.add_circle_outline,
+                          color: Colors.grey[600],
+                        ),
+                        onPressed: _showAttachmentOptions,
+                      ),
+                      hintText: 'Message ${_group.name}...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: null,
                   ),
                 ),
-                textCapitalization: TextCapitalization.sentences,
-                maxLines: null,
-              ),
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  child: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.white),
+                    onPressed: _isSending ? null : _sendMessage,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              child: IconButton(
-                icon: const Icon(Icons.send, color: Colors.white),
-                onPressed: _isSending ? null : _sendMessage,
+            if (_isEmojiPickerVisible)
+              SizedBox(
+                height: 250,
+                child: EmojiPicker(
+                  textEditingController: _messageController,
+                  config: Config(
+                    height: 250,
+                    checkPlatformCompatibility: true,
+                    emojiViewConfig: EmojiViewConfig(
+                      emojiSizeMax:
+                          32 *
+                          (foundation.defaultTargetPlatform ==
+                                  TargetPlatform.iOS
+                              ? 1.30
+                              : 1.0),
+                      backgroundColor: Theme.of(context).colorScheme.surface,
+                    ),
+                    bottomActionBarConfig: BottomActionBarConfig(
+                      backgroundColor: Theme.of(context).colorScheme.surface,
+                      buttonIconColor: Colors.grey,
+                      buttonColor: Theme.of(context).colorScheme.surface,
+                    ),
+                  ),
+                ),
               ),
-            ),
           ],
         ),
-          if (_isEmojiPickerVisible)
-            SizedBox(
-              height: 250,
-              child: EmojiPicker(
-                textEditingController: _messageController,
-                config: Config(
-                  height: 250,
-                  checkPlatformCompatibility: true,
-                  emojiViewConfig: EmojiViewConfig(
-                    emojiSizeMax: 32 * (foundation.defaultTargetPlatform == TargetPlatform.iOS ? 1.30 : 1.0),
-                    backgroundColor: Theme.of(context).colorScheme.surface,
-                  ),
-                  bottomActionBarConfig: BottomActionBarConfig(
-                    backgroundColor: Theme.of(context).colorScheme.surface,
-                    buttonIconColor: Colors.grey,
-                    buttonColor: Theme.of(context).colorScheme.surface,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
       ),
     );
   }

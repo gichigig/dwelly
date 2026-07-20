@@ -18,7 +18,7 @@ class MpesaService {
   }) async {
     try {
       final url = Uri.parse('${ApiService.baseUrl}/mpesa/stk-push');
-      
+
       // Format phone number to 254XXXXXXXXX
       final formattedPhone = _formatPhoneNumber(phoneNumber);
       if (formattedPhone == null) {
@@ -37,30 +37,35 @@ class MpesaService {
       );
 
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 200 && data['success'] == true) {
         return MpesaStkResult.success(
           checkoutRequestId: data['checkoutRequestId'],
           merchantRequestId: data['merchantRequestId'],
-          customerMessage: data['customerMessage'] ?? 'Please check your phone for the M-Pesa prompt',
+          customerMessage:
+              data['customerMessage'] ??
+              'Please check your phone for the M-Pesa prompt',
         );
       } else {
-        return MpesaStkResult.error(data['message'] ?? 'Failed to initiate payment');
+        return MpesaStkResult.error(
+          data['message'] ?? 'Failed to initiate payment',
+        );
       }
     } catch (e) {
-      return MpesaStkResult.error('Network error. Please check your connection.');
+      return MpesaStkResult.error(
+        'Network error. Please check your connection.',
+      );
     }
   }
 
   /// Poll for payment status
   static Future<MpesaStatusResult> checkStatus(String checkoutRequestId) async {
     try {
-      final url = Uri.parse('${ApiService.baseUrl}/mpesa/status/$checkoutRequestId');
-      
-      final response = await http.get(
-        url,
-        headers: ApiService.getHeaders(),
+      final url = Uri.parse(
+        '${ApiService.baseUrl}/mpesa/status/$checkoutRequestId',
       );
+
+      final response = await http.get(url, headers: ApiService.getHeaders());
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -73,10 +78,16 @@ class MpesaService {
       } else if (response.statusCode == 404) {
         return MpesaStatusResult(status: MpesaStatus.pending);
       } else {
-        return MpesaStatusResult(status: MpesaStatus.failed, resultDesc: 'Failed to check status');
+        return MpesaStatusResult(
+          status: MpesaStatus.failed,
+          resultDesc: 'Failed to check status',
+        );
       }
     } catch (e) {
-      return MpesaStatusResult(status: MpesaStatus.failed, resultDesc: 'Network error');
+      return MpesaStatusResult(
+        status: MpesaStatus.failed,
+        resultDesc: 'Network error',
+      );
     }
   }
 
@@ -107,23 +118,35 @@ class MpesaService {
           checkoutRequestId: data['checkoutRequestId'],
           merchantRequestId: data['merchantRequestId'],
           customerMessage:
-              data['customerMessage'] ?? 'Please check your phone for the M-Pesa prompt',
+              data['customerMessage'] ??
+              'Please check your phone for the M-Pesa prompt',
         );
       }
-      return MpesaStkResult.error(data['message'] ?? 'Failed to initiate payment');
+      return MpesaStkResult.error(
+        data['message'] ?? 'Failed to initiate payment',
+      );
     } catch (e) {
-      return MpesaStkResult.error('Network error. Please check your connection.');
+      return MpesaStkResult.error(
+        'Network error. Please check your connection.',
+      );
     }
   }
 
   /// Check premium payment status
-  static Future<PremiumStatusResult> checkPremiumStatus(String checkoutRequestId) async {
+  static Future<PremiumStatusResult> checkPremiumStatus(
+    String checkoutRequestId,
+  ) async {
     if (!AuthService.isLoggedIn || AuthService.token == null) {
-      return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Please sign in to continue.');
+      return PremiumStatusResult(
+        status: MpesaStatus.failed,
+        resultDesc: 'Please sign in to continue.',
+      );
     }
 
     try {
-      final url = Uri.parse('${ApiService.baseUrl}/premium/status/$checkoutRequestId');
+      final url = Uri.parse(
+        '${ApiService.baseUrl}/premium/status/$checkoutRequestId',
+      );
       final response = await http.get(
         url,
         headers: ApiService.getHeaders(token: AuthService.token),
@@ -144,16 +167,27 @@ class MpesaService {
       } else if (response.statusCode == 404) {
         return PremiumStatusResult(status: MpesaStatus.pending);
       } else if (response.statusCode == 401) {
-        return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Please sign in to continue.');
+        return PremiumStatusResult(
+          status: MpesaStatus.failed,
+          resultDesc: 'Please sign in to continue.',
+        );
       }
-      return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Failed to check status');
+      return PremiumStatusResult(
+        status: MpesaStatus.failed,
+        resultDesc: 'Failed to check status',
+      );
     } catch (e) {
-      return PremiumStatusResult(status: MpesaStatus.failed, resultDesc: 'Network error');
+      return PremiumStatusResult(
+        status: MpesaStatus.failed,
+        resultDesc: 'Network error',
+      );
     }
   }
 
   /// Wait for premium payment completion with polling
-  static Stream<PremiumStatusResult> waitForPremiumPayment(String checkoutRequestId) async* {
+  static Stream<PremiumStatusResult> waitForPremiumPayment(
+    String checkoutRequestId,
+  ) async* {
     int attempts = 0;
 
     while (attempts < _maxPollAttempts) {
@@ -178,22 +212,24 @@ class MpesaService {
   }
 
   /// Wait for payment completion with polling
-  static Stream<MpesaStatusResult> waitForPayment(String checkoutRequestId) async* {
+  static Stream<MpesaStatusResult> waitForPayment(
+    String checkoutRequestId,
+  ) async* {
     int attempts = 0;
-    
+
     while (attempts < _maxPollAttempts) {
       await Future.delayed(const Duration(seconds: _pollInterval));
-      
+
       final status = await checkStatus(checkoutRequestId);
       yield status;
-      
+
       if (status.status != MpesaStatus.pending) {
         break;
       }
-      
+
       attempts++;
     }
-    
+
     // If we've exhausted attempts, yield a timeout status
     if (attempts >= _maxPollAttempts) {
       yield MpesaStatusResult(
@@ -207,7 +243,7 @@ class MpesaService {
   static String? _formatPhoneNumber(String phone) {
     // Remove all non-digit characters
     String digits = phone.replaceAll(RegExp(r'\D'), '');
-    
+
     // Handle different formats
     if (digits.startsWith('254') && digits.length == 12) {
       return digits;
@@ -218,7 +254,7 @@ class MpesaService {
     } else if (digits.startsWith('1') && digits.length == 9) {
       return '254$digits';
     }
-    
+
     return null;
   }
 
@@ -258,10 +294,7 @@ class MpesaStkResult {
   }
 
   factory MpesaStkResult.error(String message) {
-    return MpesaStkResult._(
-      success: false,
-      errorMessage: message,
-    );
+    return MpesaStkResult._(success: false, errorMessage: message);
   }
 }
 

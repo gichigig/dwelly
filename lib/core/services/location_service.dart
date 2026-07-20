@@ -31,87 +31,107 @@ class LocationService {
 
   // Search radius in km for finding nearby areas
   static const double _searchRadiusKm = 30.0;
-  
+
   /// Get coordinates for an area name
   static LatLng? getCoordinates(String area) {
     final normalized = area.toLowerCase().trim();
     return _knownAreas[normalized];
   }
-  
+
   /// Find nearby areas based on a search term
-  static List<String> getNearbyAreas(String searchArea, {double radiusKm = 30.0}) {
+  static List<String> getNearbyAreas(
+    String searchArea, {
+    double radiusKm = 30.0,
+  }) {
     final normalizedSearch = searchArea.toLowerCase().trim();
     final searchCoords = _knownAreas[normalizedSearch];
-    
+
     if (searchCoords == null) {
       // If we don't know the area, return areas that contain the search term
       return _knownAreas.keys
-          .where((area) => area.contains(normalizedSearch) || normalizedSearch.contains(area))
+          .where(
+            (area) =>
+                area.contains(normalizedSearch) ||
+                normalizedSearch.contains(area),
+          )
           .take(5)
           .toList();
     }
-    
+
     // Find areas within radius
     final nearbyAreas = <MapEntry<String, double>>[];
-    
+
     for (var entry in _knownAreas.entries) {
       if (entry.key == normalizedSearch) continue;
-      
+
       final distance = _calculateDistance(
-        searchCoords.lat, searchCoords.lng,
-        entry.value.lat, entry.value.lng,
+        searchCoords.lat,
+        searchCoords.lng,
+        entry.value.lat,
+        entry.value.lng,
       );
-      
+
       if (distance <= radiusKm) {
         nearbyAreas.add(MapEntry(entry.key, distance));
       }
     }
-    
+
     // Sort by distance and return area names
     nearbyAreas.sort((a, b) => a.value.compareTo(b.value));
     return nearbyAreas.take(10).map((e) => e.key).toList();
   }
-  
+
   /// Get all search terms for an area (the area + nearby areas)
   static List<String> getSearchTermsWithNearby(String area) {
     final terms = <String>[area];
     terms.addAll(getNearbyAreas(area));
     return terms;
   }
-  
+
   /// Calculate distance between two coordinates using Haversine formula
-  static double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+  static double _calculateDistance(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
     const double earthRadius = 6371; // km
-    
+
     final dLat = _toRadians(lat2 - lat1);
     final dLng = _toRadians(lng2 - lng1);
-    
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) *
-        math.sin(dLng / 2) * math.sin(dLng / 2);
-    
+
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRadians(lat1)) *
+            math.cos(_toRadians(lat2)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    
+
     return earthRadius * c;
   }
-  
+
   static double _toRadians(double degrees) {
     return degrees * math.pi / 180;
   }
-  
+
   /// Format area name for display (capitalize)
   static String formatAreaName(String area) {
-    return area.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+    return area
+        .split(' ')
+        .map((word) {
+          if (word.isEmpty) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join(' ');
   }
-  
+
   /// Check if an area is known
   static bool isKnownArea(String area) {
     return _knownAreas.containsKey(area.toLowerCase().trim());
   }
-  
+
   /// Get all known areas
   static List<String> getAllKnownAreas() {
     return _knownAreas.keys.map((a) => formatAreaName(a)).toList()..sort();
@@ -121,6 +141,6 @@ class LocationService {
 class LatLng {
   final double lat;
   final double lng;
-  
+
   const LatLng(this.lat, this.lng);
 }

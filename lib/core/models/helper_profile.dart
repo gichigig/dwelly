@@ -14,6 +14,9 @@ class HelperProfile {
   final double? serviceRadiusKm;
   final String? serviceAreaMode;
   final List<String> offeredServices;
+  final double? locationLatitude;
+  final double? locationLongitude;
+  final bool hideExactLocation;
   final double averageRating;
   final int reviewCount;
   final int totalHires;
@@ -35,6 +38,9 @@ class HelperProfile {
     this.serviceRadiusKm,
     this.serviceAreaMode,
     this.offeredServices = const [],
+    this.locationLatitude,
+    this.locationLongitude,
+    this.hideExactLocation = false,
     this.averageRating = 0.0,
     this.reviewCount = 0,
     this.totalHires = 0,
@@ -53,11 +59,22 @@ class HelperProfile {
       helperCoverageLevel: json['helperCoverageLevel'],
       helperCounty: json['helperCounty'],
       helperWards: List<String>.from(json['helperWards'] ?? []),
-      helperConstituencies: List<String>.from(json['helperConstituencies'] ?? []),
+      helperConstituencies: List<String>.from(
+        json['helperConstituencies'] ?? [],
+      ),
       serviceCategory: json['serviceCategory'],
-      serviceRadiusKm: json['serviceRadiusKm'] != null ? (json['serviceRadiusKm'] as num).toDouble() : null,
+      serviceRadiusKm: json['serviceRadiusKm'] != null
+          ? (json['serviceRadiusKm'] as num).toDouble()
+          : null,
       serviceAreaMode: json['serviceAreaMode'],
       offeredServices: List<String>.from(json['offeredServices'] ?? []),
+      locationLatitude: json['locationLatitude'] != null
+          ? (json['locationLatitude'] as num).toDouble()
+          : null,
+      locationLongitude: json['locationLongitude'] != null
+          ? (json['locationLongitude'] as num).toDouble()
+          : null,
+      hideExactLocation: json['hideExactLocation'] ?? false,
       averageRating: (json['averageRating'] ?? 0).toDouble(),
       reviewCount: json['reviewCount'] ?? 0,
       totalHires: json['totalHires'] ?? 0,

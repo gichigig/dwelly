@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/auth_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   final String? initialEmail;
@@ -330,7 +331,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: DwellyOrbitingLoader(),
                     )
                   : const Text(
                       'Send Reset Code',
@@ -419,7 +420,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ? const SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: DwellyOrbitingLoader(),
                   )
                 : const Text('Verify Code', style: TextStyle(fontSize: 16)),
           ),
@@ -512,7 +513,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ? const SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: DwellyOrbitingLoader(),
                   )
                 : const Text('Reset Password', style: TextStyle(fontSize: 16)),
           ),

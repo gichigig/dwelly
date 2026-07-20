@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/rental_alert_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class RentalAlertsPage extends StatefulWidget {
   const RentalAlertsPage({super.key});
@@ -32,8 +33,13 @@ class _RentalAlertsPageState extends State<RentalAlertsPage> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients || _isLoading || _isLoadingMore || !_hasMore) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (!_scrollController.hasClients ||
+        _isLoading ||
+        _isLoadingMore ||
+        !_hasMore)
+      return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _loadAlerts(loadMore: true);
     }
   }
@@ -53,7 +59,9 @@ class _RentalAlertsPageState extends State<RentalAlertsPage> {
 
     try {
       final nextPage = loadMore ? _page + 1 : 0;
-      final result = await RentalAlertService.getAlertsPaginated(page: nextPage);
+      final result = await RentalAlertService.getAlertsPaginated(
+        page: nextPage,
+      );
       setState(() {
         if (loadMore) {
           _alerts = [..._alerts, ...result['alerts']];
@@ -151,7 +159,7 @@ class _RentalAlertsPageState extends State<RentalAlertsPage> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     if (_error != null) {
@@ -183,7 +191,7 @@ class _RentalAlertsPageState extends State<RentalAlertsPage> {
           if (index >= _alerts.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: DwellyOrbitingLoader()),
             );
           }
 
@@ -781,7 +789,7 @@ class _CreateAlertFormState extends State<_CreateAlertForm> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: DwellyOrbitingLoader(),
                         )
                       : Text(
                           widget.existingAlert != null

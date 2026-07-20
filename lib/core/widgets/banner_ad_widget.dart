@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
 import '../models/advertisement.dart';
 import '../services/ad_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// Widget for displaying banner-style image ads
 class BannerAdWidget extends StatefulWidget {
@@ -99,7 +100,8 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
                     'assets/images/google_play.png',
                     width: 40,
                     height: 40,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.android, size: 40),
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.android, size: 40),
                   ),
                   title: const Text('Google Play Store'),
                   subtitle: const Text('For Android devices'),
@@ -114,7 +116,8 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
                     'assets/images/app_store.png',
                     width: 40,
                     height: 40,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.apple, size: 40),
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.apple, size: 40),
                   ),
                   title: const Text('App Store'),
                   subtitle: const Text('For iOS devices'),
@@ -157,7 +160,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(
                   color: Colors.grey[200],
-                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: const Center(child: DwellyOrbitingLoader()),
                 ),
                 errorWidget: (context, url, error) => Container(
                   color: Colors.grey[200],
@@ -214,7 +217,10 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
                       // Call to action indicator
                       if (widget.ad.linkType != LinkType.NONE)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(4),
@@ -242,7 +248,10 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
                     // Verification badge (only for verified advertisers)
                     if (widget.ad.advertiserVerified)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         margin: const EdgeInsets.only(right: 4),
                         decoration: BoxDecoration(
                           color: Colors.blue.withOpacity(0.9),
@@ -266,7 +275,10 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
                       ),
                     // AD label
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(4),

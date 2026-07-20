@@ -27,15 +27,19 @@ class Advertiser {
 
   factory Advertiser.fromJson(Map<String, dynamic> json) {
     return Advertiser(
-      id: json['id'],
-      companyName: json['companyName'],
-      companyDescription: json['companyDescription'],
-      website: json['website'],
-      contactEmail: json['contactEmail'],
-      contactPhone: json['contactPhone'],
-      logoUrl: json['logoUrl'],
-      verificationStatus: json['verificationStatus'] ?? 'UNVERIFIED',
-      createdAt: DateTime.parse(json['createdAt']),
+      id: json['id'] is int
+          ? json['id']
+          : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      companyName: json['companyName']?.toString() ?? '',
+      companyDescription: json['companyDescription']?.toString(),
+      website: json['website']?.toString(),
+      contactEmail: json['contactEmail']?.toString(),
+      contactPhone: json['contactPhone']?.toString(),
+      logoUrl: json['logoUrl']?.toString(),
+      verificationStatus:
+          json['verificationStatus']?.toString() ?? 'UNVERIFIED',
+      createdAt:
+          Advertisement._parseDateTime(json['createdAt']) ?? DateTime.now(),
     );
   }
 
@@ -58,19 +62,19 @@ enum MediaType { IMAGE, VIDEO }
 
 enum LinkType { WEBSITE, PLAYSTORE, APPSTORE, APP_BOTH, FORM, NONE }
 
-enum AdPlacement { 
-  HOME_BANNER, 
-  HOME_FEED, 
-  LISTING_DETAIL, 
-  SEARCH_RESULTS, 
-  INTERSTITIAL, 
+enum AdPlacement {
+  HOME_BANNER,
+  HOME_FEED,
+  LISTING_DETAIL,
+  SEARCH_RESULTS,
+  INTERSTITIAL,
   SPLASH,
   APP_LAUNCH,
   RENTAL_FEED,
   LOCATION_FILTER,
   MARKETPLACE_FEED,
   MARKETPLACE_DETAIL,
-  MARKETPLACE_SEARCH
+  MARKETPLACE_SEARCH,
 }
 
 class AdFormField {
@@ -92,13 +96,13 @@ class AdFormField {
 
   factory AdFormField.fromJson(Map<String, dynamic> json) {
     return AdFormField(
-      id: json['id'],
-      label: json['label'],
-      type: json['type'],
+      id: json['id']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
       required: json['required'] ?? false,
-      placeholder: json['placeholder'],
-      options: json['options'] != null 
-          ? List<String>.from(json['options']) 
+      placeholder: json['placeholder']?.toString(),
+      options: json['options'] != null
+          ? (json['options'] as List).map((e) => e.toString()).toList()
           : null,
     );
   }
@@ -130,12 +134,15 @@ class AdFormSchema {
 
   factory AdFormSchema.fromJson(Map<String, dynamic> json) {
     return AdFormSchema(
-      title: json['title'],
-      submitButtonText: json['submitButtonText'],
-      successMessage: json['successMessage'],
-      fields: (json['fields'] as List)
-          .map((f) => AdFormField.fromJson(f))
-          .toList(),
+      title: json['title']?.toString(),
+      submitButtonText: json['submitButtonText']?.toString(),
+      successMessage: json['successMessage']?.toString(),
+      fields: json['fields'] is List
+          ? (json['fields'] as List)
+                .whereType<Map<String, dynamic>>()
+                .map((f) => AdFormField.fromJson(f))
+                .toList()
+          : [],
     );
   }
 
@@ -173,13 +180,14 @@ class Advertisement {
   final int advertiserId;
   final String advertiserName;
   final String? advertiserLogoUrl;
-  final bool advertiserVerified; // Whether the advertiser is verified (for showing badge)
+  final bool
+  advertiserVerified; // Whether the advertiser is verified (for showing badge)
   final DateTime createdAt;
   final DateTime updatedAt;
   // New fields for enhanced ad features
   final String? locationInstructions; // Instructions for location-specific ads
-  final int? skipDelaySeconds;        // For app launch ads - default 5 seconds
-  final bool sponsored;               // Whether this is a sponsored ad
+  final int? skipDelaySeconds; // For app launch ads - default 5 seconds
+  final bool sponsored; // Whether this is a sponsored ad
 
   Advertisement({
     required this.id,
@@ -213,12 +221,27 @@ class Advertisement {
     this.sponsored = false,
   });
 
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is int) {
+      if (value > 100000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(value);
+      } else {
+        return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+      }
+    }
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+
   factory Advertisement.fromJson(Map<String, dynamic> json) {
     AdFormSchema? formSchema;
     if (json['formSchema'] != null) {
       try {
-        final schemaJson = json['formSchema'] is String 
-            ? jsonDecode(json['formSchema']) 
+        final schemaJson = json['formSchema'] is String
+            ? jsonDecode(json['formSchema'])
             : json['formSchema'];
         formSchema = AdFormSchema.fromJson(schemaJson);
       } catch (e) {
@@ -227,18 +250,20 @@ class Advertisement {
     }
 
     return Advertisement(
-      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      id: json['id'] is int
+          ? json['id']
+          : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       title: json['title']?.toString() ?? '',
       description: json['description']?.toString(),
       imageUrl: json['imageUrl']?.toString(),
       videoUrl: json['videoUrl']?.toString(),
       thumbnailUrl: json['thumbnailUrl']?.toString(),
       mediaType: MediaType.values.firstWhere(
-        (e) => e.name == json['mediaType'],
+        (e) => e.name == json['mediaType']?.toString(),
         orElse: () => MediaType.IMAGE,
       ),
       linkType: LinkType.values.firstWhere(
-        (e) => e.name == json['linkType'],
+        (e) => e.name == json['linkType']?.toString(),
         orElse: () => LinkType.NONE,
       ),
       targetUrl: json['targetUrl']?.toString(),
@@ -249,22 +274,34 @@ class Advertisement {
       formSubmitButtonText: json['formSubmitButtonText']?.toString(),
       formSuccessMessage: json['formSuccessMessage']?.toString(),
       placement: AdPlacement.values.firstWhere(
-        (e) => e.name == json['placement'],
+        (e) => e.name == json['placement']?.toString(),
         orElse: () => AdPlacement.HOME_BANNER,
       ),
-      priority: json['priority'] ?? 0,
-      startDate: json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
-      endDate: json['endDate'] != null ? DateTime.parse(json['endDate']) : null,
-      active: json['active'] ?? false,
-      advertiserId: json['advertiserId'] is int ? json['advertiserId'] : int.tryParse(json['advertiserId']?.toString() ?? '0') ?? 0,
+      priority: json['priority'] is int
+          ? json['priority']
+          : int.tryParse(json['priority']?.toString() ?? '0') ?? 0,
+      startDate: _parseDateTime(json['startDate']),
+      endDate: _parseDateTime(json['endDate']),
+      active:
+          json['active'] == true ||
+          json['active']?.toString().toLowerCase() == 'true',
+      advertiserId: json['advertiserId'] is int
+          ? json['advertiserId']
+          : int.tryParse(json['advertiserId']?.toString() ?? '0') ?? 0,
       advertiserName: json['advertiserName']?.toString() ?? '',
       advertiserLogoUrl: json['advertiserLogoUrl']?.toString(),
-      advertiserVerified: json['advertiserVerified'] ?? false,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
+      advertiserVerified:
+          json['advertiserVerified'] == true ||
+          json['advertiserVerified']?.toString().toLowerCase() == 'true',
+      createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
+      updatedAt: _parseDateTime(json['updatedAt']) ?? DateTime.now(),
       locationInstructions: json['locationInstructions']?.toString(),
-      skipDelaySeconds: json['skipDelaySeconds'],
-      sponsored: json['sponsored'] ?? false,
+      skipDelaySeconds: json['skipDelaySeconds'] is int
+          ? json['skipDelaySeconds']
+          : int.tryParse(json['skipDelaySeconds']?.toString() ?? ''),
+      sponsored:
+          json['sponsored'] == true ||
+          json['sponsored']?.toString().toLowerCase() == 'true',
     );
   }
 

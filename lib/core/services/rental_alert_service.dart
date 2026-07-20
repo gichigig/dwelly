@@ -168,7 +168,10 @@ class CreateAlertRequest {
 }
 
 class RentalAlertService {
-  static Future<Map<String, dynamic>> getAlertsPaginated({int page = 0, int limit = 20}) async {
+  static Future<Map<String, dynamic>> getAlertsPaginated({
+    int page = 0,
+    int limit = 20,
+  }) async {
     if (!AuthService.isLoggedIn) {
       return {'alerts': <RentalAlert>[], 'hasMore': false, 'page': 0};
     }
@@ -185,7 +188,9 @@ class RentalAlertService {
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         final List<dynamic> content = data['content'] ?? [];
-        final alerts = content.map((json) => RentalAlert.fromJson(json)).toList();
+        final alerts = content
+            .map((json) => RentalAlert.fromJson(json))
+            .toList();
         return {
           'alerts': alerts,
           'hasMore': data['last'] == false,

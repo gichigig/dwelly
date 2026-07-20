@@ -9,6 +9,7 @@ import 'core/services/ad_service.dart';
 import 'core/services/app_notification_center.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/chat_service.dart';
+import 'core/services/chat_realtime_service.dart';
 import 'core/services/premium_service.dart';
 import 'core/services/google_ad_service.dart';
 import 'core/widgets/ad_break_screen.dart';
@@ -17,7 +18,6 @@ import 'core/widgets/telegram/telegram_fragment_item.dart';
 import 'features/listings/presentation/account_page.dart';
 import 'features/listings/presentation/explore_page.dart';
 import 'features/listings/presentation/inbox_page.dart';
-import 'features/listings/presentation/premium_launch_screen.dart';
 import 'features/listings/presentation/saved_page.dart';
 
 class AppShell extends StatefulWidget {
@@ -33,18 +33,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   AdService? _adService;
   bool _isResumeAdInFlight = false;
   Timer? _unreadBadgeTimer;
-  bool _premiumLaunchShown = false;
   final _savedPageKey = GlobalKey<SavedPageState>();
   final _explorePageKey = GlobalKey<ExplorePageState>();
   final _inboxPageKey = GlobalKey<InboxPageState>();
   final List<Widget?> _pages = List<Widget?>.filled(4, null);
-  
+
   bool _showBottomNav = true;
   Offset? _pointerDownPosition;
 
   // Navigation history for back button
   final List<int> _tabHistory = [0];
   DateTime? _lastBackPressTime;
+  bool _isAppForeground = true;
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis == Axis.vertical) {
@@ -69,18 +69,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _index = 0;
       _pages[0] = InboxPage(key: _inboxPageKey);
     } else {
-      _pages[0] = ExplorePage();
+      _pages[0] = ExplorePage(key: _explorePageKey);
     }
     _startUnreadBadgePolling();
     unawaited(_initAdService());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_maybeShowPremiumLaunch());
-    });
     // Fetch fresh profile on cold boot in case user upgraded out-of-band or was upgraded in a previous session
     if (AuthService.isLoggedIn) {
-      unawaited(PremiumService.refreshPremiumStatus().then((_) {
-        if (mounted) setState(() {});
-      }));
+      unawaited(
+        PremiumService.refreshPremiumStatus().then((_) {
+          if (mounted) setState(() {});
+        }),
+      );
     }
   }
 
@@ -104,6 +103,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _isAppForeground = false;
+      _unreadBadgeTimer?.cancel();
+    }
+
     if (_adService == null) return;
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
@@ -111,97 +117,37 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       return;
     }
     if (state == AppLifecycleState.resumed) {
+      _isAppForeground = true;
+      _startUnreadBadgePolling();
       unawaited(AppNotificationCenter.reload());
       unawaited(_adService?.getDisplayConfig(forceRefresh: true));
       unawaited(_refreshUnreadBadge());
       unawaited(_maybeShowResumeAd());
-      unawaited(PremiumService.refreshPremiumStatus().then((_) {
-        if (mounted) setState(() {});
-      }));
+      unawaited(
+        PremiumService.refreshPremiumStatus().then((_) {
+          if (mounted) setState(() {});
+        }),
+      );
     }
   }
 
   void _startUnreadBadgePolling() {
     unawaited(_refreshUnreadBadge());
     _unreadBadgeTimer?.cancel();
-    _unreadBadgeTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    _unreadBadgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!_isAppForeground || ChatRealtimeService().isConnected) return;
       unawaited(_refreshUnreadBadge());
     });
   }
 
-  Future<void> _maybeShowPremiumLaunch() async {
-    if (!mounted || _premiumLaunchShown) return;
-    if (AuthService.isTenantMode) return;
-    if (PremiumService.isPremiumActive() || !PremiumService.isPremiumPageVisible()) return;
-    _premiumLaunchShown = true;
-
-    await Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder(
-        opaque: true,
-        pageBuilder: (context, _, __) => const PremiumLaunchScreen(),
-        transitionsBuilder: (context, animation, _, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-    );
-  }
-
   Future<void> _refreshUnreadBadge() async {
+    if (ChatRealtimeService().isConnected) return;
     await ChatService.refreshUnreadMessageCount(forceRefresh: true);
   }
 
   Future<void> _maybeShowResumeAd() async {
-    final service = _adService;
-    if (!mounted || service == null || _isResumeAdInFlight) return;
-
-    // Guard against interrupting transient flows (e.g. payment/passkey dialogs).
-    final route = ModalRoute.of(context);
-    final hasNestedRoute = Navigator.of(context, rootNavigator: true).canPop();
-    if ((route != null && !route.isCurrent) || hasNestedRoute) {
-      return;
-    }
-
-    final shouldShow = await service.shouldShowResumeAd();
-    if (!shouldShow || !mounted) return;
-
-    final config = await service.getDisplayConfig();
-    if (!config.launchAdBreakEnabled || !mounted) return;
-
-    final payload = await service.getAdBreak(
-      AdPlacement.APP_LAUNCH,
-      count: config.launchAdBreakCount.clamp(1, 2),
-    );
-    if (!mounted ||
-        payload == null ||
-        !payload.available ||
-        payload.ads.isEmpty) {
-      return;
-    }
-
-    _isResumeAdInFlight = true;
-    try {
-      await Navigator.of(context, rootNavigator: true).push(
-        PageRouteBuilder(
-          opaque: true,
-          pageBuilder: (context, _, __) => AdBreakScreen(
-            ads: payload.ads,
-            adService: service,
-            placement: AdPlacement.APP_LAUNCH,
-            firstAdUnskippable: config.launchAdFirstUnskippable,
-            skipDelaySeconds: payload.policy.skipDelaySeconds,
-            breakId: payload.breakId,
-            markLaunchAdShownOnComplete: false,
-            onComplete: () => Navigator.of(context).pop(),
-          ),
-          transitionsBuilder: (context, animation, _, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
-      );
-      await service.markResumeAdShown();
-    } finally {
-      _isResumeAdInFlight = false;
-    }
+    // Disabled full-screen resume/launch ads as requested.
+    return;
   }
 
   void _handleExternalTabRequest() {
@@ -232,9 +178,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     switch (index) {
       case 0:
-        _pages[index] = ExplorePage(
-          key: _explorePageKey,
-        );
+        _pages[index] = ExplorePage(key: _explorePageKey);
         break;
       case 1:
         _pages[index] = SavedPage(key: _savedPageKey);
@@ -277,7 +221,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     setState(() {
       _index = index;
       if (_tabHistory.isEmpty || _tabHistory.last != index) {
-        // Remove previous occurrence to avoid loops if needed, 
+        // Remove previous occurrence to avoid loops if needed,
         // or just add to history stack
         _tabHistory.remove(index);
         _tabHistory.add(index);
@@ -285,7 +229,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _ensurePageLoaded(index);
     });
 
-    if ((AuthService.isTenantMode && index == 0) || (!AuthService.isTenantMode && index == 2)) {
+    if ((AuthService.isTenantMode && index == 0) ||
+        (!AuthService.isTenantMode && index == 2)) {
       unawaited(_refreshUnreadBadge());
     }
 
@@ -340,97 +285,97 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
-        if (_tabHistory.length > 1) {
-          // Go back to previous tab
+        if (_index != 0) {
+          // If on another tab (e.g., Saved, Account), pressing Back returns to Home/Explore tab first
           setState(() {
-            _tabHistory.removeLast();
-            final previousIndex = _tabHistory.last;
-            _index = previousIndex;
-            _ensurePageLoaded(previousIndex);
+            _index = 0;
+            _tabHistory.clear();
+            _tabHistory.add(0);
+            _ensurePageLoaded(0);
           });
         } else {
-          // We are at the root tab (Home/Inbox)
+          // We are on Home (_index == 0)
+          // First back press: smoothly scroll to top & refresh fresh-first feed
+          // Second back press (within 3 seconds): exit app
           final now = DateTime.now();
           if (_lastBackPressTime == null ||
-              now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+              now.difference(_lastBackPressTime!) >
+                  const Duration(seconds: 3)) {
             _lastBackPressTime = now;
-            
-            // Refresh the current tab
-            if (_index == 0) {
-              if (AuthService.isTenantMode) {
-                _inboxPageKey.currentState?.refresh();
-              } else {
-                _explorePageKey.currentState?.refresh();
-              }
-            } else if (_index == 2 && !AuthService.isTenantMode) {
+
+            if (AuthService.isTenantMode) {
               _inboxPageKey.currentState?.refresh();
+            } else {
+              _explorePageKey.currentState?.refresh();
             }
 
+            ScaffoldMessenger.of(context).clearSnackBars();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Press back again to exit'),
+                content: Text('Feed refreshed! Press back again to exit'),
                 duration: Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
             );
           } else {
-            // Double tap within 2 seconds
+            // Double tap within 3 seconds -> exit app cleanly
             SystemNavigator.pop();
           }
         }
       },
       child: Scaffold(
-      body: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (event) => _pointerDownPosition = event.position,
-        onPointerUp: (event) {
-          if (_pointerDownPosition != null && !_showBottomNav) {
-            final distance = (event.position - _pointerDownPosition!).distance;
-            if (distance < 10.0) {
-              setState(() => _showBottomNav = true);
+        body: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (event) => _pointerDownPosition = event.position,
+          onPointerUp: (event) {
+            if (_pointerDownPosition != null && !_showBottomNav) {
+              final distance =
+                  (event.position - _pointerDownPosition!).distance;
+              if (distance < 10.0) {
+                setState(() => _showBottomNav = true);
+              }
             }
-          }
-          _pointerDownPosition = null;
-        },
-        child: NotificationListener<ScrollNotification>(
-          onNotification: _handleScrollNotification,
-          child: IndexedStack(
-            index: _index,
-            children: List<Widget>.generate(
-              _pages.length,
-              (i) => _pages[i] ?? const SizedBox.shrink(),
+            _pointerDownPosition = null;
+          },
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleScrollNotification,
+            child: IndexedStack(
+              index: _index,
+              children: List<Widget>.generate(
+                _pages.length,
+                (i) => _pages[i] ?? const SizedBox.shrink(),
+              ),
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const GoogleAdBannerWidget(),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeInOut,
-                  alignment: Alignment.topCenter,
-                  child: _showBottomNav
-                      ? ValueListenableBuilder<int>(
-                          valueListenable: ChatService.unreadMessageCount,
-                          builder: (context, unreadInboxCount, _) {
-                            return TelegramBottomPillNav(
-                              items: _buildHomeTabs(unreadInboxCount),
-                              selectedIndex: _index,
-                              onSelected: (i) {
-                                _navigateToTab(i);
-                                if (i == 1 && _savedPageKey.currentState != null) {
-                                  _savedPageKey.currentState?.refresh();
-                                }
-                              },
-                            );
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const GoogleAdBannerWidget(),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _showBottomNav
+                  ? ValueListenableBuilder<int>(
+                      valueListenable: ChatService.unreadMessageCount,
+                      builder: (context, unreadInboxCount, _) {
+                        return TelegramBottomPillNav(
+                          items: _buildHomeTabs(unreadInboxCount),
+                          selectedIndex: _index,
+                          onSelected: (i) {
+                            _navigateToTab(i);
+                            if (i == 1 && _savedPageKey.currentState != null) {
+                              _savedPageKey.currentState?.refresh();
+                            }
                           },
-                        )
-                      : const SizedBox(width: double.infinity, height: 0),
-                ),
-              ],
+                        );
+                      },
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
+          ],
+        ),
       ),
     );
   }

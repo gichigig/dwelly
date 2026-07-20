@@ -5,6 +5,8 @@ import '../data/id_scanner_service.dart';
 import '../../../core/services/google_ad_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
+import 'temporary_chat_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// Page for searching for a lost ID
 class SearchLostIdPage extends StatefulWidget {
@@ -26,12 +28,13 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   static const String _schoolIdType = 'SCHOOL_ID';
   final List<String> _idTypes = [_nationalIdType, _schoolIdType];
   String _selectedIdType = _nationalIdType;
-  
+
   bool _isSearching = false;
   SearchLostIdResponse? _searchResult;
   String? _errorMessage;
   bool _agreedToPolicy = false;
-  
+  bool _isPolicyExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,7 +55,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
     _schoolController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _callNumber(String phone) async {
     final uri = Uri.parse('tel:${phone.trim()}');
     if (await canLaunchUrl(uri)) {
@@ -67,9 +70,9 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
   void _copyNumber(String phone, String label) {
     Clipboard.setData(ClipboardData(text: phone.trim()));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$label copied to clipboard')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$label copied to clipboard')));
     }
   }
 
@@ -84,32 +87,34 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WhatsApp not installed')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('WhatsApp not installed')));
     }
   }
 
   Future<void> _searchLostId() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     if (!_agreedToPolicy) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please check the box to agree to the Safety & Data Handling Policy.'),
+          content: Text(
+            'Please check the box to agree to the Safety & Data Handling Policy.',
+          ),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
-    
+
     setState(() {
       _isSearching = true;
       _searchResult = null;
       _errorMessage = null;
     });
-    
+
     try {
       final response = await IdScannerService.searchLostId(
         fullName: _nameController.text.trim(),
@@ -119,7 +124,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
             ? _schoolController.text.trim()
             : null,
       );
-      
+
       setState(() {
         _isSearching = false;
         _searchResult = response;
@@ -131,7 +136,48 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
       });
     }
   }
-  
+
+  void _startTemporaryChat(int? foundIdId) async {
+    if (foundIdId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not determine ID. Please search again.'),
+        ),
+      );
+      return;
+    }
+    if (!AuthService.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please create an account or sign in to launch secure 7-day Temporary Chat.',
+          ),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      return;
+    }
+    try {
+      final chatData = await IdScannerServiceChat.startTemporaryChat(foundIdId);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TemporaryChatPage(
+            roomId: chatData['roomId']?.toString() ?? '',
+            myRole: 'OWNER',
+            myAlias: chatData['ownerAlias']?.toString() ?? 'Owner',
+            otherAlias: chatData['finderAlias']?.toString() ?? 'Finder',
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open chat: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!AuthService.isLoggedIn) {
@@ -194,26 +240,29 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
             children: [
               // Instructions
               Card(
-                color: Colors.orange.shade50,
+                color: Colors.blue.shade50,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      Icon(Icons.search, color: Colors.orange.shade700, size: 32),
+                      Icon(Icons.search, color: Colors.blue.shade700, size: 32),
                       const SizedBox(height: 8),
                       Text(
                         'Lost your ID?',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Colors.orange.shade700,
+                          color: Colors.blue.shade700,
                         ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Enter your details below to check if someone has found and registered your ID.',
-                        style: TextStyle(color: Colors.orange.shade600, fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.blue.shade600,
+                          fontSize: 13,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -221,7 +270,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Name input
               TextFormField(
                 controller: _nameController,
@@ -251,9 +300,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                       (type) => DropdownMenuItem<String>(
                         value: type,
                         child: Text(
-                          type == _schoolIdType
-                              ? 'School ID'
-                              : 'National ID',
+                          type == _schoolIdType ? 'School ID' : 'National ID',
                         ),
                       ),
                     )
@@ -296,20 +343,19 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 ),
                 const SizedBox(height: 16),
               ],
-              
+
               // ID Number input
               TextFormField(
                 controller: _idNumberController,
                 keyboardType: _selectedIdType == _schoolIdType
                     ? TextInputType.text
                     : TextInputType.number,
-                inputFormatters:
-                    _selectedIdType == _schoolIdType
-                        ? []
-                        : [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(8),
-                          ],
+                inputFormatters: _selectedIdType == _schoolIdType
+                    ? []
+                    : [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(8),
+                      ],
                 decoration: InputDecoration(
                   labelText: _selectedIdType == _schoolIdType
                       ? 'School ID Number'
@@ -337,42 +383,77 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 },
               ),
               const SizedBox(height: 20),
-              
+
               // Safety & Data Handling Policy Card
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
+                  color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade300),
+                  border: Border.all(color: Colors.blue.shade200),
                 ),
                 padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.shield_outlined, color: Colors.amber.shade900, size: 22),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Safety & Data Handling Policy',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: Colors.amber.shade900,
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _isPolicyExpanded = !_isPolicyExpanded;
+                        });
+                      },
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.shield_outlined,
+                            color: Colors.blue.shade900,
+                            size: 22,
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Safety & Data Handling Policy',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Colors.blue.shade900,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            _isPolicyExpanded ? '...less' : '...more',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            _isPolicyExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            color: Colors.blue.shade700,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_isPolicyExpanded) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        '• Data Handling Before Match: Your search query is securely encrypted and compared against our found database without exposing your personal identity to the public.\n'
+                        '• Data Handling After Match: If your ID is found, the finder\'s contact or collection location is disclosed only to you. Your search inquiry is then purged.\n'
+                        '• Data Deletion Schedule: All unmatched records and alert watchlists are automatically deleted from our servers after 7 days of inactivity or immediately upon a confirmed match.\n'
+                        '• Manual Deletion: You can manually delete any found ID record at any time by clicking the red "Delete This Record" button displayed at the bottom of the result card when your ID is found.\n'
+                        '• How to Verify Deletion: To check manually and confirm that your ID record has been completely erased from our servers, simply search for your ID Number on this page. If the result returns "Not Found", the record and all associated contact details have been permanently deleted.\n'
+                        '• Important Safety Advice: If a finder leaves a personal phone number, NEVER meet in a private, secluded, or unfamiliar location. Always arrange to meet in a busy public place (e.g., bank, shopping mall, or police station) or urge them to leave the ID at a secure facility like a police station or security desk. Beware of anyone demanding money or luring you to unsafe areas!',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.blue.shade900,
+                          height: 1.4,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '• Data Handling Before Match: Your search query is securely encrypted and compared against our found database without exposing your personal identity to the public.\n'
-                      '• Data Handling After Match: If your ID is found, the finder\'s contact or collection location is disclosed only to you. Your search inquiry is then purged.\n'
-                      '• Data Deletion Schedule: All unmatched records and alert watchlists are automatically deleted from our servers after 7 days of inactivity or immediately upon a confirmed match.\n'
-                      '• Manual Deletion: You can manually delete any found ID record at any time by clicking the red "Delete This Record" button displayed at the bottom of the result card when your ID is found.\n'
-                      '• How to Verify Deletion: To check manually and confirm that your ID record has been completely erased from our servers, simply search for your ID Number on this page. If the result returns "Not Found", the record and all associated contact details have been permanently deleted.\n'
-                      '• Important Safety Advice: If a finder leaves a personal phone number, NEVER meet in a private, secluded, or unfamiliar location. Always arrange to meet in a busy public place (e.g., bank, shopping mall, or police station) or urge them to leave the ID at a secure facility like a police station or security desk. Beware of anyone demanding money or luring you to unsafe areas!',
-                      style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4),
-                    ),
+                      ),
+                    ],
                     const Divider(height: 20),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,7 +463,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                           width: 24,
                           child: Checkbox(
                             value: _agreedToPolicy,
-                            activeColor: Colors.amber.shade900,
+                            activeColor: Colors.blue.shade700,
                             onChanged: (val) {
                               setState(() {
                                 _agreedToPolicy = val ?? false;
@@ -403,7 +484,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
-                                color: Colors.amber.shade900,
+                                color: Colors.blue.shade900,
                               ),
                             ),
                           ),
@@ -414,7 +495,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              
+
               // Search button
               FilledButton.icon(
                 onPressed: _isSearching ? null : _searchLostId,
@@ -422,7 +503,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       )
                     : const Icon(Icons.search),
                 label: Text(_isSearching ? 'Searching...' : 'Search'),
@@ -430,7 +511,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
-              
+
               // Error message
               if (_errorMessage != null) ...[
                 const SizedBox(height: 16),
@@ -455,7 +536,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                   ),
                 ),
               ],
-              
+
               // Search result
               if (_searchResult != null) ...[
                 const SizedBox(height: 24),
@@ -470,18 +551,15 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
       ),
     );
   }
-  
+
   void _showRegisterAlertAlert() {
     final name = _nameController.text.trim();
     final idNumber = _idNumberController.text.trim();
-    
+
     showDialog(
       context: context,
       builder: (context) {
-        return _RegisterAlertDialog(
-          idNumber: idNumber,
-          fullName: name,
-        );
+        return _RegisterAlertDialog(idNumber: idNumber, fullName: name);
       },
     );
   }
@@ -511,7 +589,7 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 textAlign: TextAlign.center,
               ),
               const Divider(height: 32),
-              
+
               // Finder's contact
               Container(
                 padding: const EdgeInsets.all(16),
@@ -533,19 +611,68 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.phone, color: Colors.green, size: 24),
+                        Icon(
+                          result.contactMethod == 'SOCIAL_MEDIA'
+                              ? Icons.alternate_email
+                              : (result.contactMethod == 'IN_APP'
+                                    ? Icons.lock_outline
+                                    : Icons.phone),
+                          color: Colors.green,
+                          size: 24,
+                        ),
                         const SizedBox(width: 8),
                         SelectableText(
-                          result.finderPhone ?? 'N/A',
+                          result.contactMethod == 'SOCIAL_MEDIA'
+                              ? (result.socialMediaHandle ?? 'Social Handle')
+                              : (result.contactMethod == 'IN_APP'
+                                    ? 'In-App Secure Chat'
+                                    : (result.finderPhone ?? 'N/A')),
                           style: const TextStyle(
-                            fontSize: 22,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: Colors.black,
                           ),
                         ),
                       ],
                     ),
-                    if (result.finderPhone != null && result.finderPhone!.isNotEmpty) ...[
+                    if (result.contactMethod == 'SOCIAL_MEDIA' &&
+                        result.socialMediaHandle != null) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 12,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _copyNumber(
+                              result.socialMediaHandle!,
+                              'Social Media Handle',
+                            ),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('Copy Handle'),
+                          ),
+                        ],
+                      ),
+                    ] else if (result.contactMethod == 'IN_APP' ||
+                        (result.finderPhone == null &&
+                            result.socialMediaHandle == null)) ...[
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: () => _startTemporaryChat(result.foundIdId),
+                        icon: const Icon(Icons.chat_bubble_outline),
+                        label: const Text(
+                          'Start Temporary Anonymous Chat (7 Days)',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ] else if (result.finderPhone != null &&
+                        result.finderPhone!.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -559,23 +686,33 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
                             ),
                           ),
                           OutlinedButton.icon(
-                            onPressed: () => _copyNumber(result.finderPhone!, 'Phone number'),
+                            onPressed: () => _copyNumber(
+                              result.finderPhone!,
+                              'Phone number',
+                            ),
                             icon: const Icon(Icons.copy, size: 18),
                             label: const Text('Copy'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.green.shade700,
                               side: BorderSide(color: Colors.green.shade700),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ],
-                    if (result.finderWhatsApp != null && result.finderWhatsApp!.isNotEmpty) ...[
+                    if (result.finderWhatsApp != null &&
+                        result.finderWhatsApp!.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -602,15 +739,27 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                onPressed: () => _openWhatsApp(result.finderWhatsApp!),
-                                icon: Icon(Icons.open_in_new, size: 20, color: Colors.green.shade700),
+                                onPressed: () =>
+                                    _openWhatsApp(result.finderWhatsApp!),
+                                icon: Icon(
+                                  Icons.open_in_new,
+                                  size: 20,
+                                  color: Colors.green.shade700,
+                                ),
                                 tooltip: 'Chat on WhatsApp',
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(6),
                               ),
                               IconButton(
-                                onPressed: () => _copyNumber(result.finderWhatsApp!, 'WhatsApp number'),
-                                icon: Icon(Icons.copy, size: 18, color: Colors.green.shade700),
+                                onPressed: () => _copyNumber(
+                                  result.finderWhatsApp!,
+                                  'WhatsApp number',
+                                ),
+                                icon: Icon(
+                                  Icons.copy,
+                                  size: 18,
+                                  color: Colors.green.shade700,
+                                ),
                                 tooltip: 'Copy WhatsApp',
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(6),
@@ -620,7 +769,8 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                         ],
                       ),
                     ],
-                    if (result.collectionPlace != null && result.collectionPlace!.isNotEmpty) ...[
+                    if (result.collectionPlace != null &&
+                        result.collectionPlace!.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -632,7 +782,11 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.place, color: Colors.blue.shade700, size: 20),
+                            Icon(
+                              Icons.place,
+                              color: Colors.blue.shade700,
+                              size: 20,
+                            ),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
@@ -647,12 +801,17 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                         ),
                       ),
                     ],
-                    if (result.foundLocation != null && result.foundLocation!.isNotEmpty) ...[
+                    if (result.foundLocation != null &&
+                        result.foundLocation!.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.location_on, color: Colors.grey.shade600, size: 20),
+                          Icon(
+                            Icons.location_on,
+                            color: Colors.grey.shade600,
+                            size: 20,
+                          ),
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
@@ -667,19 +826,25 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                       const SizedBox(height: 8),
                       Text(
                         'Registered on: ${_formatDate(result.foundAt!)}',
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
-              
+
               if (result.foundIdId != null) ...[
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: () => _confirmDelete(result.foundIdId!),
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  label: const Text('Delete This Record', style: TextStyle(color: Colors.red)),
+                  label: const Text(
+                    'Delete This Record',
+                    style: TextStyle(color: Colors.red),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: Colors.red.shade200),
                   ),
@@ -733,7 +898,10 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue.shade700,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -745,15 +913,16 @@ class _SearchLostIdPageState extends State<SearchLostIdPage> {
       );
     }
   }
-  
+
   void _confirmDelete(int id) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Record?'),
         content: const Text(
-            'Are you sure you want to delete this ID record from our system? '
-            'This action cannot be undone.'),
+          'Are you sure you want to delete this ID record from our system? '
+          'This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -805,26 +974,15 @@ class _RegisterAlertDialog extends StatefulWidget {
   final String idNumber;
   final String fullName;
 
-  const _RegisterAlertDialog({
-    required this.idNumber,
-    required this.fullName,
-  });
+  const _RegisterAlertDialog({required this.idNumber, required this.fullName});
 
   @override
   State<_RegisterAlertDialog> createState() => _RegisterAlertDialogState();
 }
 
 class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
-  final _phoneController = TextEditingController();
-  bool _whatsappEnabled = false;
   bool _isLoading = false;
   String? _error;
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
-  }
 
   Future<void> _submitAlert() async {
     setState(() {
@@ -833,23 +991,20 @@ class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
     });
 
     try {
-      final whatsappNum = _whatsappEnabled ? _phoneController.text.trim() : null;
-      if (_whatsappEnabled && (whatsappNum == null || whatsappNum.isEmpty)) {
-        throw Exception('Please enter your WhatsApp phone number.');
-      }
-
       await IdScannerService.createLostIdAlert(
         idNumber: widget.idNumber,
         fullName: widget.fullName,
-        whatsappAlertsEnabled: _whatsappEnabled,
-        whatsappNumber: whatsappNum,
+        whatsappAlertsEnabled: false,
+        whatsappNumber: null,
       );
 
       if (mounted) {
         Navigator.pop(context, true); // Return success
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Watchlist alert registered! We will notify you when found.'),
+            content: Text(
+              'Watchlist alert registered! We will notify you when found.',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -869,7 +1024,7 @@ class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
         children: [
           Icon(Icons.add_alert, color: Colors.blue.shade700),
           const SizedBox(width: 10),
-          const Text('Notify Me When Found'),
+          const Expanded(child: Text('Notify Me When Found')),
         ],
       ),
       content: SingleChildScrollView(
@@ -891,33 +1046,6 @@ class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
               'ID Number: ${widget.idNumber}',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
-            const SizedBox(height: 16),
-            const Divider(),
-            SwitchListTile(
-              title: const Text('WhatsApp Notifications'),
-              subtitle: const Text('Receive a message when your ID is found'),
-              value: _whatsappEnabled,
-              contentPadding: EdgeInsets.zero,
-              onChanged: (val) {
-                setState(() {
-                  _whatsappEnabled = val;
-                });
-              },
-            ),
-            if (_whatsappEnabled) ...[
-              const SizedBox(height: 8),
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'WhatsApp Phone Number',
-                  hintText: 'e.g., +254700000000',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ],
             if (_error != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -939,7 +1067,7 @@ class _RegisterAlertDialogState extends State<_RegisterAlertDialog> {
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: DwellyOrbitingLoader(glowColor: Colors.white),
                 )
               : const Text('Notify Me'),
         ),

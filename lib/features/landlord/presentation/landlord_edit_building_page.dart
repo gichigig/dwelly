@@ -4,13 +4,15 @@ import '../../../core/services/api_service.dart';
 import '../../../core/widgets/location_autocomplete.dart';
 import '../../../core/widgets/map_picker.dart';
 import 'dart:convert';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class LandlordEditBuildingPage extends StatefulWidget {
   final dynamic building;
   const LandlordEditBuildingPage({super.key, required this.building});
 
   @override
-  State<LandlordEditBuildingPage> createState() => _LandlordEditBuildingPageState();
+  State<LandlordEditBuildingPage> createState() =>
+      _LandlordEditBuildingPageState();
 }
 
 class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
@@ -19,7 +21,7 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
   late TextEditingController _wardController;
   late TextEditingController _constituencyController;
   late TextEditingController _countyController;
-  
+
   double? _latitude;
   double? _longitude;
 
@@ -28,10 +30,18 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.building['name'] ?? '');
-    _wardController = TextEditingController(text: widget.building['ward'] ?? '');
-    _constituencyController = TextEditingController(text: widget.building['constituency'] ?? '');
-    _countyController = TextEditingController(text: widget.building['county'] ?? '');
+    _nameController = TextEditingController(
+      text: widget.building['name'] ?? '',
+    );
+    _wardController = TextEditingController(
+      text: widget.building['ward'] ?? '',
+    );
+    _constituencyController = TextEditingController(
+      text: widget.building['constituency'] ?? '',
+    );
+    _countyController = TextEditingController(
+      text: widget.building['county'] ?? '',
+    );
     _latitude = widget.building['latitude'];
     _longitude = widget.building['longitude'];
   }
@@ -62,9 +72,9 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -85,7 +95,7 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Building')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : Padding(
               padding: const EdgeInsets.all(16.0),
               child: Form(
@@ -94,8 +104,12 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
                   children: [
                     TextFormField(
                       controller: _nameController,
-                      decoration: const InputDecoration(labelText: 'Building Name', border: OutlineInputBorder()),
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Building Name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     LocationAutocomplete(
@@ -129,25 +143,27 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
                     TextFormField(
                       controller: _constituencyController,
                       decoration: InputDecoration(
-                        labelText: 'Constituency', 
+                        labelText: 'Constituency',
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Colors.grey.shade100,
                       ),
                       readOnly: true,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _countyController,
                       decoration: InputDecoration(
-                        labelText: 'County', 
+                        labelText: 'County',
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Colors.grey.shade100,
                       ),
                       readOnly: true,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 24),
                     const Row(
@@ -156,7 +172,10 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
                         SizedBox(width: 8),
                         Text(
                           'Geotag Coordinates',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -181,13 +200,19 @@ class _LandlordEditBuildingPageState extends State<LandlordEditBuildingPage> {
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           'Coordinates locked: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
-                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     const SizedBox(height: 32),
                     ElevatedButton(
                       onPressed: _submit,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
                       child: const Text('Save Changes'),
                     ),
                   ],

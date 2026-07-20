@@ -5,7 +5,11 @@ import 'sqlite_cache_service.dart';
 import '../models/chat_group.dart';
 
 class GroupService {
-  static Future<Map<String, dynamic>> getMyGroups({int page = 0, int limit = 20}) async {
+  static Future<Map<String, dynamic>> getMyGroups({
+    int page = 0,
+    int limit = 20,
+    bool forceRefresh = false,
+  }) async {
     final cacheKey = 'my_groups_page_$page';
 
     Map<String, dynamic> parseData(dynamic decoded) {
@@ -19,24 +23,24 @@ class GroupService {
         };
       } else if (decoded is List) {
         final groups = decoded.map((json) => ChatGroup.fromJson(json)).toList();
-        return {
-          'groups': groups,
-          'hasMore': false,
-          'page': 0,
-        };
+        return {'groups': groups, 'hasMore': false, 'page': 0};
       } else {
         return {'groups': <ChatGroup>[], 'hasMore': false, 'page': 0};
       }
     }
 
-    if (page == 0) {
-      final localData = await SqliteCacheService.instance.getChatCache(cacheKey);
+    if (!forceRefresh && page == 0) {
+      final localData = await SqliteCacheService.instance.getChatCache(
+        cacheKey,
+      );
       if (localData != null) {
         // Fetch in background
         Future.microtask(() async {
           try {
             final response = await ApiService.timedGet(
-              Uri.parse('${ApiService.baseUrl}/groups/my?page=$page&size=$limit'),
+              Uri.parse(
+                '${ApiService.baseUrl}/groups/my?page=$page&size=$limit',
+              ),
               headers: {
                 'Accept': 'application/json',
                 'Authorization': 'Bearer ${AuthService.token}',
@@ -45,9 +49,14 @@ class GroupService {
             if (response.statusCode == 200) {
               final decoded = json.decode(utf8.decode(response.bodyBytes));
               if (decoded is Map<String, dynamic>) {
-                await SqliteCacheService.instance.saveChatCache(cacheKey, decoded);
+                await SqliteCacheService.instance.saveChatCache(
+                  cacheKey,
+                  decoded,
+                );
               } else if (decoded is List) {
-                await SqliteCacheService.instance.saveChatCache(cacheKey, {'content': decoded});
+                await SqliteCacheService.instance.saveChatCache(cacheKey, {
+                  'content': decoded,
+                });
               }
             }
           } catch (_) {}
@@ -67,19 +76,23 @@ class GroupService {
 
       if (response.statusCode == 200) {
         final decoded = json.decode(utf8.decode(response.bodyBytes));
-        
+
         if (decoded is Map<String, dynamic>) {
           await SqliteCacheService.instance.saveChatCache(cacheKey, decoded);
         } else if (decoded is List) {
-          await SqliteCacheService.instance.saveChatCache(cacheKey, {'content': decoded});
+          await SqliteCacheService.instance.saveChatCache(cacheKey, {
+            'content': decoded,
+          });
         }
-        
+
         return parseData(decoded);
       } else {
         throw Exception('Failed to load groups: ${response.statusCode}');
       }
     } catch (e) {
-      final localData = await SqliteCacheService.instance.getChatCache(cacheKey);
+      final localData = await SqliteCacheService.instance.getChatCache(
+        cacheKey,
+      );
       if (localData != null) {
         return parseData(localData);
       }
@@ -122,8 +135,9 @@ class GroupService {
     if (response.statusCode == 200) {
       final data = json.decode(utf8.decode(response.bodyBytes));
       final messagesData = data['content'] as List<dynamic>? ?? [];
-      final messages =
-          messagesData.map((m) => GroupMessage.fromJson(m)).toList();
+      final messages = messagesData
+          .map((m) => GroupMessage.fromJson(m))
+          .toList();
       return {
         'messages': messages,
         'hasMore': data['last'] == false,
@@ -135,7 +149,14 @@ class GroupService {
     }
   }
 
-  static Future<ChatGroup> createGroup(String name, {String? description, int? rentalId, int? buildingId, bool adminOnlyMessage = false, bool membersCanAdd = false}) async {
+  static Future<ChatGroup> createGroup(
+    String name, {
+    String? description,
+    int? rentalId,
+    int? buildingId,
+    bool adminOnlyMessage = false,
+    bool membersCanAdd = false,
+  }) async {
     final response = await ApiService.timedPost(
       Uri.parse('${ApiService.baseUrl}/groups'),
       headers: {
@@ -154,22 +175,24 @@ class GroupService {
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       final data = json.decode(utf8.decode(response.bodyBytes));
+      await SqliteCacheService.instance.removeChatCache('my_groups_page_0');
       return ChatGroup.fromJson(data);
     } else {
       throw Exception('Failed to create group: ${response.statusCode}');
     }
   }
 
-  static Future<ChatGroup> updateGroupAvatar(int groupId, String avatarUrl) async {
+  static Future<ChatGroup> updateGroupAvatar(
+    int groupId,
+    String avatarUrl,
+  ) async {
     final response = await ApiService.timedPatch(
       Uri.parse('${ApiService.baseUrl}/groups/$groupId/avatar'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ${AuthService.token}',
       },
-      body: json.encode({
-        'avatarUrl': avatarUrl,
-      }),
+      body: json.encode({'avatarUrl': avatarUrl}),
     );
 
     if (response.statusCode == 200) {
@@ -180,21 +203,39 @@ class GroupService {
     }
   }
 
-  static Future<void> addMember(int groupId, String identifier, {String role = 'MEMBER'}) async {
+  static Future<void> addMember(
+    int groupId,
+    String identifier, {
+    String role = 'MEMBER',
+  }) async {
     final response = await ApiService.timedPost(
       Uri.parse('${ApiService.baseUrl}/groups/$groupId/members'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ${AuthService.token}',
       },
-      body: json.encode({
-        'identifier': identifier,
-        'role': role,
-      }),
+      body: json.encode({'identifier': identifier, 'role': role}),
     );
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to add member: ${response.statusCode}');
+    }
+  }
+
+  static Future<ChatGroup> getGroupDetails(int groupId) async {
+    final response = await ApiService.timedGet(
+      Uri.parse('${ApiService.baseUrl}/groups/$groupId'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ${AuthService.token}',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      return ChatGroup.fromJson(data);
+    } else {
+      throw Exception('Failed to load group details: ${response.statusCode}');
     }
   }
 
@@ -227,9 +268,15 @@ class GroupService {
     }
   }
 
-  static Future<void> deleteMessage(int groupId, int messageId) async {
+  static Future<void> deleteMessage(
+    int groupId,
+    int messageId, {
+    bool deleteForAll = false,
+  }) async {
     final response = await ApiService.timedDelete(
-      Uri.parse('${ApiService.baseUrl}/groups/$groupId/messages/$messageId'),
+      Uri.parse(
+        '${ApiService.baseUrl}/groups/$groupId/messages/$messageId?deleteForAll=$deleteForAll',
+      ),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer ${AuthService.token}',
@@ -241,16 +288,20 @@ class GroupService {
     }
   }
 
-  static Future<void> voteOnPoll(int groupId, int messageId, String optionId) async {
+  static Future<void> voteOnPoll(
+    int groupId,
+    int messageId,
+    String optionId,
+  ) async {
     final response = await ApiService.timedPost(
-      Uri.parse('${ApiService.baseUrl}/groups/$groupId/messages/$messageId/vote'),
+      Uri.parse(
+        '${ApiService.baseUrl}/groups/$groupId/messages/$messageId/vote',
+      ),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ${AuthService.token}',
       },
-      body: json.encode({
-        'optionId': optionId,
-      }),
+      body: json.encode({'optionId': optionId}),
     );
 
     if (response.statusCode != 200) {

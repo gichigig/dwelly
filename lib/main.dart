@@ -15,6 +15,9 @@ import 'core/services/theme_service.dart';
 import 'core/services/network_service.dart';
 import 'core/services/offline_queue_service.dart';
 import 'core/services/google_ad_service.dart';
+import 'core/services/cache_service.dart';
+import 'core/services/api_service.dart';
+import 'core/services/deep_link_service.dart';
 import 'core/widgets/network_banner.dart';
 import 'features/onboarding/welcome_onboarding_page.dart';
 import 'features/splash/splash_screen.dart';
@@ -29,27 +32,33 @@ class DwellyHttpOverrides extends HttpOverrides {
 
 class AppLifecycleReactor extends WidgetsBindingObserver {
   DateTime? _backgroundTime;
-  
+
   AppLifecycleReactor() {
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _backgroundTime ??= DateTime.now();
-    } else if (state == AppLifecycleState.resumed) {
-      if (_backgroundTime != null) {
-        final backgroundDuration = DateTime.now().difference(_backgroundTime!);
-        // Only show App Open Ad if the app was in the background for more than 15 seconds.
-        // This prevents the ad from overriding the screen during micro-interruptions 
-        // like pulling down the notification tray, toggling Wi-Fi, or system dialogs.
-        if (backgroundDuration.inSeconds > 15) {
-          AppOpenAdManager.instance.showAdIfAvailable();
-        }
-        _backgroundTime = null;
-      }
+    if (state == AppLifecycleState.resumed) {
+      NetworkService.instance.setAppForeground(true);
+      return;
     }
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      NetworkService.instance.setAppForeground(false);
+    }
+    // Disabled App Open ads (Google Ad Splash) as requested.
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    // When the OS signals low RAM, immediately purge all in-memory JSON/API maps and image caches!
+    CacheManager.clearAll();
+    ApiService.clearCachedGets();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
   }
 }
 
@@ -59,7 +68,10 @@ void main() async {
       WidgetsFlutterBinding.ensureInitialized();
       HttpOverrides.global = DwellyHttpOverrides();
 
-      await Firebase.initializeApp();
+      await Firebase.initializeApp().catchError((error, stack) {
+        debugPrint('Firebase initialization warning: $error');
+        throw error;
+      });
 
       FlutterError.onError = (details) {
         FlutterError.presentError(details);
@@ -71,25 +83,23 @@ void main() async {
         return true;
       };
 
-      // Keep critical startup work minimal so first frame appears faster.
-      final onboardingFuture = WelcomeOnboardingPage.isOnboardingComplete();
-      await Future.wait([
-        AuthService.init(),
-        ThemeService.init(),
-        AppNotificationCenter.init(),
-      ]);
-      final adService = await AdService.getInstance();
-      await adService.getDisplayConfig();
-      unawaited(OfflineQueueService.init());
-      AppLifecycleReactor? lifecycleReactor;
-      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
-        unawaited(MobileAds.instance.initialize().then((_) {
-          AppOpenAdManager.instance.loadAd();
-          lifecycleReactor = AppLifecycleReactor();
-        }));
+      // Keep pre-runApp work strictly to local SharedPreferences (< 15ms)
+      // so the native Android splash screen dismisses instantly.
+      bool onboardingDone = false;
+      try {
+        await Future.wait([
+          WelcomeOnboardingPage.isOnboardingComplete().then(
+            (value) => onboardingDone = value,
+          ),
+          AuthService.init(),
+          ThemeService.init(),
+        ]).timeout(const Duration(milliseconds: 150));
+      } catch (e) {
+        debugPrint('Startup init timeout/error (continuing to runApp): $e');
       }
-      final onboardingDone = await onboardingFuture;
-
+      unawaited(OfflineQueueService.init());
+      unawaited(AppNotificationCenter.init());
+      unawaited(AdService.getInstance().then((svc) => svc.getDisplayConfig()));
       NetworkService.instance.initialize();
 
       runApp(
@@ -99,8 +109,18 @@ void main() async {
         ),
       );
 
-      // Notification setup can continue in background.
+      // Background sdk initializations after first frame
       unawaited(NotificationService.init());
+      DeepLinkService.init();
+      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+        unawaited(
+          Future.delayed(const Duration(milliseconds: 3500), () {
+            MobileAds.instance.initialize().then((_) {
+              AppLifecycleReactor();
+            });
+          }),
+        );
+      }
     },
     (error, stack) {
       unawaited(CrashReportingService.reportUnhandled(error, stack));
@@ -129,18 +149,16 @@ class DwellyApp extends StatelessWidget {
         return MaterialApp(
           navigatorKey: NotificationService.navigatorKey,
           debugShowCheckedModeBanner: false,
-          title: 'Dwelly',
+          title: 'IshinaDwelly',
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeService.mode,
           builder: (context, child) {
             return NetworkBanner(child: child!);
           },
-          home: SplashScreen(
-            child: onboardingComplete
-                ? const AppShell()
-                : WelcomeOnboardingPage(child: const AppShell()),
-          ),
+          home: onboardingComplete
+              ? const AppShell()
+              : WelcomeOnboardingPage(child: const AppShell()),
         );
       },
     );

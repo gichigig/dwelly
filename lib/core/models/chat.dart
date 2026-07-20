@@ -6,12 +6,12 @@ class ChatMessage {
   final String? senderUsername;
   final String? senderAvatarUrl;
   final String? clientMessageId;
-  final String content;
-  final String messageType; // TEXT, VIDEO, SAFETY_WARNING
-  final String? mediaUrl;
+  String content;
+  String messageType; // TEXT, VIDEO, SAFETY_WARNING
+  String? mediaUrl;
   String? localPath; // Local file path after download
   final DateTime createdAt;
-  final bool isRead;
+  bool isRead;
   final String deliveryStatus; // pending | sent | failed | SENT(from server)
 
   ChatMessage({
@@ -32,6 +32,7 @@ class ChatMessage {
   });
 
   bool get isVideo => messageType == 'VIDEO';
+  bool get isListingShare => messageType == 'LISTING_SHARE';
   bool get isLocalPending => deliveryStatus.toLowerCase() == 'pending';
   bool get isFailed => deliveryStatus.toLowerCase() == 'failed';
   bool get isSent =>
@@ -96,6 +97,8 @@ class Conversation {
   final bool blockedByMe;
   final bool blockedMe;
   final String? lastMessage;
+  final int? lastMessageSenderId;
+  final bool? lastMessageIsRead;
   final DateTime? lastMessageAt;
   final int unreadCount;
   final DateTime createdAt;
@@ -120,6 +123,8 @@ class Conversation {
     this.blockedByMe = false,
     this.blockedMe = false,
     this.lastMessage,
+    this.lastMessageSenderId,
+    this.lastMessageIsRead,
     this.lastMessageAt,
     this.unreadCount = 0,
     required this.createdAt,
@@ -149,6 +154,8 @@ class Conversation {
       blockedByMe: json['blockedByMe'] == true,
       blockedMe: json['blockedMe'] == true,
       lastMessage: json['lastMessage'],
+      lastMessageSenderId: json['lastMessageSenderId'],
+      lastMessageIsRead: json['lastMessageIsRead'],
       lastMessageAt: json['lastMessageAt'] != null
           ? DateTime.parse(json['lastMessageAt'])
           : null,

@@ -7,7 +7,7 @@ import '../models/advertisement.dart';
 import '../services/ad_service.dart';
 import 'video_ad_player.dart';
 import 'ad_form_modal.dart';
-import '../../features/splash/splash_screen.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// Full-screen ad screen shown on app launch
 class AppLaunchAdScreen extends StatefulWidget {
@@ -55,7 +55,8 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
   @override
   void initState() {
     super.initState();
-    _skipCountdown = widget.skipDelayOverrideSeconds ?? widget.ad.skipDelaySeconds ?? 5;
+    _skipCountdown =
+        widget.skipDelayOverrideSeconds ?? widget.ad.skipDelaySeconds ?? 5;
     _startSkipTimerIfNeeded();
     _startAutoAdvanceIfNeeded();
     _recordImpression();
@@ -339,7 +340,12 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
                     Positioned(top: 16, right: 16, child: _buildSkipButton()),
 
                   // Bottom info bar
-                  Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar()),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _buildBottomBar(),
+                  ),
                 ],
               ),
             ),
@@ -369,7 +375,9 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF0EA5E9).withValues(alpha: 0.2),
+                                color: const Color(
+                                  0xFF0EA5E9,
+                                ).withValues(alpha: 0.2),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
@@ -458,7 +466,7 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
             imageUrl: widget.ad.imageUrl!,
             fit: BoxFit.contain,
             placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(color: Colors.white),
+              child: DwellyOrbitingLoader(glowColor: Colors.white),
             ),
             errorWidget: (context, url, error) => const Center(
               child: Icon(Icons.error, color: Colors.white, size: 48),
@@ -624,4 +632,46 @@ class _AppLaunchAdScreenState extends State<AppLaunchAdScreen> {
         return '';
     }
   }
+}
+
+class DwellyLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+
+    final gradient = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF0EA5E9),
+        Color(0xFF1E40AF),
+      ],
+    );
+
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    paint.shader = gradient.createShader(rect);
+
+    final path = Path();
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+    final radius = size.width * 0.35;
+
+    path.moveTo(centerX - radius * 0.5, centerY - radius);
+    path.lineTo(centerX - radius * 0.5, centerY + radius);
+    path.moveTo(centerX - radius * 0.5, centerY - radius);
+    path.quadraticBezierTo(
+      centerX + radius,
+      centerY,
+      centerX - radius * 0.5,
+      centerY + radius,
+    );
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

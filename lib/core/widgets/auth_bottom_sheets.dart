@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../features/auth/presentation/forgot_password_screen.dart';
+import '../../features/auth/presentation/email_verification_screen.dart';
 import '../errors/ui_error.dart';
 import '../errors/app_error.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 bool _isAuthSheetOpen = false;
 
@@ -172,7 +174,9 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     super.dispose();
   }
 
-  Future<void> _handleConcurrentLogin(Future<void> Function() retryAction) async {
+  Future<void> _handleConcurrentLogin(
+    Future<void> Function() retryAction,
+  ) async {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -236,9 +240,14 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
 
       setState(() {
         _mfaChallenge = result.challenge;
+        final methods = result.challenge!.availableMethods
+            .where((m) => m != 'PUSH')
+            .toList();
         _selectedMfaMethod =
-            result.challenge!.preferredMethod ??
-            result.challenge!.availableMethods.first;
+            (result.challenge!.preferredMethod != 'PUSH'
+                ? result.challenge!.preferredMethod
+                : null) ??
+            (methods.isNotEmpty ? methods.first : 'TOTP');
       });
     } catch (e) {
       if (!mounted) return;
@@ -269,7 +278,10 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     });
 
     try {
-      final authResponse = await AuthService.googleLogin(persistSession: false, forceLogin: forceLogin);
+      final authResponse = await AuthService.googleLogin(
+        persistSession: false,
+        forceLogin: forceLogin,
+      );
       await _completeAuthenticatedLogin(authResponse);
     } catch (e) {
       if (!mounted) return;
@@ -375,7 +387,9 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
     } catch (e) {
       if (!mounted) return;
       if (e is AppError && e.code == AppErrorCode.concurrentLogin) {
-        await _handleConcurrentLogin(() => _startPasskeyWithEmailPrompt(forceLogin: true));
+        await _handleConcurrentLogin(
+          () => _startPasskeyWithEmailPrompt(forceLogin: true),
+        );
         return;
       }
       final noCredential = AuthService.isPasskeyNoCredentialError(e);
@@ -427,9 +441,8 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
   Future<String?> _showPasskeyEmailPrompt() async {
     return showDialog<String>(
       context: context,
-      builder: (_) => _PasskeyEmailPromptDialog(
-        initialEmail: _emailController.text.trim(),
-      ),
+      builder: (_) =>
+          _PasskeyEmailPromptDialog(initialEmail: _emailController.text.trim()),
     );
   }
 
@@ -671,6 +684,7 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
                         ),
                       ),
                       items: _mfaChallenge!.availableMethods
+                          .where((method) => method != 'PUSH')
                           .map(
                             (method) => DropdownMenuItem(
                               value: method,
@@ -732,7 +746,7 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
                           ? const SizedBox(
                               height: 20,
                               width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: DwellyOrbitingLoader(),
                             )
                           : Text(
                               requiresMfa ? 'Verify & Sign In' : 'Sign In',
@@ -776,7 +790,8 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
                                 const Icon(Icons.g_mobiledata, size: 32),
                           ),
                           label: 'Google',
-                          onPressed: (_isLoading ||
+                          onPressed:
+                              (_isLoading ||
                                   _isGoogleLoading ||
                                   _isBluvberryLoading ||
                                   _isMfaLoading)
@@ -792,7 +807,8 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
                             fit: BoxFit.cover,
                           ),
                           label: 'RealAdmin',
-                          onPressed: (_isLoading ||
+                          onPressed:
+                              (_isLoading ||
                                   _isGoogleLoading ||
                                   _isRealAdminLoading ||
                                   _isMfaLoading)
@@ -803,7 +819,8 @@ class _SharedLoginFormState extends State<SharedLoginForm> {
                         _SocialIconButton(
                           icon: const Icon(Icons.key_outlined, size: 28),
                           label: 'Passkey',
-                          onPressed: (_isLoading ||
+                          onPressed:
+                              (_isLoading ||
                                   _isGoogleLoading ||
                                   _isBluvberryLoading ||
                                   _isMfaLoading)
@@ -961,7 +978,7 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
     });
 
     try {
-      await AuthService.register(
+      final authResponse = await AuthService.register(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         firstName: _firstNameController.text.trim(),
@@ -969,8 +986,22 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
         phone: _phoneController.text.trim().isEmpty
             ? null
             : _phoneController.text.trim(),
+        persistSession: false,
       );
-      widget.onSuccess();
+
+      if (!mounted) return;
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => EmailVerificationScreen(
+            email: _emailController.text.trim(),
+            onVerified: () async {
+              await AuthService.persistAuthResponse(authResponse);
+              widget.onSuccess();
+            },
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted || isSilentError(e)) return;
       setState(() {
@@ -989,10 +1020,7 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
   }
 
   void _launchLegalUrl(String url) {
-    launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   void _showSafetyPolicyDialog(BuildContext context) {
@@ -1214,7 +1242,7 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                           ? const SizedBox(
                               height: 20,
                               width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: DwellyOrbitingLoader(),
                             )
                           : const Text(
                               'Create Account',
@@ -1270,10 +1298,15 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                     children: [
                       Text(
                         'By creating an account, you agree to our ',
-                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey[600],
+                        ),
                       ),
                       GestureDetector(
-                        onTap: () => _launchLegalUrl('https://www.ishinadwelly.com/terms-and-conditions'),
+                        onTap: () => _launchLegalUrl(
+                          'https://www.ishinadwelly.com/terms-and-conditions',
+                        ),
                         child: Text(
                           'Terms of Service',
                           style: TextStyle(
@@ -1286,10 +1319,15 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                       ),
                       Text(
                         ', ',
-                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey[600],
+                        ),
                       ),
                       GestureDetector(
-                        onTap: () => _launchLegalUrl('https://www.ishinadwelly.com/privacy-policy'),
+                        onTap: () => _launchLegalUrl(
+                          'https://www.ishinadwelly.com/privacy-policy',
+                        ),
                         child: Text(
                           'Privacy Policy',
                           style: TextStyle(
@@ -1302,7 +1340,10 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                       ),
                       Text(
                         ', and ',
-                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey[600],
+                        ),
                       ),
                       GestureDetector(
                         onTap: () => _showSafetyPolicyDialog(context),
@@ -1318,7 +1359,10 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                       ),
                       Text(
                         '.',
-                        style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey[600],
+                        ),
                       ),
                     ],
                   ),
@@ -1365,7 +1409,7 @@ class _SocialIconButton extends StatelessWidget {
                   ? const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: DwellyOrbitingLoader(),
                     )
                   : ClipOval(child: icon),
             ),

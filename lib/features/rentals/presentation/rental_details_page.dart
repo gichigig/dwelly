@@ -9,6 +9,7 @@ import 'package:realestate/core/di/providers.dart';
 import 'package:realestate/core/errors/ui_error.dart';
 import 'package:realestate/core/services/api_service.dart';
 import 'package:realestate/core/widgets/full_screen_image_avatar.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class RentalDetailsPage extends ConsumerStatefulWidget {
   final String id;
@@ -56,7 +57,10 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
       if (!mounted) {
         return;
       }
-      await precacheImage(CachedNetworkImageProvider(ApiService.resolveMediaUrl(url) ?? url), context);
+      await precacheImage(
+        CachedNetworkImageProvider(ApiService.resolveMediaUrl(url) ?? url),
+        context,
+      );
     }
   }
 
@@ -78,7 +82,7 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
     if (isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Rental Details')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(child: DwellyOrbitingLoader()),
       );
     }
 
@@ -132,9 +136,7 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                                   child: SizedBox(
                                     width: 28,
                                     height: 28,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
+                                    child: DwellyOrbitingLoader(),
                                   ),
                                 ),
                               ),

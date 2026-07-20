@@ -27,21 +27,24 @@ class _HelperHubPageState extends State<HelperHubPage> {
           ),
         ),
         body: const TabBarView(
-          children: [
-            FindHelperTab(),
-            RegisterHelperTab(),
-          ],
+          children: [FindHelperTab(), RegisterHelperTab()],
         ),
         floatingActionButton: AuthService.isLoggedIn
             ? FloatingActionButton.extended(
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const HelperJobsPage()),
+                    MaterialPageRoute(
+                      builder: (context) => const HelperJobsPage(),
+                    ),
                   );
                 },
                 icon: const Icon(Icons.work),
-                label: Text(AuthService.currentUser?.primaryRole == 'helper' ? 'My Jobs' : 'Hired Helpers'),
+                label: Text(
+                  AuthService.currentUser?.primaryRole == 'helper'
+                      ? 'My Jobs'
+                      : 'Hired Helpers',
+                ),
               )
             : null,
       ),

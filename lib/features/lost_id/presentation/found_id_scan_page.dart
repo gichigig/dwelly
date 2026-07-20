@@ -6,6 +6,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../data/id_scanner_service.dart';
 import '../../../core/services/google_ad_service.dart';
+import '../../../core/services/auth_service.dart';
+import 'temporary_chat_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// Page for scanning a found ID and registering it
 class FoundIdScanPage extends StatefulWidget {
@@ -26,12 +29,14 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   final _nameController = TextEditingController();
   final _idNumberController = TextEditingController();
   final _schoolController = TextEditingController();
+  final _socialMediaController = TextEditingController();
+  String _selectedContactMethod = 'PHONE'; // PHONE, SOCIAL_MEDIA, IN_APP
 
   static const String _nationalIdType = 'NATIONAL_ID';
   static const String _schoolIdType = 'SCHOOL_ID';
   final List<String> _idTypes = [_nationalIdType, _schoolIdType];
   String _selectedIdType = _nationalIdType;
-  
+
   File? _selectedImage;
   IdScanResult? _scanResult;
   bool _isScanning = false;
@@ -40,7 +45,8 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
   bool _isManualEntry = false;
   String? _errorMessage;
   bool _agreedToSafetyPolicy = false;
-  
+  bool _isPolicyExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -63,9 +69,10 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
     _nameController.dispose();
     _idNumberController.dispose();
     _schoolController.dispose();
+    _socialMediaController.dispose();
     super.dispose();
   }
-  
+
   void _enableManualEntry() {
     setState(() {
       _isManualEntry = true;
@@ -82,7 +89,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
     setState(() {
       _isGettingLocation = true;
     });
-    
+
     try {
       // Check location permission
       LocationPermission permission = await Geolocator.checkPermission();
@@ -98,32 +105,36 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
           return;
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission permanently denied. Please enable in settings.')),
+            const SnackBar(
+              content: Text(
+                'Location permission permanently denied. Please enable in settings.',
+              ),
+            ),
           );
         }
         setState(() => _isGettingLocation = false);
         return;
       }
-      
+
       // Get current position
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
       );
-      
+
       // Reverse geocode to get address
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
-      
+
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         final locationParts = <String>[];
-        
+
         if (place.subLocality?.isNotEmpty == true) {
           locationParts.add(place.subLocality!);
         }
@@ -133,20 +144,20 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
         if (place.subAdministrativeArea?.isNotEmpty == true) {
           locationParts.add(place.subAdministrativeArea!);
         }
-        
-        final locationText = locationParts.isNotEmpty 
+
+        final locationText = locationParts.isNotEmpty
             ? locationParts.join(', ')
             : '${place.locality ?? ''}, ${place.country ?? ''}';
-        
+
         setState(() {
           _locationController.text = locationText;
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to get location: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to get location: $e')));
       }
     } finally {
       if (mounted) {
@@ -154,7 +165,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       }
     }
   }
-  
+
   Future<void> _pickImage(ImageSource source) async {
     // Check camera permission
     if (source == ImageSource.camera) {
@@ -163,7 +174,9 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Camera permission is blocked. Enable it in Settings.'),
+              content: Text(
+                'Camera permission is blocked. Enable it in Settings.',
+              ),
             ),
           );
         }
@@ -173,20 +186,22 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       if (!status.isGranted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Camera permission is required to scan IDs')),
+            const SnackBar(
+              content: Text('Camera permission is required to scan IDs'),
+            ),
           );
         }
         return;
       }
     }
-    
+
     try {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: source,
         imageQuality: 90,
       );
-      
+
       if (pickedFile != null) {
         setState(() {
           _isManualEntry = false;
@@ -194,7 +209,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
           _scanResult = null;
           _errorMessage = null;
         });
-        
+
         await _scanImage();
       }
     } catch (e) {
@@ -203,18 +218,18 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       });
     }
   }
-  
+
   Future<void> _scanImage() async {
     if (_selectedImage == null) return;
-    
+
     setState(() {
       _isScanning = true;
       _errorMessage = null;
     });
-    
+
     try {
       final result = await IdScannerService.scanIdFromImage(_selectedImage!);
-      
+
       setState(() {
         _scanResult = result;
         _isScanning = false;
@@ -223,7 +238,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
         if (result.idNumber != null) {
           _idNumberController.text = result.idNumber!;
         }
-        
+
         if (!result.success) {
           _errorMessage = result.errors.join('\n');
         }
@@ -235,27 +250,60 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       });
     }
   }
-  
+
+  void _startTemporaryChat(int? foundIdId) async {
+    if (foundIdId == null) return;
+    if (!AuthService.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in to open secure Temporary Chat.'),
+        ),
+      );
+      return;
+    }
+    try {
+      final chatData = await IdScannerServiceChat.startTemporaryChat(foundIdId);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TemporaryChatPage(
+            roomId: chatData['roomId']?.toString() ?? '',
+            myRole: chatData['myRole']?.toString() ?? 'FINDER',
+            myAlias: chatData['finderAlias']?.toString() ?? 'Finder',
+            otherAlias: chatData['ownerAlias']?.toString() ?? 'Owner',
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open chat: $e')));
+    }
+  }
+
   Future<void> _submitFoundId() async {
     if (_scanResult == null && !_isManualEntry) return;
     if (!_formKey.currentState!.validate()) return;
-    
+
     if (!_agreedToSafetyPolicy) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please check the box to agree to the Safety & Data Handling Policy.'),
+          content: Text(
+            'Please check the box to agree to the Safety & Data Handling Policy.',
+          ),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
-    
+
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
-    
+
     try {
       final response = await IdScannerService.registerFoundId(
         idNumber: _idNumberController.text.trim(),
@@ -264,9 +312,17 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
         schoolName: _selectedIdType == _schoolIdType
             ? _schoolController.text.trim()
             : null,
-        finderPhone: _phoneController.text.trim(),
-        finderWhatsApp: _whatsappController.text.trim().isNotEmpty
+        finderPhone: _selectedContactMethod == 'PHONE'
+            ? _phoneController.text.trim()
+            : null,
+        finderWhatsApp:
+            (_selectedContactMethod == 'PHONE' &&
+                _whatsappController.text.trim().isNotEmpty)
             ? _whatsappController.text.trim()
+            : null,
+        contactMethod: _selectedContactMethod,
+        socialMediaHandle: _selectedContactMethod == 'SOCIAL_MEDIA'
+            ? _socialMediaController.text.trim()
             : null,
         foundLocation: _locationController.text.trim().isNotEmpty
             ? _locationController.text.trim()
@@ -275,21 +331,41 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
             ? _collectionPlaceController.text.trim()
             : null,
       );
-      
+
       setState(() {
         _isSubmitting = false;
       });
-      
+
       if (response.success) {
         if (mounted) {
           showDialog(
             context: context,
             barrierDismissible: false,
             builder: (context) => AlertDialog(
-              icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+              icon: const Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 48,
+              ),
               title: const Text('Thank You!'),
               content: Text(response.message),
               actions: [
+                if ((response.id ?? response.foundIdId) != null &&
+                    response.message.contains('notified')) ...[
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('Message Owner In-App'),
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Close dialog
+                      Navigator.of(context).pop(); // Go back
+                      _startTemporaryChat(response.id ?? response.foundIdId);
+                    },
+                  ),
+                ],
                 TextButton(
                   onPressed: () {
                     Navigator.of(context).pop(); // Close dialog
@@ -313,7 +389,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       });
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -350,7 +426,10 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                       const SizedBox(height: 4),
                       Text(
                         'Take a photo of the ID to extract the details. Only the text information will be stored, not the image.',
-                        style: TextStyle(color: Colors.blue.shade600, fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.blue.shade600,
+                          fontSize: 13,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -358,7 +437,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              
+
               // Image capture section
               if (_selectedImage == null) ...[
                 _buildCaptureButtons(),
@@ -396,7 +475,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                
+
                 // Retake button
                 OutlinedButton.icon(
                   onPressed: () => _showImageSourceDialog(),
@@ -404,21 +483,21 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   label: const Text('Retake Photo'),
                 ),
               ],
-              
+
               // Scanning indicator
               if (_isScanning) ...[
                 const SizedBox(height: 20),
                 const Center(
                   child: Column(
                     children: [
-                      CircularProgressIndicator(),
+                      DwellyOrbitingLoader(),
                       SizedBox(height: 12),
                       Text('Scanning ID...'),
                     ],
                   ),
                 ),
               ],
-              
+
               // Error message
               if (_errorMessage != null) ...[
                 const SizedBox(height: 16),
@@ -443,7 +522,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   ),
                 ),
               ],
-              
+
               // Scan results or Manual Entry - EDITABLE
               if (_scanResult != null || _isManualEntry) ...[
                 const SizedBox(height: 20),
@@ -470,12 +549,15 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _isManualEntry 
+                          _isManualEntry
                               ? 'Enter the details of the ID you found below.'
                               : _scanResult!.success
-                                  ? 'Edit any details below if they are not exact'
-                                  : 'We could not read everything. Fill in the missing fields.',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                              ? 'Edit any details below if they are not exact'
+                              : 'We could not read everything. Fill in the missing fields.',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
                         ),
                         const Divider(height: 24),
                         DropdownButtonFormField<String>(
@@ -580,59 +662,138 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Your Contact Information section
                 const Text(
-                  'Your Contact Information',
+                  'How Should Owner Contact You?',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'The ID owner will use this to contact you',
+                  'Choose your preferred contact method. Either phone, social media handle, or secure in-app temporary chat.',
                   style: TextStyle(color: Colors.grey, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
-                
-                TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                    labelText: 'Your Phone Number *',
-                    hintText: '07XXXXXXXX',
-                    prefixIcon: const Icon(Icons.phone),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'PHONE',
+                      label: Text('Phone'),
+                      icon: Icon(Icons.phone),
                     ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Phone number is required';
-                    }
-                    if (value.trim().length < 10) {
-                      return 'Enter a valid phone number';
-                    }
-                    return null;
+                    ButtonSegment(
+                      value: 'SOCIAL_MEDIA',
+                      label: Text('Social Handle'),
+                      icon: Icon(Icons.alternate_email),
+                    ),
+                    ButtonSegment(
+                      value: 'IN_APP',
+                      label: Text('In-App Chat'),
+                      icon: Icon(Icons.lock_outline),
+                    ),
+                  ],
+                  selected: {_selectedContactMethod},
+                  onSelectionChanged: (Set<String> newSelection) {
+                    setState(() {
+                      _selectedContactMethod = newSelection.first;
+                    });
                   },
                 ),
-                const SizedBox(height: 12),
-                
-                TextFormField(
-                  controller: _whatsappController,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                    labelText: 'WhatsApp Number (Optional)',
-                    hintText: '07XXXXXXXX',
-                    prefixIcon: const Icon(Icons.chat),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 14),
+
+                if (_selectedContactMethod == 'PHONE') ...[
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      labelText: 'Your Phone Number *',
+                      hintText: '07XXXXXXXX',
+                      prefixIcon: const Icon(Icons.phone),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    helperText: 'Leave empty if same as phone number',
+                    validator: (value) {
+                      if (_selectedContactMethod != 'PHONE') return null;
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Phone number is required';
+                      }
+                      if (value.trim().length < 10) {
+                        return 'Enter a valid phone number';
+                      }
+                      return null;
+                    },
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _whatsappController,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      labelText: 'WhatsApp Number (Optional)',
+                      hintText: '07XXXXXXXX',
+                      prefixIcon: const Icon(Icons.chat),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      helperText: 'Leave empty if same as phone number',
+                    ),
+                  ),
+                ] else if (_selectedContactMethod == 'SOCIAL_MEDIA') ...[
+                  TextFormField(
+                    controller: _socialMediaController,
+                    decoration: InputDecoration(
+                      labelText: 'Social Media Handle *',
+                      hintText:
+                          'e.g., Instagram @myhandle or Telegram @username',
+                      prefixIcon: const Icon(Icons.alternate_email),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      helperText:
+                          'Owner will reach out to this handle directly',
+                    ),
+                    validator: (value) {
+                      if (_selectedContactMethod != 'SOCIAL_MEDIA') return null;
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Social media handle is required';
+                      }
+                      return null;
+                    },
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.lock_person_outlined,
+                          color: Colors.blue.shade900,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'No external contact needed! Owner will message you securely inside Dwelly via Temporary Anonymous Chat (expires 7 days after completion).',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.blue.shade900,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
-                
+
                 // Location section
                 TextFormField(
                   controller: _locationController,
@@ -646,7 +807,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                             child: SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: DwellyOrbitingLoader(),
                             ),
                           )
                         : IconButton(
@@ -660,7 +821,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Collection place
                 TextFormField(
                   controller: _collectionPlaceController,
@@ -675,41 +836,76 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Safety & Data Handling Policy Card
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
+                    color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.shade300),
+                    border: Border.all(color: Colors.blue.shade200),
                   ),
                   padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.shield_outlined, color: Colors.amber.shade900, size: 22),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Safety & Data Handling Policy',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: Colors.amber.shade900,
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isPolicyExpanded = !_isPolicyExpanded;
+                          });
+                        },
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.shield_outlined,
+                              color: Colors.blue.shade900,
+                              size: 22,
                             ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Safety & Data Handling Policy',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Colors.blue.shade900,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _isPolicyExpanded ? '...less' : '...more',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Colors.blue.shade700,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              _isPolicyExpanded
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
+                              color: Colors.blue.shade700,
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_isPolicyExpanded) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          '• Data Privacy: Your contact details are encrypted and shared ONLY with the verified owner searching for this specific ID.\n'
+                          '• Data Deletion Schedule: All found ID records and contact details are automatically deleted from our servers after 7 days or immediately upon collection/match confirmation.\n'
+                          '• Manual Deletion: You or the owner can manually delete this record at any time using the red "Delete This Record" button when searching the ID number on the search screen.\n'
+                          '• How to Verify Deletion: To manually check and verify that this record has been permanently erased, search the ID Number on the "Lost My ID" screen. A result of "Not Found" confirms total deletion from our databases.\n'
+                          '• Safety & Security Advice: For security purposes, we strongly urge you to leave found IDs at a secure public facility (such as a Police Station, bank, or security desk). If meeting the owner in person, ALWAYS meet in a busy, crowded public place. Never lure people to secluded areas or demand a reward/ransom.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.blue.shade900,
+                            height: 1.4,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '• Data Privacy: Your contact details are encrypted and shared ONLY with the verified owner searching for this specific ID.\n'
-                        '• Data Deletion Schedule: All found ID records and contact details are automatically deleted from our servers after 7 days or immediately upon collection/match confirmation.\n'
-                        '• Manual Deletion: You or the owner can manually delete this record at any time using the red "Delete This Record" button when searching the ID number on the search screen.\n'
-                        '• How to Verify Deletion: To manually check and verify that this record has been permanently erased, search the ID Number on the "Lost My ID" screen. A result of "Not Found" confirms total deletion from our databases.\n'
-                        '• Safety & Security Advice: For security purposes, we strongly urge you to leave found IDs at a secure public facility (such as a Police Station, bank, or security desk). If meeting the owner in person, ALWAYS meet in a busy, crowded public place. Never lure people to secluded areas or demand a reward/ransom.',
-                        style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4),
-                      ),
+                        ),
+                      ],
                       const Divider(height: 20),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -719,7 +915,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                             width: 24,
                             child: Checkbox(
                               value: _agreedToSafetyPolicy,
-                              activeColor: Colors.amber.shade900,
+                              activeColor: Colors.blue.shade700,
                               onChanged: (val) {
                                 setState(() {
                                   _agreedToSafetyPolicy = val ?? false;
@@ -732,7 +928,8 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                             child: GestureDetector(
                               onTap: () {
                                 setState(() {
-                                  _agreedToSafetyPolicy = !_agreedToSafetyPolicy;
+                                  _agreedToSafetyPolicy =
+                                      !_agreedToSafetyPolicy;
                                 });
                               },
                               child: Text(
@@ -740,7 +937,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
-                                  color: Colors.amber.shade900,
+                                  color: Colors.blue.shade900,
                                 ),
                               ),
                             ),
@@ -751,7 +948,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Submit button
                 FilledButton.icon(
                   onPressed: _isSubmitting ? null : _submitFoundId,
@@ -759,10 +956,12 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: DwellyOrbitingLoader(),
                         )
                       : const Icon(Icons.upload),
-                  label: Text(_isSubmitting ? 'Submitting...' : 'Register Found ID'),
+                  label: Text(
+                    _isSubmitting ? 'Submitting...' : 'Register Found ID',
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -777,7 +976,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       ),
     );
   }
-  
+
   Widget _buildCaptureButtons() {
     return Column(
       children: [
@@ -832,14 +1031,12 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
           },
           icon: const Icon(Icons.edit_note),
           label: const Text('Enter Details Manually'),
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.grey.shade700,
-          ),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
         ),
       ],
     );
   }
-  
+
   void _showImageSourceDialog() {
     showModalBottomSheet(
       context: context,
@@ -867,6 +1064,4 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       ),
     );
   }
-  
-
 }

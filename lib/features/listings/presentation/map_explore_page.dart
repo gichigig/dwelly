@@ -10,6 +10,7 @@ import '../../../core/models/rental.dart';
 import '../../../core/services/device_location_service.dart';
 import '../../../core/services/rental_service.dart';
 import 'rental_detail_page.dart';
+import '../../../core/widgets/dwelly_orbiting_loader.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
 
@@ -22,17 +23,17 @@ class MapExplorePage extends StatefulWidget {
 
 class _MapExplorePageState extends State<MapExplorePage> {
   final MapController _mapController = MapController();
-  
+
   List<Rental> _rentals = [];
   bool _isLoading = true;
   bool _isRefreshingLocation = false;
   DeviceLocationResult? _deviceLocation;
-  
+
   // Radar state
   bool _isRadarActive = false;
   double? _currentHeading;
   StreamSubscription<CompassEvent>? _compassSubscription;
-  
+
   // Constants for the radar cone
   static const double radarDistanceMeters = 1500; // 1.5km
   static const double radarAngleDegrees = 60; // 30 degrees left/right
@@ -71,7 +72,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
     setState(() {
       _isRefreshingLocation = true;
     });
-    
+
     try {
       final loc = await DeviceLocationService.getCurrentLocation();
       if (mounted) {
@@ -95,7 +96,9 @@ class _MapExplorePageState extends State<MapExplorePage> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Could not detect location: ${loc.errorMessage ?? "Unknown error"}'),
+                content: Text(
+                  'Could not detect location: ${loc.errorMessage ?? "Unknown error"}',
+                ),
                 behavior: SnackBarBehavior.floating,
               ),
             );
@@ -107,7 +110,9 @@ class _MapExplorePageState extends State<MapExplorePage> {
         setState(() => _isRefreshingLocation = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to refresh location. Please check your GPS permissions.'),
+            content: Text(
+              'Failed to refresh location. Please check your GPS permissions.',
+            ),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -119,7 +124,11 @@ class _MapExplorePageState extends State<MapExplorePage> {
 
   Future<void> _loadRentals(double lat, double lng) async {
     try {
-      final results = await RentalService.getMapRadarListings(lat, lng, radiusMeters: 1500);
+      final results = await RentalService.getMapRadarListings(
+        lat,
+        lng,
+        radiusMeters: 1500,
+      );
       if (mounted) {
         setState(() {
           _rentals = results;
@@ -161,49 +170,64 @@ class _MapExplorePageState extends State<MapExplorePage> {
     });
   }
 
-  LatLng _calculateDestination(double lat, double lng, double distanceMeters, double bearingDeg) {
+  LatLng _calculateDestination(
+    double lat,
+    double lng,
+    double distanceMeters,
+    double bearingDeg,
+  ) {
     const R = 6371e3;
     final d = distanceMeters;
-    
+
     final lat1 = lat * math.pi / 180;
     final lng1 = lng * math.pi / 180;
     final brng = bearingDeg * math.pi / 180;
 
     final lat2 = math.asin(
       math.sin(lat1) * math.cos(d / R) +
-      math.cos(lat1) * math.sin(d / R) * math.cos(brng)
+          math.cos(lat1) * math.sin(d / R) * math.cos(brng),
     );
 
-    final lng2 = lng1 + math.atan2(
-      math.sin(brng) * math.sin(d / R) * math.cos(lat1),
-      math.cos(d / R) - math.sin(lat1) * math.sin(lat2)
-    );
+    final lng2 =
+        lng1 +
+        math.atan2(
+          math.sin(brng) * math.sin(d / R) * math.cos(lat1),
+          math.cos(d / R) - math.sin(lat1) * math.sin(lat2),
+        );
 
     return LatLng(lat2 * 180 / math.pi, lng2 * 180 / math.pi);
   }
 
   bool _isRentalInCone(Rental rental) {
-    if (!_isRadarActive || _currentHeading == null || _currentHeading!.isNaN || _deviceLocation == null) return true;
+    if (!_isRadarActive ||
+        _currentHeading == null ||
+        _currentHeading!.isNaN ||
+        _deviceLocation == null)
+      return true;
     if (rental.latitude == null || rental.longitude == null) return false;
 
     final devLat = _deviceLocation!.latitude!;
     final devLng = _deviceLocation!.longitude!;
 
     final distance = Geolocator.distanceBetween(
-      devLat, devLng,
-      rental.latitude!, rental.longitude!
+      devLat,
+      devLng,
+      rental.latitude!,
+      rental.longitude!,
     );
 
     if (distance > radarDistanceMeters) return false;
 
     final bearingToRental = Geolocator.bearingBetween(
-      devLat, devLng,
-      rental.latitude!, rental.longitude!
+      devLat,
+      devLng,
+      rental.latitude!,
+      rental.longitude!,
     );
 
     var b1 = _currentHeading! % 360;
     if (b1 < 0) b1 += 360;
-    
+
     var b2 = bearingToRental % 360;
     if (b2 < 0) b2 += 360;
 
@@ -214,30 +238,46 @@ class _MapExplorePageState extends State<MapExplorePage> {
   }
 
   List<Polygon> _buildPolygons() {
-    if (!_isRadarActive || _currentHeading == null || _currentHeading!.isNaN || _deviceLocation == null) return [];
+    if (!_isRadarActive ||
+        _currentHeading == null ||
+        _currentHeading!.isNaN ||
+        _deviceLocation == null)
+      return [];
 
     final lat = _deviceLocation!.latitude!;
     final lng = _deviceLocation!.longitude!;
-    
+
     final leftBearing = _currentHeading! - (radarAngleDegrees / 2);
     final rightBearing = _currentHeading! + (radarAngleDegrees / 2);
 
-    final pLeft = _calculateDestination(lat, lng, radarDistanceMeters, leftBearing);
-    final pRight = _calculateDestination(lat, lng, radarDistanceMeters, rightBearing);
-    final pCenter = _calculateDestination(lat, lng, radarDistanceMeters, _currentHeading!);
+    final pLeft = _calculateDestination(
+      lat,
+      lng,
+      radarDistanceMeters,
+      leftBearing,
+    );
+    final pRight = _calculateDestination(
+      lat,
+      lng,
+      radarDistanceMeters,
+      rightBearing,
+    );
+    final pCenter = _calculateDestination(
+      lat,
+      lng,
+      radarDistanceMeters,
+      _currentHeading!,
+    );
 
     return [
       Polygon(
-        points: [
-          LatLng(lat, lng),
-          pLeft,
-          pCenter,
-          pRight,
-        ],
+        points: [LatLng(lat, lng), pLeft, pCenter, pRight],
         color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-        borderColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+        borderColor: Theme.of(
+          context,
+        ).colorScheme.primary.withValues(alpha: 0.5),
         borderStrokeWidth: 2,
-      )
+      ),
     ];
   }
 
@@ -245,10 +285,12 @@ class _MapExplorePageState extends State<MapExplorePage> {
     if (r.latitude == null || r.longitude == null) return;
     final lat = r.latitude!;
     final lng = r.longitude!;
-    
+
     // Create URLs for Apple Maps and Google Maps
     final appleMapsUrl = Uri.parse('http://maps.apple.com/?daddr=$lat,$lng');
-    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    final googleMapsUrl = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
+    );
 
     if (Platform.isIOS) {
       if (await canLaunchUrl(appleMapsUrl)) {
@@ -282,84 +324,123 @@ class _MapExplorePageState extends State<MapExplorePage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                const SizedBox(height: 16),
-                Text(
-                  r.title,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'KES ${r.price}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.primary),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: isNavigating ? null : () async {
-                          setState(() => isNavigating = true);
-                          try {
-                            final fullRental = await RentalService.getById(r.id!)
-                                .timeout(const Duration(seconds: 10));
-                            if (!context.mounted) return;
-                            Navigator.pop(context); // pop bottom sheet
-                            if (fullRental != null) {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => RentalDetailPage(rental: fullRental))
-                              );
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              setState(() => isNavigating = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Failed to load details. Please try again.')),
-                              );
-                            }
-                          }
-                        },
-                        icon: isNavigating 
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.info_outline),
-                        label: Text(isNavigating ? 'Loading...' : 'Details'),
+                    const SizedBox(height: 16),
+                    Text(
+                      r.title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _getDirections(r);
-                        },
-                        icon: const Icon(Icons.directions),
-                        label: const Text('Directions'),
+                    const SizedBox(height: 4),
+                    Text(
+                      'KES ${r.price}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: isNavigating
+                                ? null
+                                : () async {
+                                    setState(() => isNavigating = true);
+                                    try {
+                                      final fullRental =
+                                          await RentalService.getById(
+                                            r.id!,
+                                          ).timeout(
+                                            const Duration(seconds: 10),
+                                          );
+                                      if (!context.mounted) return;
+                                      Navigator.pop(
+                                        context,
+                                      ); // pop bottom sheet
+                                      if (fullRental != null) {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => RentalDetailPage(
+                                              rental: fullRental,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        setState(() => isNavigating = false);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Failed to load details. Please try again.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            icon: isNavigating
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: DwellyOrbitingLoader(
+                                      glowColor: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.info_outline),
+                            label: Text(
+                              isNavigating ? 'Loading...' : 'Details',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _getDirections(r);
+                            },
+                            icon: const Icon(Icons.directions),
+                            label: const Text('Directions'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                )
-              ],
-            ),
-          ),
+                ),
+              ),
+            );
+          },
         );
       },
     );
-    },
-  );
-}
+  }
 
   List<Marker> _buildMarkers() {
     return _rentals
-        .where((r) => r.latitude != null && r.longitude != null && !r.latitude!.isNaN && !r.longitude!.isNaN)
+        .where(
+          (r) =>
+              r.latitude != null &&
+              r.longitude != null &&
+              !r.latitude!.isNaN &&
+              !r.longitude!.isNaN,
+        )
         .where(_isRentalInCone)
         .map((r) {
-          final isPremium = r.hasVideo == true; 
+          final isPremium = r.hasVideo == true;
           String labelText = r.propertyType;
-          if ((r.propertyType.toUpperCase() == 'APARTMENT' || r.propertyType.toUpperCase() == 'HOUSE') && r.bedrooms > 0) {
-             labelText = '${r.bedrooms} bedroom';
-          } else if (r.bedrooms == 0 && r.propertyType.toUpperCase() == 'APARTMENT') {
-             labelText = 'Bedsitter';
+          if ((r.propertyType.toUpperCase() == 'APARTMENT' ||
+                  r.propertyType.toUpperCase() == 'HOUSE') &&
+              r.bedrooms > 0) {
+            labelText = '${r.bedrooms} bedroom';
+          } else if (r.bedrooms == 0 &&
+              r.propertyType.toUpperCase() == 'APARTMENT') {
+            labelText = 'Bedsitter';
           }
-          
+
           return Marker(
             point: LatLng(r.latitude!, r.longitude!),
             width: 120,
@@ -371,7 +452,10 @@ class _MapExplorePageState extends State<MapExplorePage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: isPremium ? Colors.yellow : Colors.red,
                       borderRadius: BorderRadius.circular(4),
@@ -379,8 +463,8 @@ class _MapExplorePageState extends State<MapExplorePage> {
                     child: Text(
                       labelText,
                       style: TextStyle(
-                        color: isPremium ? Colors.black : Colors.white, 
-                        fontSize: 10, 
+                        color: isPremium ? Colors.black : Colors.white,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
@@ -397,14 +481,15 @@ class _MapExplorePageState extends State<MapExplorePage> {
               ),
             ),
           );
-        }).toList();
+        })
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: DwellyOrbitingLoader(size: 72)),
       );
     }
 
@@ -420,7 +505,8 @@ class _MapExplorePageState extends State<MapExplorePage> {
                 Icon(Icons.location_off, size: 48, color: Colors.grey.shade400),
                 const SizedBox(height: 16),
                 Text(
-                  _deviceLocation?.errorMessage ?? 'Location access is required to use the map.',
+                  _deviceLocation?.errorMessage ??
+                      'Location access is required to use the map.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
@@ -435,7 +521,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
                   },
                   icon: const Icon(Icons.refresh),
                   label: const Text('Retry'),
-                )
+                ),
               ],
             ),
           ),
@@ -449,7 +535,10 @@ class _MapExplorePageState extends State<MapExplorePage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: LatLng(_deviceLocation!.latitude!, _deviceLocation!.longitude!),
+              initialCenter: LatLng(
+                _deviceLocation!.latitude!,
+                _deviceLocation!.longitude!,
+              ),
               initialZoom: 14.0,
               onPositionChanged: (position, hasGesture) {
                 if (hasGesture && position.center != null) {
@@ -460,7 +549,10 @@ class _MapExplorePageState extends State<MapExplorePage> {
                       // overwrite _deviceLocation with setState, because
                       // that triggers a full FlutterMap rebuild which
                       // causes the map to lose its camera position.
-                      _loadRentals(position.center.latitude, position.center.longitude);
+                      _loadRentals(
+                        position.center.latitude,
+                        position.center.longitude,
+                      );
                     }
                   });
                 }
@@ -488,20 +580,25 @@ class _MapExplorePageState extends State<MapExplorePage> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.bluvberry.dwelly',
               ),
-              PolygonLayer(
-                polygons: _buildPolygons(),
-              ),
-                            CircleLayer(
-                circles: _deviceLocation != null && _isRadarActive ? <CircleMarker>[
-                  CircleMarker(
-                    point: LatLng(_deviceLocation!.latitude!, _deviceLocation!.longitude!),
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                    borderStrokeWidth: 2,
-                    borderColor: Theme.of(context).colorScheme.primary,
-                    useRadiusInMeter: true,
-                    radius: radarDistanceMeters,
-                  )
-                ] : const <CircleMarker>[],
+              PolygonLayer(polygons: _buildPolygons()),
+              CircleLayer(
+                circles: _deviceLocation != null && _isRadarActive
+                    ? <CircleMarker>[
+                        CircleMarker(
+                          point: LatLng(
+                            _deviceLocation!.latitude!,
+                            _deviceLocation!.longitude!,
+                          ),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.1),
+                          borderStrokeWidth: 2,
+                          borderColor: Theme.of(context).colorScheme.primary,
+                          useRadiusInMeter: true,
+                          radius: radarDistanceMeters,
+                        ),
+                      ]
+                    : const <CircleMarker>[],
               ),
               MarkerClusterLayerWidget(
                 options: MarkerClusterLayerOptions(
@@ -526,7 +623,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
               ),
             ],
           ),
-          
+
           // Radar Overlay UI
           if (_isRadarActive && _currentHeading != null)
             Positioned(
@@ -534,7 +631,10 @@ class _MapExplorePageState extends State<MapExplorePage> {
               left: 20,
               right: 20,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black87,
                   borderRadius: BorderRadius.circular(12),
@@ -546,14 +646,17 @@ class _MapExplorePageState extends State<MapExplorePage> {
                     Expanded(
                       child: Text(
                         'Radar Active: Heading ${_currentHeading!.toStringAsFixed(0)}°\nRevealing nearby rentals in your direction.\nTip: Long-press anywhere on map to manually adjust radar center.',
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            
+
           // Back Button (Top Left)
           Positioned(
             top: 50,
@@ -566,7 +669,7 @@ class _MapExplorePageState extends State<MapExplorePage> {
               ),
             ),
           ),
-          
+
           // Refresh GPS Location Button (Top Right opposite of arrow)
           Positioned(
             top: 50,
@@ -579,7 +682,10 @@ class _MapExplorePageState extends State<MapExplorePage> {
                 onTap: _isRefreshingLocation ? null : _refreshLocation,
                 borderRadius: BorderRadius.circular(25),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -587,14 +693,18 @@ class _MapExplorePageState extends State<MapExplorePage> {
                         const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
+                          child: DwellyOrbitingLoader(glowColor: Colors.blue),
                         )
                       else
                         const Icon(Icons.refresh, size: 18, color: Colors.blue),
                       const SizedBox(width: 6),
                       Text(
                         _isRefreshingLocation ? 'Locating...' : 'Refresh GPS',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
                       ),
                     ],
                   ),
@@ -606,7 +716,9 @@ class _MapExplorePageState extends State<MapExplorePage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _toggleRadar,
-        backgroundColor: _isRadarActive ? Colors.redAccent : Theme.of(context).colorScheme.primary,
+        backgroundColor: _isRadarActive
+            ? Colors.redAccent
+            : Theme.of(context).colorScheme.primary,
         icon: Icon(_isRadarActive ? Icons.stop : Icons.radar),
         label: Text(_isRadarActive ? 'Stop Radar' : 'Premium Radar'),
       ),

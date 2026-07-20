@@ -7,6 +7,7 @@ import '../../../../core/services/premium_service.dart';
 import '../../../../core/services/rental_service.dart';
 import '../../domain/rental_filters.dart';
 import '../../../listings/presentation/premium_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// A bottom sheet for filtering rentals by location
 /// Supports searching by nickname/area name and will suggest wards if not found
@@ -246,9 +247,9 @@ class _LocationFilterSheetState extends State<LocationFilterSheet> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogContext);
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PremiumPage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const PremiumPage()));
             },
             child: const Text('Go Premium'),
           ),
@@ -525,9 +526,8 @@ class _LocationFilterSheetState extends State<LocationFilterSheet> {
                         ? SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colorScheme.onPrimaryContainer,
+                            child: DwellyOrbitingLoader(
+                              glowColor: colorScheme.onPrimaryContainer,
                             ),
                           )
                         : Icon(
@@ -716,9 +716,8 @@ class _LocationFilterSheetState extends State<LocationFilterSheet> {
                 SizedBox(
                   width: 12,
                   height: 12,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colorScheme.primary.withValues(alpha: 0.5),
+                  child: DwellyOrbitingLoader(
+                    glowColor: colorScheme.primary.withValues(alpha: 0.5),
                   ),
                 ),
               ],

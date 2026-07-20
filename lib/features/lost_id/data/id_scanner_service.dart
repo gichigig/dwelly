@@ -11,29 +11,37 @@ class IdScannerService {
   /// Scan an image and extract Kenyan ID information
   static Future<IdScanResult> scanIdFromImage(File imageFile) async {
     final textRecognizer = TextRecognizer();
-    
+
     try {
       final inputImage = InputImage.fromFile(imageFile);
       final recognizedText = await textRecognizer.processImage(inputImage);
-      
+
       final text = recognizedText.text;
-      final lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
-      
+      final lines = text
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
       // Extract ID fields
       final idNumber = _extractIdNumber(text, lines);
       final names = _extractFullNames(text, lines);
-      
+
       final errors = <String>[];
-      
+
       if (idNumber == null) {
-        errors.add('Could not detect ID number. Please ensure the ID number is clearly visible.');
+        errors.add(
+          'Could not detect ID number. Please ensure the ID number is clearly visible.',
+        );
       }
       if (names['fullName'] == null) {
-        errors.add('Could not detect name. Please ensure the name is clearly visible.');
+        errors.add(
+          'Could not detect name. Please ensure the name is clearly visible.',
+        );
       }
 
       final hasAnyCoreField = idNumber != null || names['fullName'] != null;
-      
+
       return IdScanResult(
         success: hasAnyCoreField,
         idNumber: idNumber,
@@ -54,7 +62,7 @@ class IdScannerService {
       textRecognizer.close();
     }
   }
-  
+
   /// Extract ID number (7-8 digits)
   static String? _extractIdNumber(String text, List<String> lines) {
     // Patterns for ID number
@@ -64,7 +72,7 @@ class IdScannerService {
       RegExp(r'ID[:\.]?\s*(\d{7,8})', caseSensitive: false),
       RegExp(r'NUMBER\s*[:\.]?\s*(\d{7,8})', caseSensitive: false),
     ];
-    
+
     // Helper to fix common OCR mistakes in numbers
     String fixOCRNumbers(String input) {
       return input
@@ -74,17 +82,18 @@ class IdScannerService {
           .replaceAll(RegExp(r'[sS]'), '5')
           .replaceAll(RegExp(r'[bB]'), '8');
     }
-    
+
     for (final pattern in patterns) {
       final match = pattern.firstMatch(text);
       if (match != null && match.group(1) != null) {
         return match.group(1);
       }
     }
-    
+
     // Look for 7-8 digit numbers on lines containing "ID"
     for (final line in lines) {
-      if (line.toUpperCase().contains('ID') && !line.toUpperCase().contains('SERIAL')) {
+      if (line.toUpperCase().contains('ID') &&
+          !line.toUpperCase().contains('SERIAL')) {
         // Try with OCR fix
         final fixedLine = fixOCRNumbers(line);
         final numMatch = RegExp(r'\b(\d{7,8})\b').firstMatch(fixedLine);
@@ -93,7 +102,7 @@ class IdScannerService {
         }
       }
     }
-    
+
     // Look in top portion of ID
     final topLines = lines.take(8).toList();
     for (final line in topLines) {
@@ -104,7 +113,7 @@ class IdScannerService {
         return numMatch.group(1);
       }
     }
-    
+
     // Fallback: find any standalone 7-8 digit number
     final fixedText = fixOCRNumbers(text);
     final allNumbers = RegExp(r'\b\d{7,8}\b').allMatches(fixedText);
@@ -114,21 +123,53 @@ class IdScannerService {
         return num;
       }
     }
-    
+
     return null;
   }
-  
+
   /// Extract full names from Kenyan ID
   /// Supports both "FULL NAMES" format and "SURNAME"/"GIVEN NAME" format
-  static Map<String, String?> _extractFullNames(String text, List<String> lines) {
+  static Map<String, String?> _extractFullNames(
+    String text,
+    List<String> lines,
+  ) {
     const excludedWords = [
-      'JAMHURI', 'YA', 'KENYA', 'REPUBLIC', 'OF', 'THE', 'AND', 'FOR',
-      'SERIAL', 'NUMBER', 'ID', 'FULL', 'NAMES', 'NAME', 'DATE', 'BIRTH',
-      'SEX', 'MALE', 'FEMALE', 'DISTRICT', 'PLACE', 'ISSUE', 'HOLDER',
-      'SIGN', 'SIGNATURE', 'NATIONAL', 'IDENTITY', 'CARD', 'GOK',
-      'SURNAME', 'SURNAMES', 'GIVEN', 'GIVENNAME', 'GIVENNAMES',
+      'JAMHURI',
+      'YA',
+      'KENYA',
+      'REPUBLIC',
+      'OF',
+      'THE',
+      'AND',
+      'FOR',
+      'SERIAL',
+      'NUMBER',
+      'ID',
+      'FULL',
+      'NAMES',
+      'NAME',
+      'DATE',
+      'BIRTH',
+      'SEX',
+      'MALE',
+      'FEMALE',
+      'DISTRICT',
+      'PLACE',
+      'ISSUE',
+      'HOLDER',
+      'SIGN',
+      'SIGNATURE',
+      'NATIONAL',
+      'IDENTITY',
+      'CARD',
+      'GOK',
+      'SURNAME',
+      'SURNAMES',
+      'GIVEN',
+      'GIVENNAME',
+      'GIVENNAMES',
     ];
-    
+
     String cleanName(String name) {
       return name
           .replaceAll(RegExp(r"[^A-Za-z'\s-]"), ' ')
@@ -136,117 +177,138 @@ class IdScannerService {
           .trim()
           .toUpperCase();
     }
-    
+
     bool isValidName(String name) {
-      return name.length >= 2 && 
-             RegExp(r"^[A-Z'\s-]+$").hasMatch(name) &&
-             !excludedWords.contains(name);
+      return name.length >= 2 &&
+          RegExp(r"^[A-Z'\s-]+$").hasMatch(name) &&
+          !excludedWords.contains(name);
     }
-    
+
     // Try Format 2: SURNAME and GIVEN NAME labels (newer format)
     final surnameLineIndex = lines.indexWhere((line) {
       final upper = line.toUpperCase().trim();
-      return upper == 'SURNAME' || upper == 'SURNAMES' ||
-             (upper.startsWith('SURNAME') && upper.length < 15);
+      return upper == 'SURNAME' ||
+          upper == 'SURNAMES' ||
+          (upper.startsWith('SURNAME') && upper.length < 15);
     });
-    
+
     final givenNameLineIndex = lines.indexWhere((line) {
       final upper = line.toUpperCase().trim();
-      return upper == 'GIVEN NAME' || upper == 'GIVEN NAMES' ||
-             upper == 'GIVENNAME' || upper == 'GIVENNAMES' ||
-             (upper.startsWith('GIVEN NAME') && upper.length < 20);
+      return upper == 'GIVEN NAME' ||
+          upper == 'GIVEN NAMES' ||
+          upper == 'GIVENNAME' ||
+          upper == 'GIVENNAMES' ||
+          (upper.startsWith('GIVEN NAME') && upper.length < 20);
     });
-    
+
     if (surnameLineIndex != -1 || givenNameLineIndex != -1) {
       String? surname;
       String? givenNames;
-      
+
       if (surnameLineIndex != -1 && surnameLineIndex + 1 < lines.length) {
         final surnameCandidate = cleanName(lines[surnameLineIndex + 1]);
         if (isValidName(surnameCandidate)) {
           surname = surnameCandidate;
         }
       }
-      
+
       if (givenNameLineIndex != -1 && givenNameLineIndex + 1 < lines.length) {
         var givenNameCandidate = lines[givenNameLineIndex + 1].trim();
-        
+
         // Check for name continuation
         if (givenNameLineIndex + 2 < lines.length) {
           final nextLine = lines[givenNameLineIndex + 2].trim().toUpperCase();
-          if (!nextLine.contains('DATE') && !nextLine.contains('BIRTH') &&
-              !nextLine.contains('SEX') && !nextLine.contains('ID') &&
-              !nextLine.contains('SURNAME') && !nextLine.contains('NUMBER') &&
-              nextLine.isNotEmpty && nextLine.length < 30) {
+          if (!nextLine.contains('DATE') &&
+              !nextLine.contains('BIRTH') &&
+              !nextLine.contains('SEX') &&
+              !nextLine.contains('ID') &&
+              !nextLine.contains('SURNAME') &&
+              !nextLine.contains('NUMBER') &&
+              nextLine.isNotEmpty &&
+              nextLine.length < 30) {
             if (RegExp(r"^[A-Z'\s-]+$").hasMatch(nextLine)) {
               givenNameCandidate += ' ${lines[givenNameLineIndex + 2].trim()}';
             }
           }
         }
-        
+
         givenNameCandidate = cleanName(givenNameCandidate);
         if (givenNameCandidate.length >= 2) {
           givenNames = givenNameCandidate;
         }
       }
-      
+
       if (surname != null || givenNames != null) {
-        final givenParts = givenNames?.split(RegExp(r'\s+'))
-            .where((p) => p.isNotEmpty && !excludedWords.contains(p))
-            .toList() ?? [];
-        
+        final givenParts =
+            givenNames
+                ?.split(RegExp(r'\s+'))
+                .where((p) => p.isNotEmpty && !excludedWords.contains(p))
+                .toList() ??
+            [];
+
         final allParts = [...givenParts];
         if (surname != null) {
           allParts.add(surname);
         }
-        
+
         return {
           'fullName': allParts.isNotEmpty ? allParts.join(' ') : null,
           'firstName': givenParts.isNotEmpty ? givenParts[0] : null,
-          'middleName': givenParts.length > 1 ? givenParts.sublist(1).join(' ') : null,
+          'middleName': givenParts.length > 1
+              ? givenParts.sublist(1).join(' ')
+              : null,
           'lastName': surname,
         };
       }
     }
-    
+
     // Try Format 1: FULL NAMES label (older format)
     final namesLineIndex = lines.indexWhere((line) {
       final upper = line.toUpperCase().trim();
-      return upper == 'FULL NAMES' || upper == 'FULL NAME' ||
-             upper.contains('FULL NAMES') || upper.contains('FULLNAMES');
+      return upper == 'FULL NAMES' ||
+          upper == 'FULL NAME' ||
+          upper.contains('FULL NAMES') ||
+          upper.contains('FULLNAMES');
     });
-    
+
     if (namesLineIndex != -1 && namesLineIndex + 1 < lines.length) {
       var nameCandidate = lines[namesLineIndex + 1].trim();
-      
+
       if (namesLineIndex + 2 < lines.length) {
         final nextLine = lines[namesLineIndex + 2].trim().toUpperCase();
-        if (!nextLine.contains('DATE') && !nextLine.contains('BIRTH') &&
-            !nextLine.contains('SEX') && nextLine.isNotEmpty) {
-          if (RegExp(r"^[A-Z'\s-]+$").hasMatch(nextLine) && nextLine.length < 30) {
+        if (!nextLine.contains('DATE') &&
+            !nextLine.contains('BIRTH') &&
+            !nextLine.contains('SEX') &&
+            nextLine.isNotEmpty) {
+          if (RegExp(r"^[A-Z'\s-]+$").hasMatch(nextLine) &&
+              nextLine.length < 30) {
             nameCandidate += ' ${lines[namesLineIndex + 2].trim()}';
           }
         }
       }
-      
+
       nameCandidate = cleanName(nameCandidate);
-      
-      if (nameCandidate.length >= 3 && RegExp(r"^[A-Z'\s-]+$").hasMatch(nameCandidate)) {
-        final nameParts = nameCandidate.split(RegExp(r'\s+'))
+
+      if (nameCandidate.length >= 3 &&
+          RegExp(r"^[A-Z'\s-]+$").hasMatch(nameCandidate)) {
+        final nameParts = nameCandidate
+            .split(RegExp(r'\s+'))
             .where((p) => p.isNotEmpty && !excludedWords.contains(p))
             .toList();
-        
+
         if (nameParts.length >= 2) {
           return {
             'fullName': nameParts.join(' '),
             'firstName': nameParts[0],
-            'middleName': nameParts.length > 2 ? nameParts.sublist(1, nameParts.length - 1).join(' ') : null,
+            'middleName': nameParts.length > 2
+                ? nameParts.sublist(1, nameParts.length - 1).join(' ')
+                : null,
             'lastName': nameParts[nameParts.length - 1],
           };
         }
       }
     }
-    
+
     return {
       'fullName': null,
       'firstName': null,
@@ -254,9 +316,9 @@ class IdScannerService {
       'lastName': null,
     };
   }
-  
+
   // ==================== API Methods ====================
-  
+
   /// Register a found ID in the database
   static Future<RegisterFoundIdResponse> registerFoundId({
     required String idNumber,
@@ -264,16 +326,19 @@ class IdScannerService {
     String? idType,
     String? schoolName,
     String? dateOfBirth,
-    required String finderPhone,
+    String? finderPhone,
     String? finderWhatsApp,
+    String? contactMethod,
+    String? socialMediaHandle,
     String? foundLocation,
     String? collectionPlace,
+    int? finderUserId,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/found-ids'),
         headers: {
-          'Content-Type': 'application/json',
+          ...ApiService.getHeaders(token: AuthService.token),
           'X-Mobile-Api-Key': ApiService.mobileApiKey,
         },
         body: jsonEncode({
@@ -286,24 +351,29 @@ class IdScannerService {
               : null,
           'finderPhone': finderPhone,
           'finderWhatsApp': finderWhatsApp,
+          'contactMethod': contactMethod ?? 'PHONE',
+          'socialMediaHandle': socialMediaHandle,
           'foundLocation': foundLocation,
           'collectionLocation': collectionPlace,
           'collectionPlace': collectionPlace,
+          'finderUserId': finderUserId ?? AuthService.currentUser?.id,
         }),
       );
-      
+
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 200) {
         return RegisterFoundIdResponse(
           success: true,
           message: data['message'] ?? 'ID registered successfully!',
-          id: data['id'],
+          id: data['id'] ?? data['foundIdId'],
         );
       } else {
         final detail = data['detail'] ?? '';
         final errorMsg = data['error'] ?? 'Failed to register ID';
-        debugPrint('[FoundID] Registration error: $errorMsg ($detail) [${response.statusCode}]');
+        debugPrint(
+          '[FoundID] Registration error: $errorMsg ($detail) [${response.statusCode}]',
+        );
         return RegisterFoundIdResponse(
           success: false,
           message: detail.isNotEmpty ? '$errorMsg ($detail)' : errorMsg,
@@ -318,7 +388,7 @@ class IdScannerService {
       );
     }
   }
-  
+
   /// Search for a lost ID
   static Future<SearchLostIdResponse> searchLostId({
     required String fullName,
@@ -337,22 +407,29 @@ class IdScannerService {
           'schoolName': schoolName,
         }),
       );
-      
+
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 200) {
         return SearchLostIdResponse(
           found: data['found'] ?? false,
           message: data['message'] ?? '',
           finderPhone: data['finderPhone'],
           finderWhatsApp: data['finderWhatsApp'],
+          contactMethod: data['contactMethod'] ?? 'PHONE',
+          socialMediaHandle: data['socialMediaHandle'],
           foundLocation: data['foundLocation'],
-          collectionPlace: data['collectionPlace'] ?? data['collectionLocation'],
-          foundAt: data['foundAt'] != null ? DateTime.parse(data['foundAt']) : null,
-          foundIdId: data['foundId'],
+          collectionPlace:
+              data['collectionPlace'] ?? data['collectionLocation'],
+          foundAt: data['foundAt'] != null
+              ? DateTime.parse(data['foundAt'])
+              : null,
+          foundIdId: data['foundId'] ?? data['id'],
         );
       } else if (response.statusCode == 429) {
-        throw Exception(data['error'] ?? 'Too many search requests. Please try again later.');
+        throw Exception(
+          data['error'] ?? 'Too many search requests. Please try again later.',
+        );
       } else if (response.statusCode == 401) {
         return SearchLostIdResponse(
           found: false,
@@ -495,7 +572,7 @@ class IdScanResult {
   final String? dateOfBirth;
   final String fullText;
   final List<String> errors;
-  
+
   IdScanResult({
     required this.success,
     this.idNumber,
@@ -515,7 +592,9 @@ class RegisterFoundIdResponse {
   final String message;
   final int? id;
   final String? errorCode;
-  
+
+  int? get foundIdId => id;
+
   RegisterFoundIdResponse({
     required this.success,
     required this.message,
@@ -530,19 +609,86 @@ class SearchLostIdResponse {
   final String message;
   final String? finderPhone;
   final String? finderWhatsApp;
+  final String? contactMethod;
+  final String? socialMediaHandle;
   final String? foundLocation;
   final String? collectionPlace;
   final DateTime? foundAt;
   final int? foundIdId;
-  
+
   SearchLostIdResponse({
     required this.found,
     required this.message,
     this.finderPhone,
     this.finderWhatsApp,
+    this.contactMethod,
+    this.socialMediaHandle,
     this.foundLocation,
     this.collectionPlace,
     this.foundAt,
     this.foundIdId,
   });
+}
+
+/// Helper method to start a temporary anonymous chat
+extension IdScannerServiceChat on IdScannerService {
+  static Future<Map<String, dynamic>> startTemporaryChat(int foundIdId) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/found-ids/temporary-chat/start'),
+      headers: ApiService.getHeaders(token: AuthService.token),
+      body: jsonEncode({'foundIdId': foundIdId}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to start temporary chat');
+  }
+
+  static Future<Map<String, dynamic>> getTemporaryChatRoom(
+    String roomId,
+  ) async {
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/found-ids/temporary-chat/$roomId'),
+      headers: ApiService.getHeaders(token: AuthService.token),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to load temporary chat room');
+  }
+
+  static Future<Map<String, dynamic>> sendTemporaryChatMessage({
+    required String roomId,
+    required String senderRole,
+    required String content,
+  }) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/found-ids/temporary-chat/$roomId/messages',
+      ),
+      headers: ApiService.getHeaders(token: AuthService.token),
+      body: jsonEncode({'senderRole': senderRole, 'content': content}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to send message');
+  }
+
+  static Future<List<Map<String, dynamic>>> getMyTemporaryChats() async {
+    if (!AuthService.isLoggedIn) return [];
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/found-ids/temporary-chat/my-rooms'),
+        headers: ApiService.getHeaders(token: AuthService.token),
+      );
+      if (response.statusCode == 200) {
+        final list = jsonDecode(response.body) as List<dynamic>? ?? [];
+        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (e) {
+      debugPrint('Error fetching temporary chats: $e');
+    }
+    return [];
+  }
 }

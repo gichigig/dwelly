@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/advertisement.dart';
 import '../services/ad_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 /// Modal bottom sheet for displaying and submitting ad forms
 class AdFormModal extends StatefulWidget {
@@ -78,14 +79,15 @@ class _AdFormModalState extends State<AdFormModal> {
     String? name;
     String? email;
     String? phone;
-    
+
     for (final field in _schema?.fields ?? <AdFormField>[]) {
       if (field.type == 'email') {
         email = _formData[field.id] as String?;
       } else if (field.type == 'phone') {
         phone = _formData[field.id] as String?;
-      } else if (field.label.toLowerCase().contains('name') && 
-                 field.type == 'text' && name == null) {
+      } else if (field.label.toLowerCase().contains('name') &&
+          field.type == 'text' &&
+          name == null) {
         name = _formData[field.id] as String?;
       }
     }
@@ -100,7 +102,7 @@ class _AdFormModalState extends State<AdFormModal> {
 
     if (mounted) {
       setState(() => _submitting = false);
-      
+
       if (success) {
         setState(() => _submitted = true);
         widget.onSuccess?.call();
@@ -113,7 +115,7 @@ class _AdFormModalState extends State<AdFormModal> {
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
-    
+
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.9,
@@ -132,11 +134,7 @@ class _AdFormModalState extends State<AdFormModal> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.check_circle,
-            color: Colors.green,
-            size: 64,
-          ),
+          const Icon(Icons.check_circle, color: Colors.green, size: 64),
           const SizedBox(height: 16),
           Text(
             _schema?.successMessage ?? 'Thank you for your submission!',
@@ -183,16 +181,18 @@ class _AdFormModalState extends State<AdFormModal> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _schema?.title ?? widget.ad.formTitle ?? 'Fill out this form',
+                      _schema?.title ??
+                          widget.ad.formTitle ??
+                          'Fill out this form',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
                       widget.ad.advertiserName,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -204,7 +204,7 @@ class _AdFormModalState extends State<AdFormModal> {
             ],
           ),
         ),
-        
+
         // Form
         Flexible(
           child: SingleChildScrollView(
@@ -220,7 +220,7 @@ class _AdFormModalState extends State<AdFormModal> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   ..._schema!.fields.map((field) => _buildField(field)),
-                  
+
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -230,9 +230,9 @@ class _AdFormModalState extends State<AdFormModal> {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                  
+
                   const SizedBox(height: 8),
-                  
+
                   ElevatedButton(
                     onPressed: _submitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
@@ -245,15 +245,14 @@ class _AdFormModalState extends State<AdFormModal> {
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                            child: DwellyOrbitingLoader(
+                              glowColor: Colors.white,
                             ),
                           )
                         : Text(
-                            _schema?.submitButtonText ?? 
-                            widget.ad.formSubmitButtonText ?? 
-                            'Submit',
+                            _schema?.submitButtonText ??
+                                widget.ad.formSubmitButtonText ??
+                                'Submit',
                           ),
                   ),
                 ],
@@ -277,7 +276,8 @@ class _AdFormModalState extends State<AdFormModal> {
             border: const OutlineInputBorder(),
           ),
           validator: field.required
-              ? (value) => value?.isEmpty == true ? 'This field is required' : null
+              ? (value) =>
+                    value?.isEmpty == true ? 'This field is required' : null
               : null,
           onSaved: (value) => _formData[field.id] = value ?? '',
         );
@@ -295,7 +295,7 @@ class _AdFormModalState extends State<AdFormModal> {
             if (field.required && (value?.isEmpty ?? true)) {
               return 'This field is required';
             }
-            if (value?.isNotEmpty == true && 
+            if (value?.isNotEmpty == true &&
                 !RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
               return 'Enter a valid email';
             }
@@ -314,7 +314,8 @@ class _AdFormModalState extends State<AdFormModal> {
           ),
           keyboardType: TextInputType.phone,
           validator: field.required
-              ? (value) => value?.isEmpty == true ? 'This field is required' : null
+              ? (value) =>
+                    value?.isEmpty == true ? 'This field is required' : null
               : null,
           onSaved: (value) => _formData[field.id] = value ?? '',
         );
@@ -330,7 +331,8 @@ class _AdFormModalState extends State<AdFormModal> {
           ),
           maxLines: 4,
           validator: field.required
-              ? (value) => value?.isEmpty == true ? 'This field is required' : null
+              ? (value) =>
+                    value?.isEmpty == true ? 'This field is required' : null
               : null,
           onSaved: (value) => _formData[field.id] = value ?? '',
         );
@@ -342,10 +344,9 @@ class _AdFormModalState extends State<AdFormModal> {
             labelText: field.label,
             border: const OutlineInputBorder(),
           ),
-          items: (field.options ?? []).map((opt) => DropdownMenuItem(
-            value: opt,
-            child: Text(opt),
-          )).toList(),
+          items: (field.options ?? [])
+              .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
+              .toList(),
           validator: field.required
               ? (value) => value == null ? 'Please select an option' : null
               : null,

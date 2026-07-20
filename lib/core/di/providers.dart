@@ -10,8 +10,9 @@ import '../services/rental_service.dart';
 
 final rentalsRepoProvider = Provider<RentalsRepo>((ref) => MemoryRentalsRepo());
 final lostIdRepoProvider = Provider<LostIdRepo>((ref) => MemoryLostIdRepo());
-final notificationsRepoProvider =
-    Provider<NotificationsRepo>((ref) => MemoryNotificationsRepo());
+final notificationsRepoProvider = Provider<NotificationsRepo>(
+  (ref) => MemoryNotificationsRepo(),
+);
 
 // Rental service provider wrapper
 class RentalServiceWrapper {
@@ -19,4 +20,6 @@ class RentalServiceWrapper {
   Future<dynamic> getRentalById(int id) => RentalService.getById(id);
 }
 
-final rentalServiceProvider = Provider<RentalServiceWrapper>((ref) => RentalServiceWrapper());
+final rentalServiceProvider = Provider<RentalServiceWrapper>(
+  (ref) => RentalServiceWrapper(),
+);

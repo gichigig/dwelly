@@ -18,7 +18,9 @@ class ErrorMapper {
     final safeMessage = _safeMessage(rawMessage);
 
     if (code == 'UNAUTHORIZED' || statusCode == 401) {
-      print('DEBUG: 401 or UNAUTHORIZED code received. Raw body: ${response.body}');
+      print(
+        'DEBUG: 401 or UNAUTHORIZED code received. Raw body: ${response.body}',
+      );
       return const AppError(
         code: AppErrorCode.sessionExpired,
         message: 'Your session expired. Please sign in again.',
@@ -206,8 +208,12 @@ class ErrorMapper {
     final lower = message.toLowerCase();
 
     final looksSensitive =
-        lower.contains('platformexception(') ||
+        lower.contains('platformexception') ||
         lower.contains('java.lang') ||
+        lower.contains('jni') ||
+        lower.contains('channel-error') ||
+        lower.contains('unable to establish connection') ||
+        lower.contains('missingpluginexception') ||
         lower.contains('org.springframework') ||
         lower.contains('stacktrace') ||
         lower.contains('sql') ||

@@ -25,8 +25,9 @@ class SellerProfile {
       sellerName: (json['sellerName'] ?? '') as String,
       verified: json['verified'] == true,
       verificationStatus: json['verificationStatus'] as String?,
-      joinedAt:
-          json['joinedAt'] != null ? DateTime.tryParse(json['joinedAt']) : null,
+      joinedAt: json['joinedAt'] != null
+          ? DateTime.tryParse(json['joinedAt'])
+          : null,
       activeProducts: (json['activeProducts'] as num?)?.toInt() ?? 0,
       totalProducts: (json['totalProducts'] as num?)?.toInt() ?? 0,
       responseProxyScore: (json['responseProxyScore'] as num?)?.toInt() ?? 0,

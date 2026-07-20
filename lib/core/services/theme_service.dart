@@ -19,6 +19,7 @@ class ThemeService extends ChangeNotifier {
     if (saved != null) {
       instance._mode = _stringToMode(saved);
     }
+    instance.notifyListeners();
   }
 
   ThemeMode get mode => _mode;

@@ -6,20 +6,31 @@ import 'api_service.dart';
 import 'auth_service.dart';
 
 class HelperJobService {
-  static Future<List<HelperJob>> getClientJobs({int page = 0, int size = 20}) async {
+  static Future<List<HelperJob>> getClientJobs({
+    int page = 0,
+    int size = 20,
+  }) async {
     try {
       final token = AuthService.token;
-      if (token == null) throw const AppError(code: AppErrorCode.forbidden, message: 'Not logged in');
+      if (token == null)
+        throw const AppError(
+          code: AppErrorCode.forbidden,
+          message: 'Not logged in',
+        );
 
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/helper-jobs/client?page=$page&size=$size'),
+        Uri.parse(
+          '${ApiService.baseUrl}/helper-jobs/client?page=$page&size=$size',
+        ),
         headers: {'Authorization': 'Bearer $token'},
       );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
         final List<dynamic> data = responseData['content'] ?? [];
-        return data.map((json) => HelperJob.fromJson(json as Map<String, dynamic>)).toList();
+        return data
+            .map((json) => HelperJob.fromJson(json as Map<String, dynamic>))
+            .toList();
       } else {
         throw AppError(
           code: AppErrorCode.unknown,
@@ -29,24 +40,38 @@ class HelperJobService {
       }
     } catch (e) {
       if (e is AppError) rethrow;
-      throw AppError.network(message: 'Network error', technicalMessage: e.toString());
+      throw AppError.network(
+        message: 'Network error',
+        technicalMessage: e.toString(),
+      );
     }
   }
 
-  static Future<List<HelperJob>> getHelperJobs({int page = 0, int size = 20}) async {
+  static Future<List<HelperJob>> getHelperJobs({
+    int page = 0,
+    int size = 20,
+  }) async {
     try {
       final token = AuthService.token;
-      if (token == null) throw const AppError(code: AppErrorCode.forbidden, message: 'Not logged in');
+      if (token == null)
+        throw const AppError(
+          code: AppErrorCode.forbidden,
+          message: 'Not logged in',
+        );
 
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/helper-jobs/helper?page=$page&size=$size'),
+        Uri.parse(
+          '${ApiService.baseUrl}/helper-jobs/helper?page=$page&size=$size',
+        ),
         headers: {'Authorization': 'Bearer $token'},
       );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
         final List<dynamic> data = responseData['content'] ?? [];
-        return data.map((json) => HelperJob.fromJson(json as Map<String, dynamic>)).toList();
+        return data
+            .map((json) => HelperJob.fromJson(json as Map<String, dynamic>))
+            .toList();
       } else {
         throw AppError(
           code: AppErrorCode.unknown,
@@ -56,7 +81,10 @@ class HelperJobService {
       }
     } catch (e) {
       if (e is AppError) rethrow;
-      throw AppError.network(message: 'Network error', technicalMessage: e.toString());
+      throw AppError.network(
+        message: 'Network error',
+        technicalMessage: e.toString(),
+      );
     }
   }
 
@@ -66,11 +94,13 @@ class HelperJobService {
   }) async {
     try {
       final token = AuthService.token;
-      if (token == null) throw const AppError(code: AppErrorCode.forbidden, message: 'Not logged in');
+      if (token == null)
+        throw const AppError(
+          code: AppErrorCode.forbidden,
+          message: 'Not logged in',
+        );
 
-      final body = {
-        'phoneNumber': phoneNumber,
-      };
+      final body = {'phoneNumber': phoneNumber};
 
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/helper-jobs/hire/$helperId'),
@@ -93,7 +123,10 @@ class HelperJobService {
       }
     } catch (e) {
       if (e is AppError) rethrow;
-      throw AppError.network(message: 'Network error', technicalMessage: e.toString());
+      throw AppError.network(
+        message: 'Network error',
+        technicalMessage: e.toString(),
+      );
     }
   }
 
@@ -119,7 +152,11 @@ class HelperJobService {
   static Future<void> approveJob(int jobId) async {
     try {
       final token = AuthService.token;
-      if (token == null) throw const AppError(code: AppErrorCode.forbidden, message: 'Not logged in');
+      if (token == null)
+        throw const AppError(
+          code: AppErrorCode.forbidden,
+          message: 'Not logged in',
+        );
 
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/helper-jobs/$jobId/approve'),
@@ -138,14 +175,21 @@ class HelperJobService {
       }
     } catch (e) {
       if (e is AppError) rethrow;
-      throw AppError.network(message: 'Network error', technicalMessage: e.toString());
+      throw AppError.network(
+        message: 'Network error',
+        technicalMessage: e.toString(),
+      );
     }
   }
 
   static Future<void> disputeJob(int jobId) async {
     try {
       final token = AuthService.token;
-      if (token == null) throw const AppError(code: AppErrorCode.forbidden, message: 'Not logged in');
+      if (token == null)
+        throw const AppError(
+          code: AppErrorCode.forbidden,
+          message: 'Not logged in',
+        );
 
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/helper-jobs/$jobId/dispute'),
@@ -164,7 +208,47 @@ class HelperJobService {
       }
     } catch (e) {
       if (e is AppError) rethrow;
-      throw AppError.network(message: 'Network error', technicalMessage: e.toString());
+      throw AppError.network(
+        message: 'Network error',
+        technicalMessage: e.toString(),
+      );
+    }
+  }
+
+  static Future<void> requestWithdrawal(double amount) async {
+    try {
+      final token = AuthService.token;
+      if (token == null)
+        throw const AppError(
+          code: AppErrorCode.forbidden,
+          message: 'Not logged in',
+        );
+
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/helper/withdraw'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'amount': amount}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 202) {
+        return;
+      } else {
+        final data = jsonDecode(response.body);
+        throw AppError(
+          code: AppErrorCode.unknown,
+          message: data['error'] ?? 'Failed to request withdrawal',
+          technicalMessage: response.body,
+        );
+      }
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw AppError.network(
+        message: 'Network error',
+        technicalMessage: e.toString(),
+      );
     }
   }
 }

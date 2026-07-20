@@ -25,7 +25,9 @@ class MemoryRentalsRepo implements RentalsRepo {
       // Check FYP terms if provided
       if (filters.fypTerms != null && filters.fypTerms!.isNotEmpty) {
         final hay = '${l.county} ${l.area} ${l.location}'.toLowerCase();
-        final matchesFyp = filters.fypTerms!.any((term) => hay.contains(term.toLowerCase()));
+        final matchesFyp = filters.fypTerms!.any(
+          (term) => hay.contains(term.toLowerCase()),
+        );
         if (!matchesFyp) return false;
       } else {
         // Fall back to regular location query
@@ -35,9 +37,12 @@ class MemoryRentalsRepo implements RentalsRepo {
           if (!hay.contains(q)) return false;
         }
       }
-      if (filters.unitType != null && l.unitType != filters.unitType) return false;
-      if (filters.minPrice != null && l.rentKsh < filters.minPrice!) return false;
-      if (filters.maxPrice != null && l.rentKsh > filters.maxPrice!) return false;
+      if (filters.unitType != null && l.unitType != filters.unitType)
+        return false;
+      if (filters.minPrice != null && l.rentKsh < filters.minPrice!)
+        return false;
+      if (filters.maxPrice != null && l.rentKsh > filters.maxPrice!)
+        return false;
       return l.isActive;
     }).toList();
   }

@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'chat_page.dart';
 import '../../../core/models/rental.dart';
@@ -15,6 +13,7 @@ import '../../../core/services/group_service.dart';
 import '../../../core/widgets/create_group_dialog.dart';
 import 'group_chat_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class ContactsListPage extends StatefulWidget {
   final bool initialSelectionMode;
@@ -34,7 +33,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
 
   // For multi-select "New Group" mode
   bool _isSelectionMode = false;
-  Set<int> _selectedUserIds = {};
+  final Set<int> _selectedUserIds = {};
 
   @override
   void initState() {
@@ -68,10 +67,15 @@ class _ContactsListPageState extends State<ContactsListPage> {
       for (var contact in contacts) {
         for (var phone in contact.phones) {
           final normalized = _normalizePhone(phone.number);
-          identifiers.add(normalized);
-          identifierToContact[normalized] = contact;
+          if (normalized.isNotEmpty) {
+            identifiers.add(normalized);
+            identifierToContact[normalized] = contact;
+            if (normalized.length >= 9) {
+              identifierToContact[normalized.substring(normalized.length - 9)] =
+                  contact;
+            }
+          }
         }
-
       }
 
       if (identifiers.isEmpty) {
@@ -92,7 +96,9 @@ class _ContactsListPageState extends State<ContactsListPage> {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        final matches = data.map((json) => ContactMatch.fromJson(json)).toList();
+        final matches = data
+            .map((json) => ContactMatch.fromJson(json))
+            .toList();
 
         final dwellyMatchedIdentifiers = <String>{};
         final dwellyContactsSet = <Contact>{};
@@ -101,7 +107,17 @@ class _ContactsListPageState extends State<ContactsListPage> {
         for (var match in matches) {
           if (match.matchedIdentifier != null) {
             dwellyMatchedIdentifiers.add(match.matchedIdentifier!);
-            final contact = identifierToContact[match.matchedIdentifier!];
+            var contact = identifierToContact[match.matchedIdentifier!];
+            if (contact == null) {
+              final digitsOnly = _normalizePhone(match.matchedIdentifier!);
+              contact = identifierToContact[digitsOnly];
+              if (contact == null && digitsOnly.length >= 9) {
+                contact =
+                    identifierToContact[digitsOnly.substring(
+                      digitsOnly.length - 9,
+                    )];
+              }
+            }
             if (contact != null) {
               if (!dwellyContactsSet.contains(contact)) {
                 dwellyContactsSet.add(contact);
@@ -113,7 +129,8 @@ class _ContactsListPageState extends State<ContactsListPage> {
 
         final inviteSet = <Contact>{};
         for (var contact in contacts) {
-          if (!dwellyContactsSet.contains(contact) && contact.phones.isNotEmpty) {
+          if (!dwellyContactsSet.contains(contact) &&
+              contact.phones.isNotEmpty) {
             inviteSet.add(contact);
           }
         }
@@ -126,7 +143,8 @@ class _ContactsListPageState extends State<ContactsListPage> {
         });
       } else {
         setState(() {
-          _error = 'Failed to sync contacts. Server returned ${response.statusCode}';
+          _error =
+              'Failed to sync contacts. Server returned ${response.statusCode}';
           _isLoading = false;
         });
       }
@@ -147,7 +165,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => const Center(child: DwellyOrbitingLoader()),
       );
       final conversation = await ChatService.startConversation(
         targetUserId: match.userId,
@@ -156,7 +174,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
       Navigator.of(context).pop(); // dismiss loading
       Navigator.of(context).pop(); // pop contacts page
       final pseudoRental = Rental(
-        id: conversation.rentalId ?? 0,
+        id: conversation.rentalId,
         ownerId: conversation.ownerId,
         title: conversation.listingTitle ?? 'Chat',
         description: conversation.lastMessage ?? '',
@@ -182,19 +200,21 @@ class _ContactsListPageState extends State<ContactsListPage> {
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to start chat: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to start chat: $e')));
     }
   }
 
   Future<void> _inviteContact(Contact contact) async {
     if (contact.phones.isEmpty) return;
-    
+
     // Grab the first phone number
     final phoneRaw = contact.phones.first.number;
     final phone = _normalizePhone(phoneRaw);
-    final message = Uri.encodeComponent("Hey! I'm using Dwelly to find and manage rentals. Join me here: https://dwelly.com");
+    final message = Uri.encodeComponent(
+      "Hey! I'm using Dwelly to find and manage rentals. Join me here: https://dwelly.com",
+    );
 
     final whatsappUrl = Uri.parse("whatsapp://send?phone=$phone&text=$message");
     final smsUrl = Uri.parse("sms:$phone?body=$message");
@@ -209,7 +229,9 @@ class _ContactsListPageState extends State<ContactsListPage> {
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not open WhatsApp or Messages app.')),
+              const SnackBar(
+                content: Text('Could not open WhatsApp or Messages app.'),
+              ),
             );
           }
         }
@@ -246,7 +268,10 @@ class _ContactsListPageState extends State<ContactsListPage> {
       builder: (context) => CreateGroupDialog(),
     );
 
-    if (result == null || result['name'] == null || (result['name'] as String).isEmpty) return;
+    if (result == null ||
+        result['name'] == null ||
+        (result['name'] as String).isEmpty)
+      return;
 
     final name = result['name'] as String;
     final buildingId = result['buildingId'] as int?;
@@ -256,8 +281,11 @@ class _ContactsListPageState extends State<ContactsListPage> {
     });
 
     try {
-      final newGroup = await GroupService.createGroup(name, buildingId: buildingId);
-      
+      final newGroup = await GroupService.createGroup(
+        name,
+        buildingId: buildingId,
+      );
+
       for (final userId in _selectedUserIds) {
         if (userId == AuthService.currentUser?.id) continue;
         try {
@@ -266,20 +294,18 @@ class _ContactsListPageState extends State<ContactsListPage> {
           debugPrint('Failed to add member $userId: $e');
         }
       }
-      
+
       if (!mounted) return;
       Navigator.pop(context); // Pop contacts list page
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => GroupChatPage(group: newGroup),
-        ),
+        MaterialPageRoute(builder: (context) => GroupChatPage(group: newGroup)),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create group: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create group: $e')));
       setState(() {
         _isLoading = false;
         _isSelectionMode = false;
@@ -292,9 +318,11 @@ class _ContactsListPageState extends State<ContactsListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isSelectionMode 
-            ? '${_selectedUserIds.length} selected' 
-            : (widget.initialSelectionMode ? 'Select Members' : 'New Chat')),
+        title: Text(
+          _isSelectionMode
+              ? '${_selectedUserIds.length} selected'
+              : (widget.initialSelectionMode ? 'Select Members' : 'New Chat'),
+        ),
         leading: _isSelectionMode
             ? IconButton(
                 icon: const Icon(Icons.close),
@@ -338,7 +366,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: DwellyOrbitingLoader());
     }
 
     if (_error != null) {
@@ -359,7 +387,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
               ElevatedButton(
                 onPressed: _loadAndSyncContacts,
                 child: const Text('Try Again'),
-              )
+              ),
             ],
           ),
         ),
@@ -406,27 +434,50 @@ class _ContactsListPageState extends State<ContactsListPage> {
 
   Widget _buildDwellyContactItem(Contact localContact, ContactMatch match) {
     final displayNameText = localContact.displayName;
-    final name = (displayNameText != null && displayNameText.isNotEmpty) 
-        ? displayNameText 
+    String name = (displayNameText != null && displayNameText.isNotEmpty)
+        ? displayNameText
         : '${match.firstName ?? ''} ${match.lastName ?? ''}'.trim();
-    
+    if (name.isEmpty || name.contains('@')) {
+      name = (match.username != null && !match.username!.contains('@'))
+          ? match.username!
+          : (localContact.phones.isNotEmpty
+                ? localContact.phones.first.number
+                : 'Dwelly Contact');
+    }
+
     final isMe = match.userId == AuthService.currentUser?.id;
-    final displayName = name.isNotEmpty ? name : (match.username ?? 'Unknown');
-    final finalName = isMe ? '$displayName (You)' : displayName;
+    final finalName = isMe ? '$name (You)' : name;
     final initial = finalName.isNotEmpty ? finalName[0].toUpperCase() : '?';
+
+    final phoneText = localContact.phones.isNotEmpty
+        ? localContact.phones.first.number
+        : (match.matchedIdentifier != null &&
+                  !match.matchedIdentifier!.contains('@')
+              ? match.matchedIdentifier!
+              : 'On Dwelly');
+    final subtitleText =
+        (match.username != null && !match.username!.contains('@'))
+        ? '@${match.username}'
+        : phoneText;
 
     return ListTile(
       leading: Stack(
         children: [
           CircleAvatar(
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-            backgroundImage: match.avatarUrl != null && match.avatarUrl!.isNotEmpty
-                ? CachedNetworkImageProvider(ApiService.resolveMediaUrl(match.avatarUrl!)!) as ImageProvider
+            backgroundImage:
+                match.avatarUrl != null && match.avatarUrl!.isNotEmpty
+                ? CachedNetworkImageProvider(
+                        ApiService.resolveMediaUrl(match.avatarUrl!)!,
+                      )
+                      as ImageProvider
                 : null,
             child: match.avatarUrl == null || match.avatarUrl!.isEmpty
                 ? Text(
                     initial,
-                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   )
                 : null,
           ),
@@ -453,7 +504,7 @@ class _ContactsListPageState extends State<ContactsListPage> {
         ],
       ),
       title: Text(finalName),
-      subtitle: Text(match.username != null ? '@${match.username}' : 'Dwelly User'),
+      subtitle: Text(subtitleText),
       onTap: () {
         if (_isSelectionMode) {
           _toggleSelection(match.userId);
@@ -466,17 +517,16 @@ class _ContactsListPageState extends State<ContactsListPage> {
 
   Widget _buildInviteContactItem(Contact contact) {
     final displayNameText = contact.displayName;
-    final name = (displayNameText != null && displayNameText.isNotEmpty) ? displayNameText : 'Unknown Contact';
+    final name = (displayNameText != null && displayNameText.isNotEmpty)
+        ? displayNameText
+        : 'Unknown Contact';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
     final phone = contact.phones.isNotEmpty ? contact.phones.first.number : '';
 
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: Colors.grey[200],
-        child: Text(
-          initial,
-          style: TextStyle(color: Colors.grey[800]),
-        ),
+        child: Text(initial, style: TextStyle(color: Colors.grey[800])),
       ),
       title: Text(name),
       subtitle: Text(phone),

@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/errors/ui_error.dart';
 import '../../../core/services/auth_service.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   final String email;
-  final VoidCallback? onVerified;
+  final Future<void> Function()? onVerified;
   final VoidCallback? onSkip;
 
   const EmailVerificationScreen({
@@ -120,7 +121,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          widget.onVerified?.call();
+          Navigator.of(context).pop();
+          await widget.onVerified?.call();
         }
       }
     } catch (e) {
@@ -163,8 +165,13 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             : null,
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            24 + MediaQuery.of(context).viewInsets.bottom,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -187,47 +194,57 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               const SizedBox(height: 32),
 
               // Code input fields
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(6, (index) {
-                  return Container(
-                    width: 48,
-                    height: 56,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    child: KeyboardListener(
-                      focusNode: FocusNode(),
-                      onKeyEvent: (event) => _onKeyDown(index, event),
-                      child: TextField(
-                        controller: _codeControllers[index],
-                        focusNode: _focusNodes[index],
-                        textAlign: TextAlign.center,
-                        keyboardType: TextInputType.number,
-                        maxLength: 1,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        decoration: InputDecoration(
-                          counterText: '',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Colors.blue,
-                              width: 2,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  const spacing = 8.0;
+                  final boxSize = ((constraints.maxWidth - (spacing * 5)) / 6)
+                      .clamp(36.0, 48.0);
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(6, (index) {
+                      return Padding(
+                        padding: EdgeInsets.only(right: index == 5 ? 0 : spacing),
+                        child: SizedBox(
+                          width: boxSize,
+                          height: 56,
+                          child: KeyboardListener(
+                            focusNode: FocusNode(),
+                            onKeyEvent: (event) => _onKeyDown(index, event),
+                            child: TextField(
+                              controller: _codeControllers[index],
+                              focusNode: _focusNodes[index],
+                              textAlign: TextAlign.center,
+                              keyboardType: TextInputType.number,
+                              maxLength: 1,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              decoration: InputDecoration(
+                                counterText: '',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Colors.blue,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              onChanged: (value) => _onCodeChanged(index, value),
                             ),
                           ),
                         ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        onChanged: (value) => _onCodeChanged(index, value),
-                      ),
-                    ),
+                      );
+                    }),
                   );
-                }),
+                },
               ),
 
               if (_error != null) ...[
@@ -270,7 +287,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: DwellyOrbitingLoader(),
                         )
                       : const Text(
                           'Verify Email',
@@ -290,7 +307,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     ? const SizedBox(
                         height: 16,
                         width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: DwellyOrbitingLoader(),
                       )
                     : Text(
                         _cooldownSeconds > 0

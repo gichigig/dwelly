@@ -26,26 +26,26 @@ class OfflineMessage {
   });
 
   Map<String, dynamic> toJson() => {
-        'conversationId': conversationId,
-        'rentalId': rentalId,
-        'targetUserId': targetUserId,
-        'content': content,
-        'messageType': messageType,
-        'mediaUrl': mediaUrl,
-        'clientMessageId': clientMessageId,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'conversationId': conversationId,
+    'rentalId': rentalId,
+    'targetUserId': targetUserId,
+    'content': content,
+    'messageType': messageType,
+    'mediaUrl': mediaUrl,
+    'clientMessageId': clientMessageId,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory OfflineMessage.fromJson(Map<String, dynamic> json) => OfflineMessage(
-        conversationId: json['conversationId'],
-        rentalId: json['rentalId'],
-        targetUserId: json['targetUserId'],
-        content: json['content'],
-        messageType: json['messageType'] ?? 'TEXT',
-        mediaUrl: json['mediaUrl'],
-        clientMessageId: json['clientMessageId'],
-        createdAt: DateTime.parse(json['createdAt']),
-      );
+    conversationId: json['conversationId'],
+    rentalId: json['rentalId'],
+    targetUserId: json['targetUserId'],
+    content: json['content'],
+    messageType: json['messageType'] ?? 'TEXT',
+    mediaUrl: json['mediaUrl'],
+    clientMessageId: json['clientMessageId'],
+    createdAt: DateTime.parse(json['createdAt']),
+  );
 }
 
 class OfflineQueueService {
@@ -57,9 +57,11 @@ class OfflineQueueService {
   static StreamSubscription? _connectivitySubscription;
 
   static Future<void> init() async {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((result) {
-      if (result.contains(ConnectivityResult.mobile) || 
-          result.contains(ConnectivityResult.wifi) || 
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      result,
+    ) {
+      if (result.contains(ConnectivityResult.mobile) ||
+          result.contains(ConnectivityResult.wifi) ||
           result.contains(ConnectivityResult.ethernet)) {
         _processQueue();
       }
@@ -70,7 +72,7 @@ class OfflineQueueService {
   static Future<void> enqueueMessage(OfflineMessage message) async {
     final prefs = await SharedPreferences.getInstance();
     final queue = await _getQueue(prefs);
-    
+
     if (!queue.any((m) => m.clientMessageId == message.clientMessageId)) {
       queue.add(message);
       await _saveQueue(prefs, queue);
@@ -88,7 +90,10 @@ class OfflineQueueService {
     }
   }
 
-  static Future<void> _saveQueue(SharedPreferences prefs, List<OfflineMessage> queue) async {
+  static Future<void> _saveQueue(
+    SharedPreferences prefs,
+    List<OfflineMessage> queue,
+  ) async {
     final encoded = jsonEncode(queue.map((e) => e.toJson()).toList());
     await prefs.setString(_queueKey, encoded);
   }
@@ -102,17 +107,17 @@ class OfflineQueueService {
 
   static Future<void> _processQueue() async {
     if (_isProcessing) return;
-    
+
     final connectivity = await Connectivity().checkConnectivity();
-    if (!connectivity.contains(ConnectivityResult.mobile) && 
-        !connectivity.contains(ConnectivityResult.wifi) && 
+    if (!connectivity.contains(ConnectivityResult.mobile) &&
+        !connectivity.contains(ConnectivityResult.wifi) &&
         !connectivity.contains(ConnectivityResult.ethernet)) {
       return;
     }
 
     final prefs = await SharedPreferences.getInstance();
     final queue = await _getQueue(prefs);
-    
+
     if (queue.isEmpty) return;
 
     _isProcessing = true;
@@ -128,41 +133,45 @@ class OfflineQueueService {
               mediaUrl: msg.mediaUrl,
               clientMessageId: msg.clientMessageId,
             );
-            
+
             if (result.status == 'OFFLINE_QUEUED') {
               break; // Still no network
             }
-            
+
             if (result.isSent || result.isFailed) {
               await _removeFromQueue(msg.clientMessageId);
-              if (result.isSent) _sentMessageController.add(msg.clientMessageId);
+              if (result.isSent)
+                _sentMessageController.add(msg.clientMessageId);
             }
           } else {
-            final result = await ChatService.startConversationAndSendMessageQueued(
-              rentalId: msg.rentalId,
-              targetUserId: msg.targetUserId,
-              content: msg.content,
-              messageType: msg.messageType,
-              mediaUrl: msg.mediaUrl,
-              clientMessageId: msg.clientMessageId,
-            );
-            
+            final result =
+                await ChatService.startConversationAndSendMessageQueued(
+                  rentalId: msg.rentalId,
+                  targetUserId: msg.targetUserId,
+                  content: msg.content,
+                  messageType: msg.messageType,
+                  mediaUrl: msg.mediaUrl,
+                  clientMessageId: msg.clientMessageId,
+                );
+
             if (result.messageResult.status == 'OFFLINE_QUEUED') {
               break; // Still no network
             }
 
             if (result.messageResult.isSent || result.messageResult.isFailed) {
               await _removeFromQueue(msg.clientMessageId);
-              if (result.messageResult.isSent) _sentMessageController.add(msg.clientMessageId);
+              if (result.messageResult.isSent)
+                _sentMessageController.add(msg.clientMessageId);
             }
           }
         } catch (e) {
           // Unhandled errors, skip and retry later or remove depending on error type
-          if (e.toString().toLowerCase().contains('network') || e.toString().toLowerCase().contains('timeout')) {
+          if (e.toString().toLowerCase().contains('network') ||
+              e.toString().toLowerCase().contains('timeout')) {
             break; // network error, stop processing
           } else {
-             // For unhandled non-network errors, we should probably remove it so it doesn't block the queue forever
-             await _removeFromQueue(msg.clientMessageId);
+            // For unhandled non-network errors, we should probably remove it so it doesn't block the queue forever
+            await _removeFromQueue(msg.clientMessageId);
           }
         }
       }

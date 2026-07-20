@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/helpers_repository.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class HireHelperBottomSheet extends ConsumerStatefulWidget {
   final Helper helper;
@@ -8,7 +9,8 @@ class HireHelperBottomSheet extends ConsumerStatefulWidget {
   const HireHelperBottomSheet({super.key, required this.helper});
 
   @override
-  ConsumerState<HireHelperBottomSheet> createState() => _HireHelperBottomSheetState();
+  ConsumerState<HireHelperBottomSheet> createState() =>
+      _HireHelperBottomSheetState();
 }
 
 class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
@@ -27,16 +29,17 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
 
     setState(() => _isLoading = true);
     try {
-      await ref.read(helpersRepositoryProvider).hireHelper(
-        widget.helper.id,
-        _phoneController.text.trim(),
-      );
+      await ref
+          .read(helpersRepositoryProvider)
+          .hireHelper(widget.helper.id, _phoneController.text.trim());
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Payment initiated. Please check your phone for the M-Pesa prompt.'),
+            content: Text(
+              'Payment initiated. Please check your phone for the M-Pesa prompt.',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -72,7 +75,10 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
               children: [
                 Text(
                   'Hire ${widget.helper.name}',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -95,7 +101,10 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
                   Expanded(
                     child: Text(
                       'Your booking payment of KES ${widget.helper.helperPrice.toStringAsFixed(0)} will be securely processed to confirm the job.',
-                      style: TextStyle(color: Colors.blue.shade900, fontSize: 13),
+                      style: TextStyle(
+                        color: Colors.blue.shade900,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
@@ -112,8 +121,11 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
               ),
               keyboardType: TextInputType.phone,
               validator: (val) {
-                if (val == null || val.trim().isEmpty) return 'Phone number is required';
-                if (!val.startsWith('254') && !val.startsWith('07') && !val.startsWith('01')) {
+                if (val == null || val.trim().isEmpty)
+                  return 'Phone number is required';
+                if (!val.startsWith('254') &&
+                    !val.startsWith('07') &&
+                    !val.startsWith('01')) {
                   return 'Enter a valid Kenyan number';
                 }
                 return null;
@@ -125,18 +137,19 @@ class _HireHelperBottomSheetState extends ConsumerState<HireHelperBottomSheet> {
               height: 50,
               child: FilledButton(
                 onPressed: _isLoading ? null : _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green,
-                ),
+                style: FilledButton.styleFrom(backgroundColor: Colors.green),
                 child: _isLoading
                     ? const SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: DwellyOrbitingLoader(glowColor: Colors.white),
                       )
                     : Text(
                         'Pay KES ${widget.helper.helperPrice.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ),

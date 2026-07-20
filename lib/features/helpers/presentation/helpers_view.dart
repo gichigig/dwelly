@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/helpers_repository.dart';
 import 'hire_helper_bottom_sheet.dart';
-import 'package:dwelly/core/services/api_service.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:realestate/core/services/api_service.dart';
 import '../../../core/widgets/full_screen_image_avatar.dart';
+import '../../../core/widgets/dwelly_orbiting_loader.dart';
 
 class HelpersView extends ConsumerStatefulWidget {
   const HelpersView({super.key});
@@ -33,12 +33,16 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
             value: _selectedCounty,
             decoration: InputDecoration(
               labelText: 'Filter by County',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               prefixIcon: const Icon(Icons.location_city),
             ),
             items: [
               const DropdownMenuItem(value: null, child: Text('All Counties')),
-              ..._counties.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+              ..._counties.map(
+                (c) => DropdownMenuItem(value: c, child: Text(c)),
+              ),
             ],
             onChanged: (val) => setState(() => _selectedCounty = val),
           ),
@@ -75,7 +79,9 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                             children: [
                               FullScreenImageAvatar(
                                 radius: 24,
-                                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).primaryColor.withOpacity(0.1),
                                 avatarUrl: helper.avatarUrl,
                                 fallbackWidget: Text(
                                   helper.name[0],
@@ -97,29 +103,48 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    if (helper.helperCoverageLevel == 'WARD' && helper.helperWards != null && helper.helperWards!.isNotEmpty)
+                                    if (helper.helperCoverageLevel == 'WARD' &&
+                                        helper.helperWards != null &&
+                                        helper.helperWards!.isNotEmpty)
                                       Row(
                                         children: [
-                                          const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                                          const Icon(
+                                            Icons.location_on,
+                                            size: 14,
+                                            color: Colors.grey,
+                                          ),
                                           const SizedBox(width: 4),
                                           Expanded(
                                             child: Text(
                                               'Wards: ${helper.helperWards!.join(', ')}',
-                                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                              style: const TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 12,
+                                              ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                         ],
                                       )
-                                    else if (helper.helperCoverageLevel == 'CONSTITUENCY' && helper.helperConstituencies != null && helper.helperConstituencies!.isNotEmpty)
+                                    else if (helper.helperCoverageLevel ==
+                                            'CONSTITUENCY' &&
+                                        helper.helperConstituencies != null &&
+                                        helper.helperConstituencies!.isNotEmpty)
                                       Row(
                                         children: [
-                                          const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                                          const Icon(
+                                            Icons.location_on,
+                                            size: 14,
+                                            color: Colors.grey,
+                                          ),
                                           const SizedBox(width: 4),
                                           Expanded(
                                             child: Text(
                                               'Constituencies: ${helper.helperConstituencies!.join(', ')}',
-                                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                              style: const TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 12,
+                                              ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
@@ -128,11 +153,18 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                                     else if (helper.helperCounty != null)
                                       Row(
                                         children: [
-                                          const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                                          const Icon(
+                                            Icons.location_on,
+                                            size: 14,
+                                            color: Colors.grey,
+                                          ),
                                           const SizedBox(width: 4),
                                           Text(
                                             helper.helperCounty!,
-                                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                              fontSize: 12,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -140,7 +172,10 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                                 ),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.green.shade50,
                                   borderRadius: BorderRadius.circular(20),
@@ -164,9 +199,12 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                                   context: context,
                                   isScrollControlled: true,
                                   shape: const RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                                    borderRadius: BorderRadius.vertical(
+                                      top: Radius.circular(24),
+                                    ),
                                   ),
-                                  builder: (_) => HireHelperBottomSheet(helper: helper),
+                                  builder: (_) =>
+                                      HireHelperBottomSheet(helper: helper),
                                 );
                               },
                               icon: const Icon(Icons.handshake),
@@ -180,7 +218,7 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                 },
               );
             },
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const Center(child: DwellyOrbitingLoader(size: 64)),
             error: (err, _) => Center(child: Text('Error: $err')),
           ),
         ),

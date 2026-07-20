@@ -7,6 +7,7 @@ import '../../../core/widgets/auth_bottom_sheets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/widgets/full_screen_image_avatar.dart';
 import 'house_search_help_page.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class AvailableHelpersPage extends StatefulWidget {
   const AvailableHelpersPage({super.key});
@@ -32,7 +33,9 @@ class _AvailableHelpersPageState extends State<AvailableHelpersPage> {
       _error = null;
     });
     try {
-      final response = await http.get(Uri.parse('${ApiService.baseUrl}/api/helper/available'));
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/api/helper/available'),
+      );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         setState(() {
@@ -56,7 +59,9 @@ class _AvailableHelpersPageState extends State<AvailableHelpersPage> {
   void _onHireTap() {
     if (!AuthService.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must log in to hire a house search helper.')),
+        const SnackBar(
+          content: Text('You must log in to hire a house search helper.'),
+        ),
       );
       showLoginBottomSheet(
         context,
@@ -80,88 +85,93 @@ class _AvailableHelpersPageState extends State<AvailableHelpersPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Available Helpers'),
-      ),
+      appBar: AppBar(title: const Text('Available Helpers')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: DwellyOrbitingLoader())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, size: 48, color: colorScheme.error),
-                      const SizedBox(height: 16),
-                      Text(_error!),
-                      const SizedBox(height: 16),
-                      FilledButton(onPressed: _fetchHelpers, child: const Text('Retry'))
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+                  const SizedBox(height: 16),
+                  Text(_error!),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _fetchHelpers,
+                    child: const Text('Retry'),
                   ),
-                )
-              : _helpers.isEmpty
-                  ? const Center(child: Text('No helpers currently available.'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _helpers.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final helper = _helpers[index];
-                        final name = helper['name'] ?? 'Helper';
-                        final price = helper['helperPrice'] ?? 0;
-                        final avatarUrl = helper['avatarUrl'];
-                        
-                        return Card(
-                          elevation: 0,
-                          color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(
-                              color: colorScheme.outlineVariant.withOpacity(0.5),
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                FullScreenImageAvatar(
-                                  radius: 28,
-                                  backgroundColor: colorScheme.primaryContainer,
-                                  avatarUrl: avatarUrl?.toString(),
-                                  fallbackWidget: Icon(Icons.person, color: colorScheme.primary, size: 32),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Rate: KES $price',
-                                        style: TextStyle(
-                                          color: colorScheme.primary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                FilledButton(
-                                  onPressed: _onHireTap,
-                                  child: const Text('Hire'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+                ],
+              ),
+            )
+          : _helpers.isEmpty
+          ? const Center(child: Text('No helpers currently available.'))
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _helpers.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final helper = _helpers[index];
+                final name = helper['name'] ?? 'Helper';
+                final price = helper['helperPrice'] ?? 0;
+                final avatarUrl = helper['avatarUrl'];
+
+                return Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: colorScheme.outlineVariant.withOpacity(0.5),
                     ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        FullScreenImageAvatar(
+                          radius: 28,
+                          backgroundColor: colorScheme.primaryContainer,
+                          avatarUrl: avatarUrl?.toString(),
+                          fallbackWidget: Icon(
+                            Icons.person,
+                            color: colorScheme.primary,
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Rate: KES $price',
+                                style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        FilledButton(
+                          onPressed: _onHireTap,
+                          child: const Text('Hire'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

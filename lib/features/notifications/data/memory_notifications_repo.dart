@@ -34,4 +34,3 @@ class MemoryNotificationsRepo implements NotificationsRepo {
     _db.removeWhere((n) => n.id == id);
   }
 }
-

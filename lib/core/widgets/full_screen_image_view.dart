@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class FullScreenImageView extends StatelessWidget {
   final String imageUrl;
@@ -24,8 +25,10 @@ class FullScreenImageView extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: imageUrl,
               fit: BoxFit.contain,
-              placeholder: (context, url) => const CircularProgressIndicator(color: Colors.white),
-              errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.white, size: 48),
+              placeholder: (context, url) =>
+                  const DwellyOrbitingLoader(glowColor: Colors.white),
+              errorWidget: (context, url, error) =>
+                  const Icon(Icons.error, color: Colors.white, size: 48),
             ),
           ),
         ),

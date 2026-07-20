@@ -11,8 +11,8 @@ class Rental {
   final double? latitude;
   final double? longitude;
   final double? distanceMeters;
-  final String? areaName;      // Popular area name/nickname
-  final String? directions;    // Directions to property
+  final String? areaName; // Popular area name/nickname
+  final String? directions; // Directions to property
   // Legacy fields for backward compatibility
   final String city;
   final String state;
@@ -24,6 +24,9 @@ class Rental {
   final String propertyType;
   final List<String> amenities;
   final List<String> imageUrls;
+  final List<String> thumbnailUrls;
+  final List<String> mediumUrls;
+  final List<String> hashtags;
   final bool petsAllowed;
   final bool parkingAvailable;
   final String status;
@@ -35,12 +38,12 @@ class Rental {
   final String? ownerAvatarUrl;
   final DateTime? createdAt;
   final DateTime? updatedAt;
-  
+
   // Owner verification info
   final bool ownerIsVerified;
   final String? ownerUserType;
   final String? ownerVerificationStatus;
-  
+
   // Approval info
   final bool requiresApproval;
   final String? approvalStatus;
@@ -57,6 +60,13 @@ class Rental {
   // Sponsorship fields
   final String? sponsorshipType;
   final bool isSponsored;
+
+  bool get hasAnyVideo =>
+      hasVideo ||
+      (videoUrl != null && videoUrl!.isNotEmpty) ||
+      (compoundVideoUrl != null && compoundVideoUrl!.isNotEmpty);
+
+  String? get effectiveVideoUrl => compoundVideoUrl ?? videoUrl;
 
   Rental({
     this.id,
@@ -82,6 +92,9 @@ class Rental {
     required this.propertyType,
     this.amenities = const [],
     this.imageUrls = const [],
+    this.thumbnailUrls = const [],
+    this.mediumUrls = const [],
+    this.hashtags = const [],
     this.petsAllowed = false,
     this.parkingAvailable = false,
     this.status = 'ACTIVE',
@@ -106,12 +119,14 @@ class Rental {
     this.sponsorshipType,
     this.isSponsored = false,
   });
-  
+
   /// Returns true if the owner is a verified agent (gold badge)
   bool get isVerifiedAgent => ownerIsVerified && ownerUserType == 'AGENT';
-  
+
   /// Returns true if the owner is a verified individual (blue badge)
-  bool get isVerifiedIndividual => ownerIsVerified && (ownerUserType == 'INDIVIDUAL' || ownerUserType == null);
+  bool get isVerifiedIndividual =>
+      ownerIsVerified &&
+      (ownerUserType == 'INDIVIDUAL' || ownerUserType == null);
 
   factory Rental.fromJson(Map<String, dynamic> json) {
     return Rental(
@@ -136,8 +151,32 @@ class Rental {
       squareFeet: json['squareFeet'] ?? 0,
       floor: json['floor'],
       propertyType: json['propertyType'] ?? 'OTHER',
-      amenities: (json['amenities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      imageUrls: (json['imageUrls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      amenities:
+          (json['amenities'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      imageUrls:
+          (json['imageUrls'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      thumbnailUrls:
+          (json['thumbnailUrls'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      mediumUrls:
+          (json['mediumUrls'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      hashtags:
+          (json['hashtags'] as List<dynamic>?)?.map((e) {
+            final s = e.toString().trim();
+            return s.startsWith('#') ? s : '#$s';
+          }).toList() ??
+          [],
       petsAllowed: json['petsAllowed'] ?? false,
       parkingAvailable: json['parkingAvailable'] ?? false,
       status: json['status'] ?? 'ACTIVE',
@@ -147,8 +186,12 @@ class Rental {
       ownerEmail: json['ownerEmail'],
       ownerPhone: json['ownerPhone'],
       ownerAvatarUrl: json['ownerAvatarUrl'],
-      createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt']) : null,
-      updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt']) : null,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'])
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'])
+          : null,
       ownerIsVerified: json['ownerIsVerified'] ?? false,
       ownerUserType: json['ownerUserType'],
       ownerVerificationStatus: json['ownerVerificationStatus'],
@@ -189,6 +232,9 @@ class Rental {
       'propertyType': propertyType,
       'amenities': amenities,
       'imageUrls': imageUrls,
+      'thumbnailUrls': thumbnailUrls,
+      'mediumUrls': mediumUrls,
+      'hashtags': hashtags,
       'petsAllowed': petsAllowed,
       'parkingAvailable': parkingAvailable,
       'status': status,
@@ -210,7 +256,8 @@ class Rental {
       'hasVideo': hasVideo,
       if (videoUrl != null) 'videoUrl': videoUrl,
       if (compoundVideoUrl != null) 'compoundVideoUrl': compoundVideoUrl,
-      if (cardDisplayPreference != null) 'cardDisplayPreference': cardDisplayPreference,
+      if (cardDisplayPreference != null)
+        'cardDisplayPreference': cardDisplayPreference,
       if (sponsorshipType != null) 'sponsorshipType': sponsorshipType,
       'isSponsored': isSponsored,
     };
@@ -218,36 +265,55 @@ class Rental {
 
   /// Get display location (prefer areaName, fallback to ward, then county)
   String get displayLocation {
-    if (areaName != null && areaName!.isNotEmpty) {
-      return areaName!;
+    if (areaName != null && areaName!.trim().isNotEmpty) {
+      return areaName!.trim();
     }
-    if (ward != null && ward!.isNotEmpty) {
-      return ward!;
+    if (ward != null && ward!.trim().isNotEmpty) {
+      return ward!.trim();
     }
-    if (constituency != null && constituency!.isNotEmpty) {
-      return constituency!;
+    if (constituency != null && constituency!.trim().isNotEmpty) {
+      return constituency!.trim();
     }
-    if (county != null && county!.isNotEmpty) {
-      return county!;
+    if (county != null && county!.trim().isNotEmpty) {
+      return county!.trim();
     }
     // Fallback to old format
-    if (city.isNotEmpty) {
-      return '$city, $state';
+    if (city.trim().isNotEmpty) {
+      final c = city.trim();
+      final s = state.trim();
+      if (s.isNotEmpty && s != c) {
+        return '$c, $s';
+      }
+      return c;
     }
-    return address;
+    final addr = address.trim();
+    if (addr.isNotEmpty) return addr;
+    return 'Kenya';
   }
 
-  String get fullAddress => '$address, $city, $state $zipCode';
-  
+  String get fullAddress {
+    final parts = <String>[];
+    if (address.trim().isNotEmpty) parts.add(address.trim());
+    if (city.trim().isNotEmpty && !parts.contains(city.trim()))
+      parts.add(city.trim());
+    if (state.trim().isNotEmpty && !parts.contains(state.trim()))
+      parts.add(state.trim());
+    if (zipCode.trim().isNotEmpty && !parts.contains(zipCode.trim()))
+      parts.add(zipCode.trim());
+    if (parts.isEmpty) return displayLocation;
+    return parts.join(', ');
+  }
+
   /// Kenya-style full location string
   String get fullKenyaLocation {
     final parts = <String>[];
     if (areaName != null && areaName!.isNotEmpty) parts.add(areaName!);
     if (ward != null && ward!.isNotEmpty && ward != areaName) parts.add(ward!);
-    if (constituency != null && constituency!.isNotEmpty) parts.add(constituency!);
+    if (constituency != null && constituency!.isNotEmpty)
+      parts.add(constituency!);
     if (county != null && county!.isNotEmpty) parts.add('$county County');
     return parts.join(', ');
   }
-  
+
   String get formattedPrice => 'KES ${price.toStringAsFixed(0)}/mo';
 }

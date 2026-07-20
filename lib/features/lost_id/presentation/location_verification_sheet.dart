@@ -26,29 +26,26 @@ Future<LocationVerificationResult?> showLocationVerificationSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => LocationVerificationSheet(
-      detectedLocation: detectedLocation,
-    ),
+    builder: (context) =>
+        LocationVerificationSheet(detectedLocation: detectedLocation),
   );
 }
 
 class LocationVerificationSheet extends StatefulWidget {
   final DeviceLocationResult detectedLocation;
 
-  const LocationVerificationSheet({
-    super.key,
-    required this.detectedLocation,
-  });
+  const LocationVerificationSheet({super.key, required this.detectedLocation});
 
   @override
-  State<LocationVerificationSheet> createState() => _LocationVerificationSheetState();
+  State<LocationVerificationSheet> createState() =>
+      _LocationVerificationSheetState();
 }
 
 class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
   final _searchController = TextEditingController();
   List<LocationSearchResult> _suggestions = [];
   bool _isSearching = false;
-  
+
   // Selected location (starts with detected location)
   String? _selectedWard;
   String? _selectedConstituency;
@@ -139,7 +136,7 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              
+
               // Title
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -156,9 +153,9 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                   ],
                 ),
               ),
-              
+
               const Divider(height: 1),
-              
+
               // Content
               Expanded(
                 child: ListView(
@@ -193,15 +190,18 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                             ),
                             const SizedBox(height: 12),
                             _buildLocationRow('Ward', _selectedWard),
-                            _buildLocationRow('Constituency', _selectedConstituency),
+                            _buildLocationRow(
+                              'Constituency',
+                              _selectedConstituency,
+                            ),
                             _buildLocationRow('County', _selectedCounty),
                           ],
                         ),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // Search to change location
                     Text(
                       'Not correct? Search for your location:',
@@ -210,7 +210,7 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    
+
                     TextField(
                       controller: _searchController,
                       decoration: InputDecoration(
@@ -235,14 +235,16 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                       ),
                       onChanged: _onSearchChanged,
                     ),
-                    
+
                     // Search results
                     if (_suggestions.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Container(
                         constraints: const BoxConstraints(maxHeight: 200),
                         decoration: BoxDecoration(
-                          border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                          border: Border.all(
+                            color: colorScheme.outline.withOpacity(0.3),
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: ListView.separated(
@@ -257,8 +259,8 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                                 location.type == LocationType.ward
                                     ? Icons.location_city
                                     : location.type == LocationType.constituency
-                                        ? Icons.apartment
-                                        : Icons.map,
+                                    ? Icons.apartment
+                                    : Icons.map,
                                 size: 20,
                                 color: colorScheme.primary,
                               ),
@@ -267,8 +269,8 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                                 location.type == LocationType.ward
                                     ? '${location.constituency}, ${location.county}'
                                     : location.type == LocationType.constituency
-                                        ? location.county ?? ''
-                                        : 'County',
+                                    ? location.county ?? ''
+                                    : 'County',
                                 style: theme.textTheme.bodySmall,
                               ),
                               onTap: () => _selectLocation(location),
@@ -277,22 +279,24 @@ class _LocationVerificationSheetState extends State<LocationVerificationSheet> {
                         ),
                       ),
                     ],
-                    
+
                     if (_isSearching && _suggestions.isEmpty) ...[
                       const SizedBox(height: 16),
                       Center(
                         child: Text(
                           'No locations found',
-                          style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5)),
+                          style: TextStyle(
+                            color: colorScheme.onSurface.withOpacity(0.5),
+                          ),
                         ),
                       ),
                     ],
-                    
+
                     const SizedBox(height: 24),
                   ],
                 ),
               ),
-              
+
               // Confirm button
               Container(
                 padding: const EdgeInsets.all(16),

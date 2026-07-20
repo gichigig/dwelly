@@ -27,8 +27,9 @@ class TutorialOverlayController {
 
   OverlayEntry? _overlayEntry;
   final BuildContext _context;
+  final VoidCallback? onDismissed;
 
-  TutorialOverlayController(this._context);
+  TutorialOverlayController(this._context, {this.onDismissed});
 
   /// Shows the tutorial if the user hasn't completed it yet.
   Future<void> start(List<TutorialStep> steps) async {
@@ -38,6 +39,7 @@ class TutorialOverlayController {
 
     if (alreadyDone) {
       print('[Tutorial] Tutorial already completed — skipping');
+      onDismissed?.call();
       return;
     }
 
@@ -63,9 +65,20 @@ class TutorialOverlayController {
   }
 
   void _dismiss(SharedPreferences prefs) {
-    _overlayEntry?.remove();
+    final entry = _overlayEntry;
     _overlayEntry = null;
     prefs.setBool(_prefKey, true);
+    if (entry != null) {
+      try {
+        entry.remove();
+      } catch (_) {}
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          entry.remove();
+        } catch (_) {}
+      });
+    }
+    onDismissed?.call();
   }
 
   /// Resets the tutorial so it shows again next time.
@@ -98,6 +111,7 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
     with TickerProviderStateMixin {
   int _currentStep = 0;
   Timer? _autoAdvanceTimer;
+  bool _isDismissing = false;
 
   // Spotlight position & size (animated)
   late AnimationController _spotlightController;
@@ -136,9 +150,13 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
       curve: Curves.easeIn,
     );
 
-    // Kick off
-    _goToStep(0);
-    _fadeController.forward();
+    // Kick off after the current frame finishes layout so renderBox keys aren't null!
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _goToStep(0);
+        _fadeController.forward();
+      }
+    });
   }
 
   @override
@@ -154,9 +172,7 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
     print('[Tutorial] _goToStep($index) — total steps: ${widget.steps.length}');
     if (index >= widget.steps.length) {
       print('[Tutorial] All steps done — dismissing');
-      _fadeController.reverse().then((_) {
-        if (mounted) widget.onComplete();
-      });
+      _dismissOverlay(widget.onComplete);
       return;
     }
 
@@ -167,7 +183,9 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
         step.targetKey.currentContext?.findRenderObject() as RenderBox?;
 
     if (renderBox == null || !renderBox.attached) {
-      print('[Tutorial] Step $index ("${step.title}") — renderBox is ${renderBox == null ? "null" : "detached"}, skipping');
+      print(
+        '[Tutorial] Step $index ("${step.title}") — renderBox is ${renderBox == null ? "null" : "detached"}, skipping',
+      );
       Future.microtask(() => _goToStep(index + 1));
       return;
     }
@@ -202,11 +220,25 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
     _goToStep(_currentStep + 1);
   }
 
-  void _onSkip() {
+  void _dismissOverlay(VoidCallback callback) {
+    if (_isDismissing) return;
+    _isDismissing = true;
     _autoAdvanceTimer?.cancel();
-    _fadeController.reverse().then((_) {
-      if (mounted) widget.onSkip();
-    });
+
+    var done = false;
+    void finish() {
+      if (done) return;
+      done = true;
+      callback();
+    }
+
+    if (_fadeController.value <= 0.05) {
+      finish();
+      return;
+    }
+
+    _fadeController.reverse().whenComplete(finish);
+    Future.delayed(const Duration(milliseconds: 200), finish);
   }
 
   @override
@@ -229,8 +261,9 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                   _pulseAnimation,
                 ]),
                 builder: (context, _) {
-                  final t = Curves.easeOutCubic
-                      .transform(_spotlightController.value);
+                  final t = Curves.easeOutCubic.transform(
+                    _spotlightController.value,
+                  );
                   final currentRect = _targetRect;
                   final prevRect = _previousRect ?? _targetRect;
 
@@ -245,19 +278,12 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
 
                   // Calculate spotlight circle
                   final center = animatedRect.center;
-                  final baseRadius =
-                      (animatedRect.longestSide / 2) + 20;
+                  final baseRadius = (animatedRect.longestSide / 2) + 20;
                   final radius = baseRadius + _pulseAnimation.value;
 
                   return SizedBox.expand(
-                    child: ClipPath(
-                      clipper: _InvertedCircleClipper(center, radius),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                        child: Container(
-                          color: Colors.black.withValues(alpha: 0.65),
-                        ),
-                      ),
+                    child: CustomPaint(
+                      painter: _HolePainter(center, radius),
                     ),
                   );
                 },
@@ -272,14 +298,13 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                 builder: (context, _) {
                   if (_targetRect == null) return const SizedBox.shrink();
 
-                  final t = Curves.easeOutCubic
-                      .transform(_spotlightController.value);
+                  final t = Curves.easeOutCubic.transform(
+                    _spotlightController.value,
+                  );
                   final prevRect = _previousRect ?? _targetRect;
-                  final animatedRect =
-                      Rect.lerp(prevRect, _targetRect!, t)!;
+                  final animatedRect = Rect.lerp(prevRect, _targetRect!, t)!;
                   final center = animatedRect.center;
-                  final baseRadius =
-                      (animatedRect.longestSide / 2) + 20;
+                  final baseRadius = (animatedRect.longestSide / 2) + 20;
                   final radius = baseRadius + _pulseAnimation.value;
 
                   return Positioned(
@@ -321,22 +346,18 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                   }
 
                   final step = widget.steps[_currentStep];
-                  final t = Curves.easeOutCubic
-                      .transform(_spotlightController.value);
+                  final t = Curves.easeOutCubic.transform(
+                    _spotlightController.value,
+                  );
                   final prevRect = _previousRect ?? _targetRect;
-                  final animatedRect =
-                      Rect.lerp(prevRect, _targetRect!, t)!;
+                  final animatedRect = Rect.lerp(prevRect, _targetRect!, t)!;
 
                   // Position card below or above the spotlight
-                  final spotBottom = animatedRect.bottom +
-                      (animatedRect.longestSide / 2) +
-                      40;
-                  final showBelow =
-                      spotBottom + 160 < screenSize.height;
+                  final spotBottom =
+                      animatedRect.bottom + (animatedRect.longestSide / 2) + 40;
+                  final showBelow = spotBottom + 160 < screenSize.height;
 
-                  final cardTop = showBelow
-                      ? animatedRect.bottom + 40
-                      : null;
+                  final cardTop = showBelow ? animatedRect.bottom + 40 : null;
                   final cardBottom = showBelow
                       ? null
                       : screenSize.height - animatedRect.top + 40;
@@ -357,14 +378,14 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                 },
               ),
 
-              // Skip button (top right)
+              // Finish button (top right)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 12,
                 right: 16,
                 child: TextButton.icon(
-                  onPressed: _onSkip,
-                  icon: const Icon(Icons.close, size: 18),
-                  label: const Text('Skip'),
+                  onPressed: () => _dismissOverlay(widget.onComplete),
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('Finish'),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
                     backgroundColor: Colors.white.withValues(alpha: 0.15),
@@ -430,8 +451,8 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.85),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -444,11 +465,7 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                       color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      step.icon,
-                      color: Colors.white,
-                      size: 22,
-                    ),
+                    child: Icon(step.icon, color: Colors.white, size: 22),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -477,7 +494,62 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                   decoration: TextDecoration.none,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
+              // Buttons row: Finish and Next
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => _dismissOverlay(widget.onComplete),
+                    icon: const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 18),
+                    label: const Text(
+                      'Finish',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.15),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                  if (_currentStep < widget.steps.length - 1)
+                    ElevatedButton.icon(
+                      onPressed: _onTap,
+                      icon: const Icon(Icons.arrow_forward, size: 16),
+                      label: const Text('Next'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      onPressed: () => _dismissOverlay(widget.onComplete),
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Done'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
               // Tap hint
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -485,14 +557,14 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
                   Icon(
                     Icons.touch_app_outlined,
                     color: Colors.white.withValues(alpha: 0.5),
-                    size: 16,
+                    size: 14,
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'Tap anywhere to continue',
+                    'Tap anywhere outside or click Finish to exit',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                       decoration: TextDecoration.none,
                     ),
@@ -511,23 +583,30 @@ class _TutorialOverlayWidgetState extends State<_TutorialOverlayWidget>
 // Inverted Circle Clipper — clips everything EXCEPT the circle
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _InvertedCircleClipper extends CustomClipper<Path> {
+class _HolePainter extends CustomPainter {
   final Offset center;
   final double radius;
 
-  _InvertedCircleClipper(this.center, this.radius);
+  _HolePainter(this.center, this.radius);
 
   @override
-  Path getClip(Size size) {
-    final path = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addOval(Rect.fromCircle(center: center, radius: radius))
-      ..fillType = PathFillType.evenOdd;
-    return path;
+  void paint(Canvas canvas, Size size) {
+    // A massive stroke width ensures the entire screen is covered with color,
+    // leaving only the center 'radius' perfectly transparent.
+    // This is vastly more performant than using ClipPath with evenOdd fill.
+    final maxDimension = size.width > size.height ? size.width : size.height;
+    final strokeWidth = maxDimension * 2.5;
+
+    final paint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawCircle(center, radius + (strokeWidth / 2), paint);
   }
 
   @override
-  bool shouldReclip(_InvertedCircleClipper oldClipper) {
-    return center != oldClipper.center || radius != oldClipper.radius;
+  bool shouldRepaint(_HolePainter oldDelegate) {
+    return center != oldDelegate.center || radius != oldDelegate.radius;
   }
 }

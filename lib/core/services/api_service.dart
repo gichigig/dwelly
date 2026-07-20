@@ -15,7 +15,7 @@ class ApiService {
   static final Map<String, String> _etagByKey = {};
   static const Duration defaultRequestTimeout = Duration(seconds: 5);
 
-  static const Map<String, String> _hostAliases = {};
+  static const String uploadThumbnailUrlKey = 'thumbnailUrl';
 
   // Optional custom API URL passed via --dart-define.
   // Example: flutter run --dart-define=CUSTOM_API_URL=https://api.example.com
@@ -80,8 +80,8 @@ class ApiService {
         return _defaultBaseUrl;
       }
 
-      final correctedHost = _hostAliases[uri.host.toLowerCase()];
-      if (correctedHost != null && correctedHost != uri.host) {
+      final correctedHost = _resolveEmulatorHost(uri.host);
+      if (correctedHost != uri.host) {
         final correctedUri = uri.replace(host: correctedHost);
         normalized = correctedUri.toString();
         if (normalized.endsWith('/')) {
@@ -98,19 +98,92 @@ class ApiService {
     return '$normalized/api';
   }
 
+  static String _resolveEmulatorHost(String host) {
+    if (kIsWeb) return host;
+
+    if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {
+      return '10.0.2.2';
+    }
+
+    return host;
+  }
+
   /// Helper method to resolve media URLs (e.g., from /api/files/...) into absolute URLs
   static String? resolveMediaUrl(String? url) {
     if (url == null || url.isEmpty) return null;
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    
+
     final base = effectiveBaseUrl;
-    final baseWithoutApi = base.endsWith('/api') ? base.substring(0, base.length - 4) : base;
-    
+    final baseWithoutApi = base.endsWith('/api')
+        ? base.substring(0, base.length - 4)
+        : base;
+
     if (url.startsWith('/')) {
       return '$baseWithoutApi$url';
     }
-    
+
     return '$baseWithoutApi/$url';
+  }
+
+  /// Helper method to derive deterministic thumbnail URLs from main image URLs
+  static String getThumbnailUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    if (url.contains('/thumbnails/') || url.contains('thumb_')) return url;
+
+    Uri? uri = Uri.tryParse(url);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      final segments = uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .toList();
+      if (segments.isEmpty) return url;
+
+      final filename = segments.last;
+      if (filename.isEmpty) return url;
+
+      if (url.contains('/api/files/')) {
+        return url.replaceAll(
+          '/api/files/$filename',
+          '/api/files/thumb_$filename',
+        );
+      }
+
+      return uri
+          .replace(pathSegments: ['thumbnails', 'thumb_$filename'])
+          .toString();
+    }
+
+    final filename = url.split('/').last;
+    if (filename.isEmpty || filename == url) return '';
+
+    if (url.contains('/api/files/')) {
+      return url.replaceAll(
+        '/api/files/$filename',
+        '/api/files/thumb_$filename',
+      );
+    }
+
+    if (url.contains('/properties/')) {
+      return url.replaceAll(
+        '/properties/$filename',
+        '/thumbnails/thumb_$filename',
+      );
+    }
+
+    if (url.contains('/images/')) {
+      return url.replaceAll('/images/$filename', '/thumbnails/thumb_$filename');
+    }
+
+    return '/thumbnails/thumb_$filename';
+  }
+
+  /// Feed-only image helper: returns a thumbnail URL when possible, otherwise empty.
+  /// Use this for Explore/list cards so the app never loads full-size images there.
+  static String getFeedThumbnailUrl(String? url) {
+    final thumbnail = getThumbnailUrl(url);
+    if (thumbnail.isEmpty) return '';
+    final resolved = resolveMediaUrl(thumbnail) ?? thumbnail;
+    if (url != null && resolved == url) return '';
+    return resolved;
   }
 
   static String get _defaultBaseUrl {
@@ -123,6 +196,7 @@ class ApiService {
     final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'X-Mobile-Api-Key': mobileApiKey,
     };
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
@@ -234,14 +308,18 @@ class ApiService {
 
     request.files.add(
       await http.MultipartFile.fromPath(
-        fileField, 
+        fileField,
         file.path,
         contentType: mediaType,
       ),
     );
 
-    final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
-    final response = await http.Response.fromStream(streamedResponse).timeout(const Duration(seconds: 30));
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 30),
+    );
+    final response = await http.Response.fromStream(
+      streamedResponse,
+    ).timeout(const Duration(seconds: 30));
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       final data = jsonDecode(response.body);
@@ -249,6 +327,70 @@ class ApiService {
     } else {
       throw parseHttpError(response, fallbackMessage: 'Failed to upload file');
     }
+  }
+
+  static Future<UploadedMediaResult> uploadFileWithMetadata(
+    File file,
+    String endpoint, {
+    String fileField = 'file',
+    String? token,
+  }) async {
+    NetworkService.instance.checkNetwork();
+    final uri = Uri.parse('$effectiveBaseUrl$endpoint');
+    final request = http.MultipartRequest('POST', uri);
+
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final ext = file.path.split('.').last.toLowerCase();
+    MediaType? mediaType;
+    if (ext == 'jpg' || ext == 'jpeg') {
+      mediaType = MediaType('image', 'jpeg');
+    } else if (ext == 'png') {
+      mediaType = MediaType('image', 'png');
+    } else if (ext == 'gif') {
+      mediaType = MediaType('image', 'gif');
+    } else if (ext == 'webp') {
+      mediaType = MediaType('image', 'webp');
+    } else if (ext == 'mp4') {
+      mediaType = MediaType('video', 'mp4');
+    } else if (ext == 'webm') {
+      mediaType = MediaType('video', 'webm');
+    } else if (ext == 'mov') {
+      mediaType = MediaType('video', 'quicktime');
+    } else if (ext == 'heic' || ext == 'heif') {
+      mediaType = MediaType('image', 'heic');
+    } else if (ext == 'pdf') {
+      mediaType = MediaType('application', 'pdf');
+    } else {
+      mediaType = MediaType('image', 'jpeg');
+    }
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        fileField,
+        file.path,
+        contentType: mediaType,
+      ),
+    );
+
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 30),
+    );
+    final response = await http.Response.fromStream(
+      streamedResponse,
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return UploadedMediaResult(
+        url: data['url'] as String,
+        thumbnailUrl: data[uploadThumbnailUrlKey] as String?,
+        mediumUrl: data['mediumUrl'] as String?,
+      );
+    }
+    throw parseHttpError(response, fallbackMessage: 'Failed to upload file');
   }
 
   // Helper to parse JSON
@@ -424,6 +566,18 @@ class ApiService {
     final authScope = auth == null || auth.isEmpty ? 'anon' : auth.hashCode;
     return '${uri.toString()}|$authScope';
   }
+}
+
+class UploadedMediaResult {
+  final String url;
+  final String? thumbnailUrl;
+  final String? mediumUrl;
+
+  const UploadedMediaResult({
+    required this.url,
+    this.thumbnailUrl,
+    this.mediumUrl,
+  });
 }
 
 class _CachedGetEntry {

@@ -6,4 +6,3 @@ abstract class LostIdRepo {
   Future<void> add(LostIdItem item);
   Future<void> markClaimed(String id);
 }
-

@@ -5,10 +5,8 @@ class CacheEntry<T> {
   final DateTime cachedAt;
   final Duration ttl;
 
-  CacheEntry({
-    required this.data,
-    required this.ttl,
-  }) : cachedAt = DateTime.now();
+  CacheEntry({required this.data, required this.ttl})
+    : cachedAt = DateTime.now();
 
   bool get isExpired => DateTime.now().difference(cachedAt) > ttl;
   bool get isValid => !isExpired;
@@ -20,10 +18,7 @@ class MemoryCache<T> {
   final int maxSize;
   final Map<String, CacheEntry<T>> _cache = {};
 
-  MemoryCache({
-    required this.ttl,
-    this.maxSize = 100,
-  });
+  MemoryCache({required this.ttl, this.maxSize = 100});
 
   /// Get cached value if valid, or null if expired/missing.
   T? get(String key) {
@@ -92,7 +87,8 @@ class CacheManager {
   static final _savedRentalsCache = _SingleValueCache<List<dynamic>>(
     ttl: const Duration(minutes: 5),
   );
-  static _SingleValueCache<List<dynamic>> get savedRentals => _savedRentalsCache;
+  static _SingleValueCache<List<dynamic>> get savedRentals =>
+      _savedRentalsCache;
 
   // --- Rentals ---
   /// LRU cache for individual rental lookups by ID.
@@ -118,7 +114,8 @@ class CacheManager {
   static final _conversationsCache = _SingleValueCache<List<dynamic>>(
     ttl: const Duration(minutes: 1),
   );
-  static _SingleValueCache<List<dynamic>> get conversations => _conversationsCache;
+  static _SingleValueCache<List<dynamic>> get conversations =>
+      _conversationsCache;
 }
 
 /// Cache for a single value (not keyed), with TTL.

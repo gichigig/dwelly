@@ -33,14 +33,16 @@ class _FloatingFilterBubbleState extends State<FloatingFilterBubble>
       vsync: this,
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-    
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, -0.3),
       end: Offset.zero,
@@ -85,10 +87,7 @@ class _FloatingFilterBubbleState extends State<FloatingFilterBubble>
           position: _slideAnimation,
           child: Opacity(
             opacity: _fadeAnimation.value,
-            child: Transform.scale(
-              scale: _scaleAnimation.value,
-              child: child,
-            ),
+            child: Transform.scale(scale: _scaleAnimation.value, child: child),
           ),
         );
       },
@@ -98,7 +97,7 @@ class _FloatingFilterBubbleState extends State<FloatingFilterBubble>
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             // WhatsApp-style subtle background
-            color: isDark 
+            color: isDark
                 ? const Color(0xFF1F2C34) // WhatsApp dark bubble
                 : const Color(0xFFE7F8F3), // WhatsApp light green tint
             borderRadius: BorderRadius.circular(8),
@@ -125,7 +124,7 @@ class _FloatingFilterBubbleState extends State<FloatingFilterBubble>
                 child: Icon(
                   Icons.filter_list_rounded,
                   size: 14,
-                  color: isDark 
+                  color: isDark
                       ? const Color(0xFF00A884)
                       : const Color(0xFF008069),
                 ),
@@ -136,7 +135,7 @@ class _FloatingFilterBubbleState extends State<FloatingFilterBubble>
                 child: Text(
                   'Tap to filter by location, price & type',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark 
+                    color: isDark
                         ? Colors.white.withOpacity(0.85)
                         : const Color(0xFF1B4332),
                     fontSize: 12,
@@ -155,7 +154,7 @@ class _FloatingFilterBubbleState extends State<FloatingFilterBubble>
                     child: Icon(
                       Icons.close,
                       size: 14,
-                      color: isDark 
+                      color: isDark
                           ? Colors.white.withOpacity(0.5)
                           : const Color(0xFF1B4332).withOpacity(0.5),
                     ),
@@ -185,7 +184,8 @@ class ScrollAwareFilterBubble extends StatefulWidget {
   });
 
   @override
-  State<ScrollAwareFilterBubble> createState() => _ScrollAwareFilterBubbleState();
+  State<ScrollAwareFilterBubble> createState() =>
+      _ScrollAwareFilterBubbleState();
 }
 
 class _ScrollAwareFilterBubbleState extends State<ScrollAwareFilterBubble> {
@@ -207,7 +207,7 @@ class _ScrollAwareFilterBubbleState extends State<ScrollAwareFilterBubble> {
       }
     });
   }
-  
+
   void _addListenerWhenReady() {
     // Check periodically until scroll controller has clients
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -223,12 +223,12 @@ class _ScrollAwareFilterBubbleState extends State<ScrollAwareFilterBubble> {
   @override
   void didUpdateWidget(ScrollAwareFilterBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // If filter is applied, hide the bubble
     if (widget.filterApplied && !oldWidget.filterApplied) {
       setState(() => _isVisible = false);
     }
-    
+
     // If scroll controller changed, update listener
     if (widget.scrollController != oldWidget.scrollController) {
       if (oldWidget.scrollController.hasClients) {
@@ -245,10 +245,10 @@ class _ScrollAwareFilterBubbleState extends State<ScrollAwareFilterBubble> {
     if (!widget.scrollController.hasClients) return;
 
     final currentPosition = widget.scrollController.position.pixels;
-    
+
     // Threshold for detecting scroll direction (to avoid jitter)
     const threshold = 10.0;
-    
+
     if (currentPosition <= 0) {
       // At top, show bubble
       if (!_isVisible) {
@@ -265,7 +265,7 @@ class _ScrollAwareFilterBubbleState extends State<ScrollAwareFilterBubble> {
         setState(() => _isVisible = true);
       }
     }
-    
+
     _lastScrollPosition = currentPosition;
   }
 

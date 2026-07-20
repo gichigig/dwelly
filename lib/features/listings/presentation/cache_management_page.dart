@@ -7,7 +7,10 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/api_service.dart';
 import '../../../core/services/cache_service.dart' as app_cache;
+import '../../../core/services/data_saver_service.dart';
 import '../../../core/services/device_rental_cache_service.dart';
+import '../../../core/services/dwelly_media_cache_manager.dart';
+import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 // Top-level function for the background isolate
 int _calcDirSize(String dirPath) {
@@ -38,27 +41,52 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
   String _cacheSizeStr = 'Calculating...';
   int _totalCacheBytes = 0;
   bool _isClearing = false;
+  bool _dataSaverEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _calculateCacheSize();
+    _loadDataSaverSetting();
+  }
+
+  Future<void> _loadDataSaverSetting() async {
+    final enabled = await DataSaverService.instance.isEnabled();
+    if (!mounted) return;
+    setState(() => _dataSaverEnabled = enabled);
+  }
+
+  Future<void> _setDataSaver(bool enabled) async {
+    setState(() => _dataSaverEnabled = enabled);
+    await DataSaverService.instance.setEnabled(enabled);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled
+              ? 'Data Saver enabled. Image prefetch is limited.'
+              : 'Data Saver disabled. Faster image prefetch is active.',
+        ),
+      ),
+    );
   }
 
   Future<void> _calculateCacheSize() async {
     try {
       final tempDir = await getTemporaryDirectory();
       final totalSize = await compute(_calcDirSize, tempDir.path);
-      
+
       if (!mounted) return;
       setState(() {
         _totalCacheBytes = totalSize;
         if (totalSize < 1024 * 1024) {
           _cacheSizeStr = '${(totalSize / 1024).toStringAsFixed(1)} KB';
         } else if (totalSize < 1024 * 1024 * 1024) {
-          _cacheSizeStr = '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+          _cacheSizeStr =
+              '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB';
         } else {
-          _cacheSizeStr = '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+          _cacheSizeStr =
+              '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
         }
       });
     } catch (e) {
@@ -73,11 +101,12 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
 
   Future<void> _clearDeviceCache() async {
     setState(() => _isClearing = true);
-    
+
     await DeviceRentalCacheService.clear();
     app_cache.CacheManager.clearAll();
     ApiService.clearCachedGets();
     await DefaultCacheManager().emptyCache();
+    await DwellyMediaCacheManager.instance.emptyCache();
 
     // Aggressively clear the entire temp directory to ensure size drops to 0
     try {
@@ -93,13 +122,13 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
 
     if (!mounted) return;
     await _calculateCacheSize();
-    
+
     if (!mounted) return;
     setState(() => _isClearing = false);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Device cache cleared.')),
-    );
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Device cache cleared.')));
   }
 
   @override
@@ -109,10 +138,7 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
     if (progress > 1.0) progress = 1.0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Storage & Cache'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Storage & Cache'), centerTitle: true),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -126,9 +152,36 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
               const SizedBox(height: 12),
               Text(
                 'Offline listings, images, and search history use storage space on your device. Clearing it frees up space but may briefly increase data usage the next time you browse.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5, fontSize: 16),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 40),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Data Saver',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'On by default. Turn off to allow thumbnail prefetch for faster scrolling.',
+                    ),
+                    value: _dataSaverEnabled,
+                    onChanged: _setDataSaver,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -150,14 +203,20 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                       children: [
                         Text(
                           'Total Used',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
                         Text(
                           _cacheSizeStr,
                           style: TextStyle(
-                            fontSize: 18, 
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: progress > 0.8 ? Colors.red : Theme.of(context).colorScheme.primary,
+                            color: progress > 0.8
+                                ? Colors.red
+                                : Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ],
@@ -168,9 +227,13 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 16,
-                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          progress > 0.8 ? Colors.red : Theme.of(context).colorScheme.primary,
+                          progress > 0.8
+                              ? Colors.red
+                              : Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     ),
@@ -185,14 +248,22 @@ class _CacheManagementPageState extends State<CacheManagementPage> {
                   onPressed: _isClearing ? null : _clearDeviceCache,
                   icon: _isClearing
                       ? const SizedBox(
-                          width: 24, 
-                          height: 24, 
-                          child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)
+                          width: 24,
+                          height: 24,
+                          child: DwellyOrbitingLoader(glowColor: Colors.white),
                         )
-                      : const Icon(Icons.delete_sweep, size: 28, color: Colors.white),
+                      : const Icon(
+                          Icons.delete_sweep,
+                          size: 28,
+                          color: Colors.white,
+                        ),
                   label: Text(
                     _isClearing ? 'CLEARING...' : 'CLEAR DEVICE CACHE',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.red.shade600,
