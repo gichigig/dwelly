@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:realestate/core/services/api_service.dart';
 import 'package:realestate/core/services/dwelly_media_cache_manager.dart';
-import 'package:realestate/core/widgets/progressive_image.dart';
 
 /// A modern, high-performance Skeleton Shimmer Wave placeholder for Dwelly.
 /// Animates a sleek horizontal light-wave across containers while images or content load.
@@ -97,6 +94,12 @@ class DwellyNetworkImage extends StatefulWidget {
   /// Whether to load the full-resolution image. Set to false for feed cards.
   final bool loadFull;
 
+  /// Whether to display background placeholder boxes while loading.
+  final bool usePlaceholder;
+
+  /// Transition duration when fading in the image.
+  final Duration fadeInDuration;
+
   const DwellyNetworkImage({
     super.key,
     required this.imageUrl,
@@ -111,6 +114,8 @@ class DwellyNetworkImage extends StatefulWidget {
     this.thumbnailUrl,
     this.mediumUrl,
     this.loadFull = false,
+    this.usePlaceholder = true,
+    this.fadeInDuration = const Duration(milliseconds: 150),
   });
 
   @override
@@ -130,12 +135,12 @@ class _DwellyNetworkImageState extends State<DwellyNetworkImage> {
     final dpr = MediaQuery.of(context).devicePixelRatio;
     final effectiveMemCacheWidth =
         widget.memCacheWidth ??
-        (widget.width != null
+        (widget.width != null && widget.width!.isFinite
             ? (widget.width! * dpr).round().clamp(1, 1200)
             : 800);
     final effectiveMemCacheHeight =
         widget.memCacheHeight ??
-        (widget.height != null
+        (widget.height != null && widget.height!.isFinite
             ? (widget.height! * dpr).round().clamp(1, 1200)
             : null);
 
@@ -147,10 +152,12 @@ class _DwellyNetworkImageState extends State<DwellyNetworkImage> {
         ? ApiService.resolveMediaUrl(explicitThumb)
         : (derivedThumb.isNotEmpty ? derivedThumb : null);
 
+    final explicitMedium = widget.mediumUrl;
+    final derivedMedium = ApiService.getFeedMediumUrl(widget.imageUrl);
     final effectiveMediumUrl =
-        (widget.mediumUrl != null && widget.mediumUrl!.isNotEmpty)
-        ? ApiService.resolveMediaUrl(widget.mediumUrl!)
-        : null;
+        (explicitMedium != null && explicitMedium.isNotEmpty)
+        ? ApiService.resolveMediaUrl(explicitMedium)
+        : (derivedMedium.isNotEmpty ? derivedMedium : null);
 
     final effectiveFullUrl = ApiService.resolveMediaUrl(widget.imageUrl);
 
@@ -168,7 +175,12 @@ class _DwellyNetworkImageState extends State<DwellyNetworkImage> {
       ),
     );
 
-    Widget buildCachedImage(String url, Widget placeholderWidget) {
+    final shouldLoadFull = widget.loadFull || widget.shape == BoxShape.circle;
+    final hasFull = effectiveFullUrl != null && effectiveFullUrl.isNotEmpty;
+    final hasMedium = effectiveMediumUrl != null && effectiveMediumUrl.isNotEmpty;
+    final hasThumb = effectiveThumbUrl != null && effectiveThumbUrl.isNotEmpty;
+
+    Widget singleImage(String url, {Widget? placeholder, bool isFinalLayer = false, bool canFallbackToFull = true}) {
       return CachedNetworkImage(
         imageUrl: url,
         cacheManager: DwellyMediaCacheManager.instance,
@@ -177,52 +189,66 @@ class _DwellyNetworkImageState extends State<DwellyNetworkImage> {
         fit: widget.fit,
         memCacheWidth: effectiveMemCacheWidth,
         memCacheHeight: effectiveMemCacheHeight,
-        fadeInDuration: const Duration(milliseconds: 250),
-        fadeOutDuration: const Duration(milliseconds: 250),
-        placeholder: (context, url) => placeholderWidget,
-        errorWidget: (context, url, error) =>
-            widget.errorWidget ?? _buildDefaultError(context),
+        fadeInDuration: widget.fadeInDuration,
+        fadeOutDuration: Duration.zero,
+        placeholder: (context, url) =>
+            (widget.usePlaceholder && placeholder != null)
+                ? placeholder
+                : const SizedBox.shrink(),
+        errorWidget: (context, url, error) {
+          if (canFallbackToFull && hasFull && url != effectiveFullUrl) {
+            return singleImage(effectiveFullUrl, placeholder: placeholder, isFinalLayer: true, canFallbackToFull: false);
+          }
+          return isFinalLayer || (!hasThumb && !hasMedium)
+              ? (widget.errorWidget ?? _buildDefaultError(context))
+              : const SizedBox.shrink();
+        },
       );
     }
 
-    Widget content;
-    final hasFull = effectiveFullUrl != null && effectiveFullUrl.isNotEmpty;
-    final hasMedium = effectiveMediumUrl != null && effectiveMediumUrl.isNotEmpty;
-    final hasThumb = effectiveThumbUrl != null && effectiveThumbUrl.isNotEmpty;
-
-    if (hasFull && widget.loadFull) {
-      if (hasMedium) {
-        content = buildCachedImage(
-          effectiveFullUrl,
-          buildCachedImage(
-            effectiveMediumUrl,
-            hasThumb ? buildCachedImage(effectiveThumbUrl, fallbackPlaceholder) : fallbackPlaceholder,
-          ),
-        );
-      } else if (hasThumb) {
-        content = buildCachedImage(
-          effectiveFullUrl,
-          buildCachedImage(effectiveThumbUrl, fallbackPlaceholder),
-        );
-      } else {
-        content = buildCachedImage(effectiveFullUrl, fallbackPlaceholder);
-      }
+    final layers = <Widget>[];
+    if (hasThumb) {
+      final isFinal = !hasMedium && (!shouldLoadFull || !hasFull);
+      layers.add(
+        singleImage(
+          effectiveThumbUrl,
+          placeholder: fallbackPlaceholder,
+          isFinalLayer: isFinal,
+        ),
+      );
     } else if (hasMedium) {
-      if (hasThumb) {
-        content = buildCachedImage(
+      final isFinal = !shouldLoadFull || !hasFull;
+      layers.add(
+        singleImage(
           effectiveMediumUrl,
-          buildCachedImage(effectiveThumbUrl, fallbackPlaceholder),
-        );
-      } else {
-        content = buildCachedImage(effectiveMediumUrl, fallbackPlaceholder);
-      }
-    } else if (hasThumb) {
-      content = buildCachedImage(effectiveThumbUrl, fallbackPlaceholder);
+          placeholder: fallbackPlaceholder,
+          isFinalLayer: isFinal,
+        ),
+      );
     } else if (hasFull) {
-      content = buildCachedImage(effectiveFullUrl, fallbackPlaceholder);
+      layers.add(
+        singleImage(
+          effectiveFullUrl,
+          placeholder: fallbackPlaceholder,
+          isFinalLayer: true,
+        ),
+      );
     } else {
-      content = widget.errorWidget ?? fallbackPlaceholder;
+      layers.add(widget.errorWidget ?? fallbackPlaceholder);
     }
+
+    if (hasThumb && hasMedium) {
+      final isFinal = !shouldLoadFull || !hasFull;
+      layers.add(singleImage(effectiveMediumUrl, isFinalLayer: isFinal));
+    }
+
+    if (shouldLoadFull && hasFull && (hasThumb || hasMedium)) {
+      layers.add(singleImage(effectiveFullUrl, isFinalLayer: true));
+    }
+
+    Widget content = layers.length == 1
+        ? layers.first
+        : Stack(fit: StackFit.expand, children: layers);
 
     if (widget.borderRadius != null && widget.shape == BoxShape.rectangle) {
       return ClipRRect(borderRadius: widget.borderRadius!, child: content);

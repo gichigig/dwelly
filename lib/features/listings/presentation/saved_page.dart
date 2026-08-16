@@ -209,7 +209,7 @@ class SavedPageState extends State<SavedPage> {
       onRefresh: () => _loadSavedRentals(forceRefresh: true),
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
         itemCount: _savedRentals.length + (_isLoadingMore ? 1 : 0),
         itemBuilder: (context, index) {
           if (index >= _savedRentals.length) {
@@ -335,19 +335,16 @@ class _SavedRentalCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child:
-                    (rental.imageUrls.isNotEmpty ||
-                        rental.thumbnailUrls.isNotEmpty)
+                child: rental.displayMediaUrl != null
                     ? SizedBox(
                         width: 64,
                         height: 64,
                         child: DwellyNetworkImage(
-                          imageUrl: rental.imageUrls.isNotEmpty
-                              ? rental.imageUrls.first
-                              : rental.thumbnailUrls.first,
+                          imageUrl: rental.displayMediaUrl!,
                           thumbnailUrl: rental.thumbnailUrls.isNotEmpty
                               ? rental.thumbnailUrls.first
                               : null,
+                          loadFull: true,
                           width: 64,
                           height: 64,
                           fit: BoxFit.cover,

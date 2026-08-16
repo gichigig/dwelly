@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
-import 'package:dwelly/core/services/api_service.dart';
-import 'package:dwelly/core/services/auth_service.dart';
+import 'package:realestate/core/services/api_service.dart';
+import 'package:realestate/core/services/auth_service.dart';
 
 class Helper {
   final int id;
@@ -48,7 +48,7 @@ class HelpersRepository {
 
   Future<List<Helper>> getAvailableHelpers({String? county}) async {
     final token = AuthService.token;
-    var uri = Uri.parse('${ApiService.baseUrl}/api/helper/available');
+    var uri = Uri.parse('${ApiService.baseUrl}/helper/available');
     if (county != null && county.isNotEmpty) {
       uri = uri.replace(queryParameters: {'county': county});
     }
@@ -72,7 +72,7 @@ class HelpersRepository {
   Future<void> hireHelper(int helperId, String phone) async {
     final token = AuthService.token;
     final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/api/helper-jobs/hire/$helperId'),
+      Uri.parse('${ApiService.baseUrl}/helper-jobs/hire/$helperId'),
       headers: {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',

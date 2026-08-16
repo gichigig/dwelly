@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -309,7 +308,7 @@ class _ChatPageState extends State<ChatPage> {
   void _startPolling() {
     // Poll fallback when live socket is unavailable.
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       _pollForNewMessages();
     });
   }
@@ -397,19 +396,6 @@ class _ChatPageState extends State<ChatPage> {
         
         if (_conversation?.id != null) {
           _realtimeService.sendReadReceiptEvent(_conversation!.id!);
-        }
-
-        // Thundering herd protection: check if reconnecting after a significant drop (>= 5s)
-        final lastDisconnect = _realtimeService.lastDisconnectedAt;
-        _realtimeService.clearDisconnectTimestamp();
-        if (lastDisconnect != null &&
-            DateTime.now().difference(lastDisconnect).inSeconds >= 5) {
-          // Add query smoothing jitter (0-1.5s) before catch-up REST sync
-          Future.delayed(Duration(milliseconds: Random().nextInt(1500)), () {
-            if (mounted && _isRealtimeConnected) {
-              _pollForNewMessages();
-            }
-          });
         }
       },
       onError: (_) {

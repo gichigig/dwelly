@@ -52,9 +52,10 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'premium_page.dart';
 import 'package:realestate/features/user_profile/presentation/user_public_profile_page.dart';
 import '../../../core/widgets/full_screen_image_avatar.dart';
-import '../../../core/services/feed_impression_service.dart';
 import '../../../core/services/video_unlock_session_service.dart';
+import '../../../core/services/feed_impression_service.dart';
 import '../../../core/widgets/full_screen_gallery.dart';
+import 'widgets/tiktok_rental_page.dart';
 
 class ExplorePage extends StatefulWidget {
   const ExplorePage({super.key});
@@ -83,6 +84,8 @@ class ExplorePageState extends State<ExplorePage> {
   // Search and filters
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
+  final _pageController = PageController();
+  int _currentPageIndex = 0;
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
   String? _searchArea;
   List<String> _nearbyAreas = [];
@@ -211,6 +214,7 @@ class ExplorePageState extends State<ExplorePage> {
     _dwellTimers.clear();
     _searchController.dispose();
     _scrollController.dispose();
+    _pageController.dispose();
     _backendSearchDebounce?.cancel();
     _scrollPrefetchDebounce?.cancel();
     _typewriterTimer?.cancel();
@@ -242,7 +246,7 @@ class ExplorePageState extends State<ExplorePage> {
   }
 
   Future<void> _initPreferences() async {
-    final results = await Future.wait([
+    final results = await Future.wait<dynamic>([
       UserPreferencesService.getInstance(),
       AdService.getInstance(),
       FeedImpressionService.getInstance(),
@@ -915,6 +919,7 @@ class ExplorePageState extends State<ExplorePage> {
       }
 
       setState(() {
+        _invalidateFeedCache();
         _rentals = filteredRentals;
         _enforceSponsoredOnTop();
         _hasMore = result.hasMore;
@@ -1213,6 +1218,7 @@ class ExplorePageState extends State<ExplorePage> {
         }
 
         setState(() {
+          _invalidateFeedCache();
           _rentals.addAll(newRentals);
           _enforceSponsoredOnTop();
           if (newRentals.isEmpty) {
@@ -1369,6 +1375,7 @@ class ExplorePageState extends State<ExplorePage> {
       }
 
       setState(() {
+        _invalidateFeedCache();
         _rentals.addAll(newRentals);
         _enforceSponsoredOnTop();
         if (newRentals.isEmpty) {
@@ -2068,6 +2075,49 @@ class ExplorePageState extends State<ExplorePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_prefsService?.useTikTokStyle ?? false) {
+      return Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Stack(
+          children: [
+            _buildTikTokFeed(),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'TikTok Feed',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(color: Colors.black45, blurRadius: 4)],
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.search, color: Colors.white),
+                        onPressed: () {
+                          // Could implement search or close TikTok view
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -3232,7 +3282,7 @@ class ExplorePageState extends State<ExplorePage> {
         // Offset itemCount by 1 if we're showing a recycled feed header
         // The header is inserted at index 0 in the builder below
         controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
         itemCount: _getListItemCount(),
         itemBuilder: (context, index) {
           final itemInfo = _getItemAtIndex(index);
@@ -3572,6 +3622,131 @@ class ExplorePageState extends State<ExplorePage> {
           );
         },
       ),
+    );
+  }
+
+  void _onPageChanged(int index) {
+    if (_searchFocusNode.hasFocus) {
+      _searchFocusNode.unfocus();
+    }
+    setState(() => _currentPageIndex = index);
+
+    if (index >= _getListItemCount() - 3) {
+      _loadMoreRentals();
+    }
+
+    final itemInfo = _getItemAtIndex(index);
+    if (itemInfo.rental != null &&
+        itemInfo.rental!.id != null &&
+        !_isEffectivelySponsored(itemInfo.rental!)) {
+      final rental = itemInfo.rental!;
+      _impressionService?.recordImpression(rental.id!);
+      if (_isListingUnseen(rental) && !_dwellTimers.containsKey(rental.id!)) {
+        _dwellTimers[rental.id!] = Timer(
+          const Duration(milliseconds: 3500),
+          () {
+            if (mounted && _currentPageIndex == index) {
+              _impressionService?.recordView(rental.id!);
+              setState(() {
+                _clickedRentalIds.add(rental.id!);
+                _viewedTimestamps[rental.id!] =
+                    DateTime.now().millisecondsSinceEpoch;
+              });
+              _dwellTimers.remove(rental.id!);
+            }
+          },
+        );
+      }
+    }
+    _prefetchUpcomingRentals(index.clamp(0, _rentals.isNotEmpty ? _rentals.length - 1 : 0));
+  }
+
+  Widget _buildTikTokFeed() {
+    if (_isLoading && _rentals.isEmpty) {
+      return Center(
+        child: DwellyOrbitingLoader(
+          glowColor: Theme.of(context).primaryColor,
+          size: 60,
+        ),
+      );
+    }
+
+    if (_error != null && _rentals.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => _loadRentals(refresh: true),
+              child: const Text('Try Again'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_rentals.isEmpty) {
+      return const Center(child: Text('No rentals found.'));
+    }
+
+    return PageView.builder(
+      controller: _pageController,
+      scrollDirection: Axis.vertical,
+      onPageChanged: _onPageChanged,
+      itemCount: _getListItemCount(),
+      itemBuilder: (context, index) {
+        final itemInfo = _getItemAtIndex(index);
+
+        if (itemInfo.isAd && itemInfo.ad != null) {
+          return Container(
+            color: Colors.black,
+            child: Center(
+              child: BannerAdWidget(
+                ad: itemInfo.ad!,
+                adService: _adService!,
+              ),
+            ),
+          );
+        }
+
+        if (itemInfo.isGoogleAd) {
+          return Container(
+            color: Colors.black,
+            child: Center(
+              child: _GoogleFeedAdCard(adService: _adService),
+            ),
+          );
+        }
+
+        if (itemInfo.rental != null) {
+          final rental = itemInfo.rental!;
+          return TikTokRentalPage(
+            key: ValueKey('tiktok-${rental.id ?? index}'),
+            rental: rental,
+            isEffectivelySponsored: _isEffectivelySponsored(rental),
+            onTapDetails: () => _onRentalTap(rental),
+            isSaved: rental.id != null && _savedRentalIds.contains(rental.id),
+            isViewed: rental.id != null && _clickedRentalIds.contains(rental.id),
+            onToggleSave: () {
+              if (rental.id != null) _toggleSaveRental(rental.id!);
+            },
+            onReport: () => _showReportDialog(rental),
+            userLatitude: _deviceLocation?.latitude,
+            userLongitude: _deviceLocation?.longitude,
+            isActivePage: index == _currentPageIndex,
+          );
+        }
+        
+        return const SizedBox.shrink();
+      }
     );
   }
 }
@@ -4646,7 +4821,12 @@ class _RentalCardState extends State<_RentalCard> {
   }
 
   Widget _buildMediaArea(BuildContext context) {
-    if (widget.rental.imageUrls.isEmpty) return _buildImageFallback(context);
+    if (widget.rental.imageUrls.isEmpty && widget.rental.thumbnailUrls.isEmpty) {
+      return AspectRatio(
+        aspectRatio: 16 / 9,
+        child: _buildImageFallback(context),
+      );
+    }
 
     final cardWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
       200.0,
@@ -4767,7 +4947,9 @@ class _RentalCardState extends State<_RentalCard> {
         baseLayout = AspectRatio(
           aspectRatio: 16 / 9,
           child: DwellyNetworkImage(
-            imageUrl: widget.rental.imageUrls.first,
+            imageUrl: widget.rental.imageUrls.isNotEmpty 
+                ? widget.rental.imageUrls.first 
+                : widget.rental.thumbnailUrls.first,
             thumbnailUrl: thumbAt(0),
             fit: BoxFit.cover,
             memCacheWidth: fullCacheW,
@@ -4780,7 +4962,9 @@ class _RentalCardState extends State<_RentalCard> {
       baseLayout = AspectRatio(
         aspectRatio: 16 / 9,
         child: DwellyNetworkImage(
-          imageUrl: widget.rental.imageUrls.first,
+          imageUrl: widget.rental.imageUrls.isNotEmpty 
+              ? widget.rental.imageUrls.first 
+              : widget.rental.thumbnailUrls.first,
           thumbnailUrl: thumbAt(0),
           fit: BoxFit.cover,
           memCacheWidth: fullCacheW,

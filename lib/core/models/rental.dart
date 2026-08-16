@@ -57,6 +57,21 @@ class Rental {
   final String? compoundVideoUrl;
   final String? cardDisplayPreference;
 
+  // Custom Audio fields
+  final String? audioUrl;
+  final String? audioTitle;
+
+  bool get hasAudio => audioUrl != null && audioUrl!.isNotEmpty;
+
+  // Media Text Overlay & Custom Fonts
+  final String? overlayText;
+  final String? overlayFont;
+  final String? overlayColor;
+  final String? overlayPosition;
+  final String? overlayBgStyle;
+
+  bool get hasOverlayText => overlayText != null && overlayText!.trim().isNotEmpty;
+
   // Sponsorship fields
   final String? sponsorshipType;
   final bool isSponsored;
@@ -67,6 +82,14 @@ class Rental {
       (compoundVideoUrl != null && compoundVideoUrl!.isNotEmpty);
 
   String? get effectiveVideoUrl => compoundVideoUrl ?? videoUrl;
+
+  String? get displayMediaUrl {
+    if (imageUrls.isNotEmpty && imageUrls.first.isNotEmpty) return imageUrls.first;
+    if (thumbnailUrls.isNotEmpty && thumbnailUrls.first.isNotEmpty) return thumbnailUrls.first;
+    if (mediumUrls.isNotEmpty && mediumUrls.first.isNotEmpty) return mediumUrls.first;
+    if (effectiveVideoUrl != null && effectiveVideoUrl!.isNotEmpty) return effectiveVideoUrl;
+    return null;
+  }
 
   Rental({
     this.id,
@@ -115,6 +138,13 @@ class Rental {
     this.hasVideo = false,
     this.videoUrl,
     this.compoundVideoUrl,
+    this.audioUrl,
+    this.audioTitle,
+    this.overlayText,
+    this.overlayFont,
+    this.overlayColor,
+    this.overlayPosition,
+    this.overlayBgStyle,
     this.cardDisplayPreference,
     this.sponsorshipType,
     this.isSponsored = false,
@@ -150,7 +180,7 @@ class Rental {
       bathrooms: json['bathrooms'] ?? 0,
       squareFeet: json['squareFeet'] ?? 0,
       floor: json['floor'],
-      propertyType: json['propertyType'] ?? 'OTHER',
+      propertyType: json['propertyType'] ?? 'APARTMENT',
       amenities:
           (json['amenities'] as List<dynamic>?)
               ?.map((e) => e.toString())
@@ -201,6 +231,13 @@ class Rental {
       hasVideo: json['hasVideo'] ?? false,
       videoUrl: json['videoUrl'],
       compoundVideoUrl: json['compoundVideoUrl'],
+      audioUrl: json['audioUrl'],
+      audioTitle: json['audioTitle'],
+      overlayText: json['overlayText'],
+      overlayFont: json['overlayFont'],
+      overlayColor: json['overlayColor'],
+      overlayPosition: json['overlayPosition'],
+      overlayBgStyle: json['overlayBgStyle'],
       cardDisplayPreference: json['cardDisplayPreference'],
       sponsorshipType: json['sponsorshipType'],
       isSponsored: json['isSponsored'] ?? false,
@@ -256,6 +293,8 @@ class Rental {
       'hasVideo': hasVideo,
       if (videoUrl != null) 'videoUrl': videoUrl,
       if (compoundVideoUrl != null) 'compoundVideoUrl': compoundVideoUrl,
+      if (audioUrl != null) 'audioUrl': audioUrl,
+      if (audioTitle != null) 'audioTitle': audioTitle,
       if (cardDisplayPreference != null)
         'cardDisplayPreference': cardDisplayPreference,
       if (sponsorshipType != null) 'sponsorshipType': sponsorshipType,

@@ -931,6 +931,52 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
   bool _isLoading = false;
   bool _isGoogleLoading = false;
   String? _error;
+  bool _isDisposableEmail(String email) {
+    final trimmed = email.trim().toLowerCase();
+    final atIndex = trimmed.indexOf('@');
+    if (atIndex < 1 || atIndex == trimmed.length - 1) return false;
+    final domain = trimmed.substring(atIndex + 1);
+
+    const disposableDomains = {
+      'tempmail.com', 'temp-mail.org', 'temp-mail.io', 'tempmail.net', 'tempmailo.com',
+      '10minutemail.com', '10minutemail.net', '10minutemail.org', '10minmail.com',
+      'guerrillamail.com', 'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz', 'guerrillamailblock.com', 'grr.la',
+      'mailinator.com', 'mailinator2.com', 'sogetthis.com', 'suremail.info', 'mailinater.com',
+      'yopmail.com', 'yopmail.fr', 'yopmail.net', 'cool.fr.nf', 'jetable.fr.nf', 'nospam.ze.tc',
+      'trashmail.com', 'trashmail.net', 'trashmail.me', 'trashmail.org', 'trashcanmail.com',
+      'getnada.com', 'abox.online', 'wuzup.net', 'givmail.com', 'dropmail.me',
+      'dispostable.com', 'sharklasers.com', 'spam4.me', 'throwawaymail.com',
+      'fakeinbox.com', 'crazymailing.com', 'maildrop.cc', 'mohmal.com',
+      'disposablemail.com', 'tempmail.oess.net', 'emailondeck.com', 'mytemp.email',
+      'boun.cr', 'inboxalias.com', 'anonbox.net', 'tmpmail.org', 'tmpmail.net',
+      'disposable.email', '0clickemail.com', 'byom.de', 'dayrep.com', 'teleworm.us',
+      'rhyta.com', 'einrot.com', 'armyspy.com', 'cuvox.de', 'superrito.com',
+      'fleckens.hu', 'gustr.com', 'jourrapide.com', 'iinet.net.au', 'tempail.com',
+      'fake-box.com', 'generator.email', 'incognitomail.org', 'burnermail.io',
+      'trashmail.de', 'spambox.us', 'safetymail.info', 'mytempmail.com',
+      'mailcatch.com', 'guerrillamail.info', 'sharklasers.org', 'yopmail.org',
+      'tempmail.dev', 'tempmail.app', 'tempmail.plus', 'vmail.dev', 'disposable.com'
+    };
+
+    if (disposableDomains.contains(domain)) return true;
+
+    for (final d in disposableDomains) {
+      if (domain.endsWith('.$d')) return true;
+    }
+
+    const keywords = [
+      'tempmail', 'disposable', 'throwaway', 'fakeinbox', 'mailinator',
+      'trashmail', 'guerrillamail', '10minute', 'maildrop', 'yopmail',
+      'getnada', 'anonbox', '0click', 'burnermail', 'incognitomail',
+      'spambox', 'tempail', 'generator.email', 'receive-sms', 'fake-mail'
+    ];
+
+    for (final k in keywords) {
+      if (domain.contains(k)) return true;
+    }
+
+    return false;
+  }
 
   @override
   void dispose() {
@@ -1167,11 +1213,14 @@ class _SharedSignupFormState extends State<SharedSignupForm> {
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      if (value == null || value.trim().isEmpty) {
                         return 'Please enter your email';
                       }
                       if (!value.contains('@')) {
                         return 'Please enter a valid email';
+                      }
+                      if (_isDisposableEmail(value)) {
+                        return 'Disposable/temporary email addresses are not allowed';
                       }
                       return null;
                     },

@@ -289,7 +289,7 @@ class DeviceLocationService {
           wardResult['county'] == null) {
         isOutsideKenya = true;
         try {
-          final placemarks = await placemarkFromCoordinates(
+          final placemarks = await Geocoding().placemarkFromCoordinates(
             position.latitude,
             position.longitude,
           ).timeout(const Duration(seconds: 3));

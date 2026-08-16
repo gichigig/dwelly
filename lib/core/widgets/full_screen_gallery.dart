@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'shimmer_placeholder.dart';
+import 'fading_image_count_badge.dart';
 import '../services/google_ad_service.dart';
 import '../services/video_unlock_session_service.dart';
 import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
+import 'video_unlock_ad_option.dart';
 
 class FullScreenGallery extends StatefulWidget {
   final int? rentalId;
@@ -14,6 +16,7 @@ class FullScreenGallery extends StatefulWidget {
   final int initialIndex;
   final bool showVideoFirst;
   final bool isPremium;
+  final bool isCompoundVideo;
 
   const FullScreenGallery({
     super.key,
@@ -25,6 +28,7 @@ class FullScreenGallery extends StatefulWidget {
     this.initialIndex = 0,
     this.showVideoFirst = false,
     this.isPremium = false,
+    this.isCompoundVideo = false,
   });
 
   @override
@@ -36,10 +40,12 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   VideoPlayerController? _videoController;
   bool _isPlaying = true;
   late bool _hasUnlockedVideo;
+  late int _currentIndex;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
     _hasUnlockedVideo =
         widget.isPremium ||
         VideoUnlockSessionService.isVideoUnlocked(
@@ -57,7 +63,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
         VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
           ..initialize().then((_) {
             _videoController!.setLooping(true);
-            _videoController!.setVolume(0.0); // Mute by default
+            _videoController!.setVolume(widget.isCompoundVideo ? 0.0 : 1.0);
             _videoController!.play();
             if (mounted) setState(() {});
           });
@@ -100,52 +106,27 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       extendBodyBehindAppBar: true,
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: _itemCount,
-        itemBuilder: (context, index) {
+      body: FadingImageCountBadge(
+        currentIndex: _currentIndex,
+        totalCount: _itemCount,
+        alignment: Alignment.topRight,
+        child: PageView.builder(
+          controller: _pageController,
+          onPageChanged: (index) {
+            setState(() => _currentIndex = index);
+          },
+          itemCount: _itemCount,
+          itemBuilder: (context, index) {
           if (widget.videoUrl != null && index == _videoIndex) {
             if (!_hasUnlockedVideo) {
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(color: Colors.black87),
-                  Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.lock_outline,
-                          color: Colors.white54,
-                          size: 48,
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Watch Ad to Unlock Video',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: _unlockVideoWithAd,
-                          icon: const Icon(Icons.play_circle_fill),
-                          label: const Text('Unlock Video'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              return VideoUnlockAdOption.buildPageOverlay(
+                context,
+                onUnlockTap: () {
+                  VideoUnlockAdOption.showOptionModal(
+                    context,
+                    onWatchAd: _unlockVideoWithAd,
+                  );
+                },
               );
             }
 
@@ -237,6 +218,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
           );
         },
       ),
-    );
+    ),
+  );
   }
 }

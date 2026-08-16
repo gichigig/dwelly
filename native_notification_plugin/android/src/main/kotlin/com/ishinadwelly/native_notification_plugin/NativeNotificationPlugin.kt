@@ -75,6 +75,25 @@ class NativeNotificationPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                     result.error("INVALID_ARGUMENT", "ChatId and MessageText required", null)
                 }
             }
+            "showNativeCallNotification" -> {
+                val roomName = call.argument<String>("roomName") ?: ""
+                val callerName = call.argument<String>("callerName") ?: ""
+                val isVideo = call.argument<Boolean>("isVideo") ?: false
+                val callerAvatar = call.argument<String>("callerAvatar") ?: ""
+
+                if (roomName.isNotEmpty()) {
+                    NotificationHelper.showCallNotification(
+                        context = context,
+                        roomName = roomName,
+                        callerName = callerName,
+                        isVideo = isVideo,
+                        callerAvatar = callerAvatar
+                    )
+                    result.success(true)
+                } else {
+                    result.error("INVALID_ARGUMENT", "roomName required", null)
+                }
+            }
             else -> result.notImplemented()
         }
     }
@@ -87,6 +106,24 @@ class NativeNotificationPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
             for (channel in activeChannels) {
                 try {
                     channel.invokeMethod("onNotificationTapped", mapOf("chatId" to chatId))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
+        fun sendCallAccepted(roomName: String, callerName: String, isVideo: Boolean, callerAvatar: String) {
+            for (channel in activeChannels) {
+                try {
+                    channel.invokeMethod(
+                        "onCallAccepted",
+                        mapOf(
+                            "roomName" to roomName,
+                            "callerName" to callerName,
+                            "isVideo" to isVideo,
+                            "callerAvatar" to callerAvatar
+                        )
+                    )
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

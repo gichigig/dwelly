@@ -34,7 +34,7 @@ class _AvailableHelpersPageState extends State<AvailableHelpersPage> {
     });
     try {
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/api/helper/available'),
+        Uri.parse('${ApiService.baseUrl}/helper/available'),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);

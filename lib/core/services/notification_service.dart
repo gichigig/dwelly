@@ -18,6 +18,9 @@ import 'auth_service.dart';
 import 'notification_preferences_service.dart';
 import '../../features/lost_id/data/id_scanner_service.dart';
 import '../../features/lost_id/presentation/temporary_chat_page.dart';
+import '../../features/listings/models/call_invite_model.dart';
+import '../../features/listings/presentation/widgets/incoming_call_dialog.dart';
+import '../../features/listings/presentation/dwelly_livekit_call_page.dart';
 
 // Top-level function for background message handling
 @pragma('vm:entry-point')
@@ -40,8 +43,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     body: message.notification?.body,
   );
 
-  // Always check native Android chat notification FIRST for MESSAGE type
-  final isMessage = type == 'MESSAGE';
+  final body =
+      message.data['body'] as String? ?? message.notification?.body ?? '';
+
+  final isCall = type == 'CALL_INVITE' ||
+      (message.data['messageType'] ?? '').toString().toUpperCase() == 'CALL_INVITE' ||
+      body.contains('Call');
+  final isMessage = type == 'MESSAGE' && !isCall;
+
   var title =
       message.data['senderName'] as String? ??
       message.data['title'] as String? ??
@@ -50,10 +59,34 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (title.startsWith('New message from ')) {
     title = title.replaceFirst('New message from ', '').trim();
   }
-  final body =
-      message.data['body'] as String? ?? message.notification?.body ?? '';
 
-  if (isMessage && Platform.isAndroid) {
+  if (isCall && Platform.isAndroid) {
+    try {
+      final contentStr = message.data['content'] ?? message.data['body'] ?? '';
+      Map<String, dynamic>? inviteData;
+      if (contentStr is String && contentStr.startsWith('{')) {
+        inviteData = jsonDecode(contentStr) as Map<String, dynamic>;
+      } else if (message.data['roomName'] != null) {
+        inviteData = Map<String, dynamic>.from(message.data);
+      }
+      final roomName = inviteData?['roomName']?.toString() ?? '';
+      final callerName = inviteData?['callerName']?.toString() ?? title;
+      final isVideo = inviteData?['isVideo'] == true || inviteData?['isVideo']?.toString() == 'true';
+      final callerAvatar = inviteData?['callerAvatar']?.toString() ?? '';
+
+      final nativeResult = await const MethodChannel(
+        'com.ishinadwelly.app/native_notification',
+      ).invokeMethod('showNativeCallNotification', {
+        'roomName': roomName,
+        'callerName': callerName,
+        'isVideo': isVideo,
+        'callerAvatar': callerAvatar,
+      });
+      if (nativeResult == true) return;
+    } catch (e) {
+      print('showNativeCallNotification exception: $e');
+    }
+  } else if (isMessage && Platform.isAndroid) {
     final refId = message.data['referenceId'];
     try {
       print(
@@ -79,15 +112,32 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // IMPORTANT: When app is in background and FCM has a 'notification' field,
   // Android system automatically shows the notification. We should NOT show
   // another local notification to avoid duplicates.
-  // Only show local notification if this is a data-only message (no notification field)
   final notification = message.notification;
-  if (notification == null) {
-    // Data-only message - show notification manually
-    final channelId = isMessage ? 'messages' : 'rental_alerts';
-    final channelName = isMessage ? 'Messages' : 'Rental Alerts';
+  if (notification == null || isCall) {
+    final channelId = isCall
+        ? 'incoming_calls_v1'
+        : (isMessage ? 'messages' : 'rental_alerts');
+    final channelName = isCall
+        ? 'Incoming Calls'
+        : (isMessage ? 'Messages' : 'Rental Alerts');
 
     List<AndroidNotificationAction> actions = [];
-    if (isMessage) {
+    if (isCall) {
+      actions = [
+        const AndroidNotificationAction(
+          'accept_call',
+          'ACCEPT',
+          showsUserInterface: true,
+          cancelNotification: true,
+        ),
+        const AndroidNotificationAction(
+          'decline_call',
+          'DECLINE',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ];
+    } else if (isMessage) {
       actions = [
         const AndroidNotificationAction(
           'reply',
@@ -385,6 +435,11 @@ Future<void> _handleNotificationAction(NotificationResponse response) async {
         await plugin.cancel(response.id!);
       }
     }
+  } else if (response.actionId == 'decline_call') {
+    print('Call declined from notification action');
+    if (response.id != null) {
+      await plugin.cancel(response.id!);
+    }
   }
 }
 
@@ -498,6 +553,31 @@ class NotificationService {
           _onBackgroundNotificationResponse,
     );
 
+    const MethodChannel('com.ishinadwelly.app/native_notification')
+        .setMethodCallHandler((call) async {
+      if (call.method == 'onCallAccepted') {
+        final data = Map<String, dynamic>.from(call.arguments);
+        final roomName = data['roomName']?.toString() ?? '';
+        final callerName = data['callerName']?.toString() ?? '';
+        final isVideo = data['isVideo'] == true || data['isVideo']?.toString() == 'true';
+        final callerAvatar = data['callerAvatar']?.toString() ?? '';
+
+        final context = navigatorKey.currentState?.context;
+        if (context != null && roomName.isNotEmpty) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => DwellyLivekitCallPage(
+                roomName: roomName,
+                otherUserName: callerName,
+                otherUserAvatar: callerAvatar,
+                isVideo: isVideo,
+              ),
+            ),
+          );
+        }
+      }
+    });
+
     // Create notification channels for Android
     final androidPlugin = _localNotifications
         .resolvePlatformSpecificImplementation<
@@ -601,19 +681,21 @@ class NotificationService {
     print('Payload: ${response.payload}');
     print('Notification Response Type: ${response.notificationResponseType}');
 
+    final isCallAction = response.actionId == 'accept_call';
     final isNotificationAction =
-        (response.actionId != null && response.actionId!.isNotEmpty) ||
+        ((response.actionId != null && response.actionId!.isNotEmpty) ||
         response.notificationResponseType ==
-            NotificationResponseType.selectedNotificationAction;
+            NotificationResponseType.selectedNotificationAction) &&
+        !isCallAction;
 
-    // If it's an action (reply or mark_read), handle it and never navigate.
+    // If it's a background action (reply, mark_read, decline_call), handle it and do not navigate.
     if (isNotificationAction) {
       print('Calling _handleNotificationAction...');
       unawaited(_handleNotificationAction(response));
       return;
     }
 
-    // Otherwise it's a regular tap - navigate
+    // Otherwise it's a regular tap or ACCEPT call - navigate to chat/call
     if (response.payload != null) {
       final data = jsonDecode(response.payload!) as Map<String, dynamic>;
       handleNotification(data);
@@ -632,9 +714,27 @@ class NotificationService {
       '_showLocalNotification called: title=$title, body=$body, channel=$channelId',
     );
 
-    // Build actions for message notifications
+    final isCall = body.contains('Call') ||
+        (payload != null && payload.contains('CALL_INVITE'));
+
+    // Build actions for message or call notifications
     List<AndroidNotificationAction> actions = [];
-    if (isMessage) {
+    if (isCall) {
+      actions = [
+        const AndroidNotificationAction(
+          'accept_call',
+          'ACCEPT',
+          showsUserInterface: true,
+          cancelNotification: true,
+        ),
+        const AndroidNotificationAction(
+          'decline_call',
+          'DECLINE',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ];
+    } else if (isMessage) {
       actions = [
         const AndroidNotificationAction(
           'reply',
@@ -652,15 +752,29 @@ class NotificationService {
     }
 
     final androidDetails = AndroidNotificationDetails(
-      channelId,
-      channelName,
-      importance: Importance.high,
-      priority: Priority.high,
+      isCall ? 'incoming_calls_v1' : channelId,
+      isCall ? 'Incoming Calls' : channelName,
+      importance: isCall ? Importance.max : Importance.high,
+      priority: isCall ? Priority.max : Priority.high,
+      fullScreenIntent: isCall,
+      category: isCall ? AndroidNotificationCategory.call : null,
       icon: '@drawable/ic_notification',
       color: const Color(0xFF0F172A),
+      sound: isCall
+          ? const RawResourceAndroidNotificationSound('incoming_call_ringtone')
+          : null,
+      playSound: true,
       actions: actions,
     );
-    const iosDetails = DarwinNotificationDetails();
+    final iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBanner: true,
+      presentSound: true,
+      presentBadge: true,
+      interruptionLevel: isCall
+          ? InterruptionLevel.timeSensitive
+          : InterruptionLevel.active,
+    );
     final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
@@ -894,6 +1008,13 @@ class NotificationService {
           _showPushApprovalDialog(challengeId, challengeToken);
         }
         break;
+      case 'CALL_INVITE':
+        _showIncomingCallModalFromData(data);
+        break;
+      case 'CALL_CANCEL':
+      case 'CALL_REJECT':
+        _dismissIncomingCallModalFromData(data);
+        break;
       default:
         if (referenceId != null) {
           print(
@@ -907,6 +1028,18 @@ class NotificationService {
         } else {
           print('Unknown notification type: $type');
         }
+    }
+  }
+
+  static void _dismissIncomingCallModalFromData(Map<String, dynamic> data) {
+    try {
+      final context = navigatorKey.currentState?.context;
+      if (context != null) {
+        final roomName = data['roomName']?.toString();
+        IncomingCallDialog.dismissIfOpen(context, roomName: roomName);
+      }
+    } catch (e) {
+      print('Error dismissing incoming call modal: $e');
     }
   }
 
@@ -935,6 +1068,27 @@ class NotificationService {
       );
     } catch (e) {
       print('Failed to open temporary chat from notification: $e');
+    }
+  }
+
+  static void _showIncomingCallModalFromData(Map<String, dynamic> data) {
+    try {
+      final contentStr = data['content'] ?? data['body'] ?? '';
+      Map<String, dynamic>? inviteData;
+      if (contentStr is String && contentStr.startsWith('{')) {
+        inviteData = jsonDecode(contentStr) as Map<String, dynamic>;
+      } else if (data['roomName'] != null) {
+        inviteData = data;
+      }
+      if (inviteData != null) {
+        final invite = CallInviteModel.fromJson(inviteData);
+        final context = navigatorKey.currentState?.context;
+        if (context != null) {
+          IncomingCallDialog.show(context, invite);
+        }
+      }
+    } catch (e) {
+      print('Error showing incoming call modal: $e');
     }
   }
 

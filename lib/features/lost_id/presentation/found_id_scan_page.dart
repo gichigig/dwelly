@@ -126,7 +126,7 @@ class _FoundIdScanPageState extends State<FoundIdScanPage> {
       );
 
       // Reverse geocode to get address
-      final placemarks = await placemarkFromCoordinates(
+      final placemarks = await Geocoding().placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );

@@ -7,5 +7,12 @@
         <receiver
             android:name="com.ishinadwelly.native_notification_plugin.ReplyReceiver"
             android:exported="false" />
+        <receiver
+            android:name="com.ishinadwelly.native_notification_plugin.CallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ishinadwelly.action.DECLINE_CALL" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

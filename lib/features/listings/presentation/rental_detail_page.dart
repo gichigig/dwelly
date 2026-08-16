@@ -22,6 +22,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../../core/services/video_unlock_session_service.dart';
 import '../../../core/widgets/share_listing_sheet.dart';
+import '../../../core/widgets/fading_image_count_badge.dart';
 import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
 
 class RentalDetailPage extends StatefulWidget {
@@ -40,7 +41,9 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   AdService? _adService;
   Advertisement? _listingDetailAd;
   VideoPlayerController? _videoController;
+  VideoPlayerController? _audioController;
   final PageController _pageController = PageController();
+  int _currentImageIndex = 0;
   Timer? _autoScrollTimer;
 
   @override
@@ -50,6 +53,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
     _checkSaveStatus();
     _loadListingDetailAd();
     _initVideo();
+    _initAudio();
     _startAutoScroll();
   }
 
@@ -85,41 +89,48 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
     _initializeVideoPlayer();
   }
 
+  void _initAudio() {
+    if (widget.rental.hasAudio) {
+      _audioController =
+          VideoPlayerController.networkUrl(
+            Uri.parse(widget.rental.audioUrl!),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          )
+            ..initialize().then((_) {
+              _audioController!.setLooping(true);
+              _audioController!.setVolume(1.0);
+              _audioController!.play();
+              if (mounted) setState(() {});
+            });
+    }
+  }
+
   void _initializeVideoPlayer() {
     final effectiveUrl = widget.rental.effectiveVideoUrl;
     if (widget.rental.hasAnyVideo && effectiveUrl != null) {
+      final isCompound = effectiveUrl == widget.rental.compoundVideoUrl && effectiveUrl != widget.rental.videoUrl;
+      final hasCustomAudio = widget.rental.hasAudio;
       _videoController =
-          VideoPlayerController.networkUrl(Uri.parse(effectiveUrl))
+          VideoPlayerController.networkUrl(
+            Uri.parse(effectiveUrl),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          )
             ..initialize().then((_) {
               _videoController!.setLooping(true);
-              _videoController!.setVolume(0.0); // Mute by default
+              _videoController!.setVolume((isCompound || hasCustomAudio) ? 0.0 : 1.0);
               _videoController!.play();
               if (mounted) setState(() {});
             });
     }
   }
 
-  Future<void> _unlockVideoWithAd() async {
-    final effectiveUrl = widget.rental.effectiveVideoUrl;
-    await GoogleRewardedAdManager.showRewardedAd(
-      context,
-      onReward: () {
-        if (mounted) {
-          VideoUnlockSessionService.unlockVideo(
-            rentalId: widget.rental.id,
-            videoUrl: effectiveUrl,
-          );
-          _initializeVideoPlayer();
-          setState(() {});
-        }
-      },
-    );
-  }
+
 
   @override
   void dispose() {
     _autoScrollTimer?.cancel();
     _videoController?.dispose();
+    _audioController?.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -358,12 +369,19 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                           }
                         });
                       },
-                      child: PageView.builder(
-                        controller: _pageController,
-                        itemCount:
-                            rental.imageUrls.length +
-                            (rental.hasAnyVideo ? 1 : 0),
-                        itemBuilder: (context, index) {
+                      child: FadingImageCountBadge(
+                        currentIndex: _currentImageIndex,
+                        totalCount: rental.imageUrls.length + (rental.hasAnyVideo ? 1 : 0),
+                        alignment: Alignment.topRight,
+                        child: PageView.builder(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() => _currentImageIndex = index);
+                          },
+                          itemCount:
+                              rental.imageUrls.length +
+                              (rental.hasAnyVideo ? 1 : 0),
+                          itemBuilder: (context, index) {
                           final effectiveUrl = rental.effectiveVideoUrl;
                           final isUnlocked =
                               VideoUnlockSessionService.isVideoUnlocked(
@@ -413,52 +431,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                                 ],
                               );
                             } else {
-                              return Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Container(color: Colors.black87),
-                                  Center(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(
-                                          Icons.lock_outline,
-                                          color: Colors.white54,
-                                          size: 48,
-                                        ),
-                                        const SizedBox(height: 16),
-                                        const Text(
-                                          'Watch Ad to Unlock Video',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 24),
-                                        ElevatedButton.icon(
-                                          onPressed: _unlockVideoWithAd,
-                                          icon: const Icon(
-                                            Icons.play_circle_fill,
-                                          ),
-                                          label: const Text('Unlock Video'),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Theme.of(
-                                              context,
-                                            ).primaryColor,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 24,
-                                              vertical: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
+                              return const Center(child: CircularProgressIndicator(color: Colors.white));
                             }
                           }
 
@@ -468,6 +441,9 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                               : (rental.hasAnyVideo && index < videoIndex)
                               ? index
                               : index;
+                          if (imageIndex < 0 || imageIndex >= rental.imageUrls.length) {
+                            return _buildPlaceholder();
+                          }
                           return DwellyNetworkImage(
                             imageUrl: rental.imageUrls[imageIndex],
                             thumbnailUrl:
@@ -483,8 +459,9 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                           );
                         },
                       ),
-                    )
-                  : _buildPlaceholder(),
+                    ),
+                  )
+                : _buildPlaceholder(),
             ),
           ),
           // Content
@@ -549,39 +526,7 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            if (rental.hasAnyVideo &&
-                                !VideoUnlockSessionService.isVideoUnlocked(
-                                  rentalId: rental.id,
-                                  videoUrl: rental.effectiveVideoUrl,
-                                ))
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    _pageController.animateToPage(
-                                      rental.imageUrls.length,
-                                      duration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                      curve: Curves.easeInOut,
-                                    );
-                                  },
-                                  icon: const Icon(
-                                    Icons.play_circle_outline,
-                                    size: 18,
-                                  ),
-                                  label: const Text('Watch Video'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Theme.of(
-                                      context,
-                                    ).primaryColor,
-                                    side: BorderSide(
-                                      color: Theme.of(context).primaryColor,
-                                    ),
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ),
-                              ),
+
                           ],
                         ),
                       ),
@@ -757,9 +702,21 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: rental.amenities.map((amenity) {
+                        final isDark = Theme.of(context).brightness == Brightness.dark;
                         return Chip(
-                          label: Text(amenity),
-                          backgroundColor: Colors.grey[100],
+                          avatar: Icon(
+                            Icons.check_circle_outline,
+                            size: 16,
+                            color: isDark ? Colors.tealAccent[400] : Theme.of(context).primaryColor,
+                          ),
+                          label: Text(
+                            amenity,
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
+                          side: isDark ? const BorderSide(color: Color(0xFF334155)) : BorderSide.none,
                         );
                       }).toList(),
                     ),
@@ -827,24 +784,35 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   }
 
   Widget _buildFeatureBox(IconData icon, String value, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: 80,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : Colors.transparent,
+        ),
       ),
       child: Column(
         children: [
-          Icon(icon, size: 28, color: Colors.grey[700]),
+          Icon(icon, size: 28, color: isDark ? Colors.tealAccent[400] : Colors.grey[700]),
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
           Text(
             label,
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -853,19 +821,24 @@ class _RentalDetailPageState extends State<RentalDetailPage> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
+          Icon(icon, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
           const SizedBox(width: 12),
           Text(
             '$label: ',
-            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 16, color: isDark ? Colors.grey[400] : Colors.grey[600]),
           ),
           Text(
             value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
         ],
       ),

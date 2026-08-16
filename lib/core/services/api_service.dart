@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:realestate/core/services/intercepted_client.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 import '../errors/app_error.dart';
 import '../errors/error_mapper.dart';
@@ -129,6 +130,7 @@ class ApiService {
   static String getThumbnailUrl(String? url) {
     if (url == null || url.isEmpty) return '';
     if (url.contains('/thumbnails/') || url.contains('thumb_')) return url;
+    if (url.contains('avatar') || url.contains('profile') || url.contains('user')) return '';
 
     Uri? uri = Uri.tryParse(url);
     if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
@@ -182,6 +184,67 @@ class ApiService {
     final thumbnail = getThumbnailUrl(url);
     if (thumbnail.isEmpty) return '';
     final resolved = resolveMediaUrl(thumbnail) ?? thumbnail;
+    if (url != null && resolved == url) return '';
+    return resolved;
+  }
+
+  /// Helper method to derive deterministic medium-resolution URLs from main image URLs
+  static String getMediumUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    if (url.contains('/mediums/') || url.contains('medium_')) return url;
+    if (url.contains('/thumbnails/') || url.contains('thumb_')) return '';
+    if (url.contains('avatar') || url.contains('profile') || url.contains('user')) return '';
+
+    Uri? uri = Uri.tryParse(url);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      final segments = uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .toList();
+      if (segments.isEmpty) return url;
+
+      final filename = segments.last;
+      if (filename.isEmpty) return url;
+
+      if (url.contains('/api/files/')) {
+        return url.replaceAll(
+          '/api/files/$filename',
+          '/api/files/medium_$filename',
+        );
+      }
+
+      return uri
+          .replace(pathSegments: ['mediums', 'medium_$filename'])
+          .toString();
+    }
+
+    final filename = url.split('/').last;
+    if (filename.isEmpty || filename == url) return '';
+
+    if (url.contains('/api/files/')) {
+      return url.replaceAll(
+        '/api/files/$filename',
+        '/api/files/medium_$filename',
+      );
+    }
+
+    if (url.contains('/properties/')) {
+      return url.replaceAll(
+        '/properties/$filename',
+        '/mediums/medium_$filename',
+      );
+    }
+
+    if (url.contains('/images/')) {
+      return url.replaceAll('/images/$filename', '/mediums/medium_$filename');
+    }
+
+    return '/mediums/medium_$filename';
+  }
+
+  static String getFeedMediumUrl(String? url) {
+    final medium = getMediumUrl(url);
+    if (medium.isEmpty) return '';
+    final resolved = resolveMediaUrl(medium) ?? medium;
     if (url != null && resolved == url) return '';
     return resolved;
   }
@@ -279,6 +342,13 @@ class ApiService {
       request.headers['Authorization'] = 'Bearer $token';
     }
 
+    try {
+      final appCheckToken = await FirebaseAppCheck.instance.getToken();
+      if (appCheckToken != null) {
+        request.headers['X-Firebase-AppCheck'] = appCheckToken;
+      }
+    } catch (_) {}
+
     // Attempt to guess mime type from extension
     final ext = file.path.split('.').last.toLowerCase();
     MediaType? mediaType;
@@ -342,6 +412,13 @@ class ApiService {
     if (token != null) {
       request.headers['Authorization'] = 'Bearer $token';
     }
+
+    try {
+      final appCheckToken = await FirebaseAppCheck.instance.getToken();
+      if (appCheckToken != null) {
+        request.headers['X-Firebase-AppCheck'] = appCheckToken;
+      }
+    } catch (_) {}
 
     final ext = file.path.split('.').last.toLowerCase();
     MediaType? mediaType;

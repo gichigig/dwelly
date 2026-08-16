@@ -12,6 +12,7 @@ class UserPreferencesService {
   static const String _fypWardsKey = 'fyp_wards'; // User's manually set wards
   static const String _fypNicknamesKey =
       'fyp_nicknames'; // User's manually set nicknames
+  static const String _useTikTokStyleKey = 'use_tiktok_style';
 
   static UserPreferencesService? _instance;
   late SharedPreferences _prefs;
@@ -22,6 +23,7 @@ class UserPreferencesService {
   Map<String, int> _areaClickCounts = {};
   Map<int, int> _bedroomClickCounts = {};
   List<double> _priceClicks = [];
+  bool _useTikTokStyle = false;
 
   UserPreferencesService._();
 
@@ -39,6 +41,8 @@ class UserPreferencesService {
   }
 
   void _loadData() {
+    _useTikTokStyle = _prefs.getBool(_useTikTokStyleKey) ?? false;
+
     // Load view history
     final viewHistoryJson = _prefs.getStringList(_viewHistoryKey) ?? [];
     _viewHistory = viewHistoryJson
@@ -250,6 +254,13 @@ class UserPreferencesService {
     _bedroomClickCounts.clear();
     _priceClicks.clear();
     await _prefs.clear();
+  }
+
+  bool get useTikTokStyle => _useTikTokStyle;
+
+  Future<void> setUseTikTokStyle(bool value) async {
+    _useTikTokStyle = value;
+    await _prefs.setBool(_useTikTokStyleKey, value);
   }
 }
 

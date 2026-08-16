@@ -1084,6 +1084,28 @@ class RentalService {
     return [];
   }
 
+  static Future<List<String>> autocompleteHashtags({
+    String query = '',
+    int limit = 8,
+  }) async {
+    try {
+      final encodedQuery = Uri.encodeComponent(query);
+      final response = await ApiService.timedGet(
+        Uri.parse(
+          '${ApiService.baseUrl}/rentals/hashtags/autocomplete?query=$encodedQuery&limit=$limit',
+        ),
+        headers: _jsonHeadersWithAuth(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((e) => e.toString()).toList();
+      }
+    } catch (e) {
+      _logDebug('Error autocompleting hashtags', e);
+    }
+    return [];
+  }
+
   static Future<Rental?> getById(int id, {bool forceRefresh = false}) async {
     // Check cache first
     if (!forceRefresh) {

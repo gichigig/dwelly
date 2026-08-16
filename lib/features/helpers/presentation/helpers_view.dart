@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/helpers_repository.dart';
-import 'hire_helper_bottom_sheet.dart';
-import 'package:realestate/core/services/api_service.dart';
+import 'package:realestate/core/services/helper_job_service.dart';
 import '../../../core/widgets/full_screen_image_avatar.dart';
 import '../../../core/widgets/dwelly_orbiting_loader.dart';
 
@@ -195,16 +194,9 @@ class _HelpersViewState extends ConsumerState<HelpersView> {
                             width: double.infinity,
                             child: FilledButton.icon(
                               onPressed: () {
-                                showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.vertical(
-                                      top: Radius.circular(24),
-                                    ),
-                                  ),
-                                  builder: (_) =>
-                                      HireHelperBottomSheet(helper: helper),
+                                HelperJobService.redirectToRealAdminPayment(
+                                  helperId: helper.id,
+                                  amount: helper.helperPrice,
                                 );
                               },
                               icon: const Icon(Icons.handshake),

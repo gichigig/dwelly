@@ -10,6 +10,7 @@ import 'package:realestate/core/errors/ui_error.dart';
 import 'package:realestate/core/services/api_service.dart';
 import 'package:realestate/core/widgets/full_screen_image_avatar.dart';
 import 'package:realestate/core/widgets/dwelly_orbiting_loader.dart';
+import 'package:realestate/core/widgets/fading_image_count_badge.dart';
 
 class RentalDetailsPage extends ConsumerStatefulWidget {
   final String id;
@@ -120,32 +121,37 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                 children: [
                   // Image carousel
                   rental!.imageUrls.isNotEmpty
-                      ? PageView.builder(
-                          itemCount: rental!.imageUrls.length,
-                          onPageChanged: (index) {
-                            setState(() => _currentImageIndex = index);
-                          },
-                          itemBuilder: (context, index) {
-                            final url = rental!.imageUrls[index];
-                            return CachedNetworkImage(
-                              imageUrl: ApiService.resolveMediaUrl(url) ?? url,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: Colors.grey[200],
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 28,
-                                    height: 28,
-                                    child: DwellyOrbitingLoader(),
+                      ? FadingImageCountBadge(
+                          currentIndex: _currentImageIndex,
+                          totalCount: rental!.imageUrls.length,
+                          alignment: Alignment.topRight,
+                          child: PageView.builder(
+                            itemCount: rental!.imageUrls.length,
+                            onPageChanged: (index) {
+                              setState(() => _currentImageIndex = index);
+                            },
+                            itemBuilder: (context, index) {
+                              final url = rental!.imageUrls[index];
+                              return CachedNetworkImage(
+                                imageUrl: ApiService.resolveMediaUrl(url) ?? url,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  color: Colors.grey[200],
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: DwellyOrbitingLoader(),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: Colors.grey[300],
-                                child: const Icon(Icons.home, size: 64),
-                              ),
-                            );
-                          },
+                                errorWidget: (context, url, error) => Container(
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.home, size: 64),
+                                ),
+                              );
+                            },
+                          ),
                         )
                       : Container(
                           color: Colors.grey[300],
@@ -566,7 +572,12 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
                   const SizedBox(height: 8),
                   Text(
                     rental!.description,
-                    style: TextStyle(color: Colors.grey[800], height: 1.5),
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[300]
+                          : Colors.grey[800],
+                      height: 1.5,
+                    ),
                   ),
                   const SizedBox(height: 100), // Space for bottom bar
                 ],
@@ -619,22 +630,40 @@ class _RentalDetailsPageState extends ConsumerState<RentalDetailsPage> {
   }
 
   Widget _buildFeatureCard(IconData icon, String value, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: 100,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : Colors.transparent,
+        ),
       ),
       child: Column(
         children: [
-          Icon(icon, size: 24, color: Theme.of(context).colorScheme.primary),
+          Icon(
+            icon,
+            size: 24,
+            color: isDark ? Colors.tealAccent[400] : Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
-          Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          Text(
+            label,
+            style: TextStyle(
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
@@ -673,9 +702,21 @@ class _AmenityChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Chip(
-      avatar: Icon(icon, size: 18),
-      label: Text(label),
+      avatar: Icon(
+        icon,
+        size: 18,
+        color: isDark ? Colors.tealAccent[400] : Theme.of(context).primaryColor,
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isDark ? Colors.white : Colors.black87,
+        ),
+      ),
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
+      side: isDark ? const BorderSide(color: Color(0xFF334155)) : BorderSide.none,
       visualDensity: VisualDensity.compact,
     );
   }

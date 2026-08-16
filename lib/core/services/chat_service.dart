@@ -1423,6 +1423,25 @@ class ChatService {
     debugPrint('$message: $details');
   }
 
+  static Future<bool> checkUserPresence(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/chat/presence/$userId'),
+        headers: {'Authorization': 'Bearer ${AuthService.token}'},
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic> && data['isOnline'] == true) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      _logDebug('Error checking user presence', e);
+      return false;
+    }
+  }
+
   static void _updateUnreadMessageCount(List<Conversation> conversations) {
     unreadMessageCount.value = conversations.fold<int>(
       0,

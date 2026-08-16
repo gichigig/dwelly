@@ -9,6 +9,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.util.Base64
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -32,6 +33,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         NotificationHelper.createNotificationChannel(applicationContext)
         handleNotificationIntent(intent)
     }
@@ -43,6 +45,17 @@ class MainActivity : FlutterActivity() {
 
     private fun handleNotificationIntent(intent: Intent?) {
         if (intent == null) return
+        val action = intent.getStringExtra("action")
+        if (action == "accept_call") {
+            val roomName = intent.getStringExtra("roomName") ?: ""
+            val callerName = intent.getStringExtra("callerName") ?: ""
+            val isVideo = intent.getBooleanExtra("isVideo", false)
+            val callerAvatar = intent.getStringExtra("callerAvatar") ?: ""
+            if (roomName.isNotEmpty()) {
+                NativeNotificationPlugin.sendCallAccepted(roomName, callerName, isVideo, callerAvatar)
+                return
+            }
+        }
         val fromNotification = intent.getBooleanExtra("from_notification", false)
         val chatId = intent.getStringExtra(NotificationHelper.EXTRA_CHAT_ID)
         if (fromNotification && !chatId.isNullOrEmpty()) {

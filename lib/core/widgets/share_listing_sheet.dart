@@ -21,8 +21,8 @@ class ShareListingSheet extends StatelessWidget {
 
   const ShareListingSheet({super.key, required this.rental});
 
-  static void show(BuildContext context, Rental rental) {
-    showModalBottomSheet(
+  static Future<void> show(BuildContext context, Rental rental) {
+    return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -226,8 +226,15 @@ class ShareListingSheet extends StatelessWidget {
                     color: Colors.purple,
                     label: 'More...',
                     onTap: () async {
-                      Navigator.pop(context);
-                      await ListingShareService.shareViaSystem(rental);
+                      final box = context.findRenderObject() as RenderBox?;
+                      final origin = box != null
+                          ? box.localToGlobal(Offset.zero) & box.size
+                          : null;
+                      await ListingShareService.shareViaSystem(
+                        context,
+                        rental,
+                        sharePositionOrigin: origin,
+                      );
                     },
                   ),
                 ],

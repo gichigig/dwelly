@@ -9,7 +9,10 @@ list(APPEND FLUTTER_PLUGIN_LIST
   emoji_picker_flutter
   file_selector_windows
   firebase_core
+  flutter_tts
+  flutter_webrtc
   geolocator_windows
+  livekit_client
   passkeys_windows
   permission_handler_windows
   share_plus

@@ -51,12 +51,21 @@ class ChatMessage {
       content: json['content'] ?? '',
       messageType: json['messageType'] ?? 'TEXT',
       mediaUrl: json['mediaUrl'],
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
+      createdAt: _parseDateTime(json['createdAt']),
       isRead: json['isRead'] ?? false,
       deliveryStatus: (json['deliveryStatus'] ?? 'sent').toString(),
     );
+  }
+
+  static DateTime _parseDateTime(dynamic raw) {
+    if (raw == null) return DateTime.now().toUtc();
+    final str = raw.toString();
+    try {
+      final parsed = DateTime.parse(str);
+      return parsed.toUtc();
+    } catch (_) {
+      return DateTime.now().toUtc();
+    }
   }
 
   Map<String, dynamic> toJson() {

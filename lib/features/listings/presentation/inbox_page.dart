@@ -240,9 +240,8 @@ class InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   }
 
   void _startPolling() {
-    // Poll for conversation updates when live socket is disconnected
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    // Poll for conversation updates every 5 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _pollForUpdates();
     });
   }
@@ -271,12 +270,7 @@ class InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   }
 
   Future<void> _pollForUpdates() async {
-    if (!AuthService.isLoggedIn ||
-        _isLoading ||
-        _isLoadingMore ||
-        _realtimeService.isConnected) {
-      return;
-    }
+    if (!AuthService.isLoggedIn || _isLoading || _isLoadingMore) return;
 
     try {
       final result = await ChatService.getConversationsPaginated(
@@ -743,7 +737,7 @@ class InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
               await _loadConversations(forceRefresh: true);
             },
             child: ListView.builder(
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.only(bottom: 100),
               controller: _scrollController,
               itemCount: _filteredInboxItems.length + (_isLoadingMore ? 1 : 0),
               itemBuilder: (context, index) {

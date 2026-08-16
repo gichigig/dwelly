@@ -2,14 +2,18 @@
     <!-- Location permissions for device location detection -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Camera permission for ID scanning -->
+    <!-- Camera permission for ID scanning & LiveKit video calls -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Audio permissions for LiveKit voice & video calls -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Contacts permission for viewing contacts -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Contacts permission for saving contacts -->
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
-    <!-- Push notification permission (Android 13+) -->
+    <!-- Push notification permission (Android 13+) & heads-up call banners -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Network and background execution permissions for notification action replies -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -22,6 +26,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
     
+    <!-- Restrict app to mobile phone screens only -->
+    <supports-screens 
+        android:smallScreens="true" 
+        android:normalScreens="true" 
+        android:largeScreens="false" 
+        android:xlargeScreens="false" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.GET_CONTENT" />
@@ -111,7 +122,6 @@
         <!-- UCropActivity required by image_cropper plugin -->
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
     </application>
     <!-- Required to query activities that can process text, see:

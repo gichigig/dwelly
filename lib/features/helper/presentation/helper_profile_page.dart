@@ -127,7 +127,9 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
 
   Future<void> _getDirections() async {
     if (_profile?.locationLatitude != null &&
-        _profile?.locationLongitude != null) {
+        _profile?.locationLongitude != null &&
+        (_profile?.locationLatitude != 0.0 || _profile?.locationLongitude != 0.0) &&
+        !(_profile?.hideExactLocation ?? false)) {
       final uri = Uri.parse(
         'https://www.google.com/maps/search/?api=1&query=${_profile!.locationLatitude},${_profile!.locationLongitude}',
       );
@@ -375,8 +377,8 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                       ),
                     ),
                     Text(
-                      ' (${profile.reviewCount} reviews)',
-                      style: const TextStyle(fontSize: 16, color: Colors.grey),
+                      ' (${profile.reviewCount} ${profile.reviewCount == 1 ? 'review' : 'reviews'} • ${profile.totalHires} ${profile.totalHires == 1 ? 'hire' : 'hires'})',
+                      style: const TextStyle(fontSize: 15, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -409,7 +411,9 @@ class _HelperProfilePageState extends State<HelperProfilePage> {
                       ),
                     ),
                     if (profile.locationLatitude != null &&
-                        profile.locationLongitude != null)
+                        profile.locationLongitude != null &&
+                        (profile.locationLatitude != 0.0 || profile.locationLongitude != 0.0) &&
+                        !profile.hideExactLocation)
                       OutlinedButton.icon(
                         onPressed: _getDirections,
                         icon: const Icon(Icons.directions, size: 18),

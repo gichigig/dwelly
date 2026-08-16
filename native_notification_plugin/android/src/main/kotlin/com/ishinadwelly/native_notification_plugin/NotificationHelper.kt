@@ -275,4 +275,123 @@ object NotificationHelper {
             e.printStackTrace()
         }
     }
+
+    const val CHANNEL_ID_CALLS = "incoming_calls_v2"
+    const val CHANNEL_NAME_CALLS = "Incoming Calls"
+
+    fun createCallNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+            val audioAttributes = android.media.AudioAttributes.Builder()
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+
+            val channel = NotificationChannel(
+                CHANNEL_ID_CALLS,
+                CHANNEL_NAME_CALLS,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Incoming voice and video call notifications"
+                enableLights(true)
+                enableVibration(true)
+                setSound(soundUri, audioAttributes)
+                setShowBadge(true)
+            }
+
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.createNotificationChannel(channel)
+        }
+    }
+
+    fun showCallNotification(
+        context: Context,
+        roomName: String,
+        callerName: String,
+        isVideo: Boolean,
+        callerAvatar: String = ""
+    ) {
+        createCallNotificationChannel(context)
+        if (!hasNotificationPermission(context)) return
+
+        val cleanCallerName = cleanName(callerName)
+        val notificationId = (roomName.hashCode() and 0x7FFFFFFF)
+
+        val acceptIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("action", "accept_call")
+            putExtra("roomName", roomName)
+            putExtra("callerName", cleanCallerName)
+            putExtra("isVideo", isVideo)
+            putExtra("callerAvatar", callerAvatar)
+            putExtra("from_notification", true)
+        } ?: Intent().apply {
+            setClassName(context.packageName, "${context.packageName}.MainActivity")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("action", "accept_call")
+            putExtra("roomName", roomName)
+            putExtra("callerName", cleanCallerName)
+            putExtra("isVideo", isVideo)
+            putExtra("callerAvatar", callerAvatar)
+            putExtra("from_notification", true)
+        }
+
+        val acceptPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId + 1,
+            acceptIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+        )
+
+        val declineIntent = Intent(context, CallReceiver::class.java).apply {
+            action = CallReceiver.ACTION_DECLINE_CALL
+            putExtra("notification_id", notificationId)
+            putExtra("roomName", roomName)
+        }
+
+        val declinePendingIntent = PendingIntent.getBroadcast(
+            context,
+            notificationId + 2,
+            declineIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+        )
+
+        val callTypeStr = if (isVideo) "Incoming Video Call" else "Incoming Voice Call"
+
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID_CALLS)
+            .setSmallIcon(context.resources.getIdentifier("ic_notification", "drawable", context.packageName).let { if (it != 0) it else android.R.drawable.ic_menu_call })
+            .setContentTitle(cleanCallerName)
+            .setContentText(callTypeStr)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(acceptPendingIntent, true)
+            .setContentIntent(acceptPendingIntent)
+            .setOngoing(true)
+            .setAutoCancel(true)
+            .setColor(0xFF0F172A.toInt())
+            .addAction(
+                android.R.drawable.ic_menu_call,
+                "ACCEPT",
+                acceptPendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "DECLINE",
+                declinePendingIntent
+            )
+
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notificationBuilder.build())
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+        }
+    }
 }

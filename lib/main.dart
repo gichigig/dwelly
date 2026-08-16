@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'app_shell.dart';
 import 'core/services/auth_service.dart';
@@ -73,6 +75,11 @@ void main() async {
         throw error;
       });
 
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+        appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.deviceCheck,
+      );
+
       FlutterError.onError = (details) {
         FlutterError.presentError(details);
         unawaited(CrashReportingService.reportFlutterError(details));
@@ -103,9 +110,11 @@ void main() async {
       NetworkService.instance.initialize();
 
       runApp(
-        DwellyApp(
-          onboardingComplete: onboardingDone,
-          themeService: ThemeService.instance,
+        ProviderScope(
+          child: DwellyApp(
+            onboardingComplete: onboardingDone,
+            themeService: ThemeService.instance,
+          ),
         ),
       );
 

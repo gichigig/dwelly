@@ -1,11 +1,54 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../errors/app_error.dart';
 import '../models/helper_job.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
 
 class HelperJobService {
+  static Future<void> redirectToRealAdminPayment({
+    int? helperId,
+    double? amount,
+  }) async {
+    String baseUrl = 'https://ishinadwelly.com/payments/mpesa';
+    const override = String.fromEnvironment(
+      'REALADMIN_PAYMENT_URL',
+      defaultValue: '',
+    );
+    if (override.isNotEmpty) {
+      baseUrl = override;
+    }
+
+    final params = <String, String>{
+      'type': 'HELPER',
+      if (helperId != null) 'targetId': '$helperId',
+      if (helperId != null) 'helperId': '$helperId',
+      if (amount != null) 'amount': amount.toStringAsFixed(0),
+    };
+
+    final token = AuthService.token;
+    if (token != null) {
+      params['token'] = token;
+    }
+
+    final uri = Uri.parse(baseUrl).replace(queryParameters: params);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(
+          Uri.parse('https://ishinadwelly.com'),
+          mode: LaunchMode.externalApplication,
+        );
+      }
+    } catch (_) {
+      await launchUrl(
+        Uri.parse('https://ishinadwelly.com'),
+        mode: LaunchMode.externalApplication,
+      );
+    }
+  }
   static Future<List<HelperJob>> getClientJobs({
     int page = 0,
     int size = 20,

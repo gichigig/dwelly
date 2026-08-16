@@ -16,9 +16,32 @@ class ListingShareService {
     return '${rental.title} - ${rental.formattedPrice}\nLocation: $location\n\nCheck out this listing on IshinaDwelly:\n${getShareUrl(rental)}';
   }
 
-  static Future<void> shareViaSystem(Rental rental) async {
+  static Future<void> shareViaSystem(
+    BuildContext? context,
+    Rental rental, {
+    Rect? sharePositionOrigin,
+  }) async {
     final text = getShareText(rental);
-    await Share.share(text, subject: rental.title);
+    try {
+      // ignore: deprecated_member_use
+      await Share.share(
+        text,
+        subject: rental.title,
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } catch (e) {
+      debugPrint('System share failed ($e), falling back to clipboard copy.');
+      await Clipboard.setData(ClipboardData(text: text));
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Copied listing to clipboard! (System share not available on this device)',
+            ),
+          ),
+        );
+      }
+    }
   }
 
   static Future<void> shareViaWhatsApp(

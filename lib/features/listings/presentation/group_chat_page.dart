@@ -11,6 +11,7 @@ import '../../../core/services/chat_service.dart';
 import '../../../core/services/chat_realtime_service.dart';
 import '../../../core/services/contact_service.dart';
 import '../../../core/widgets/full_screen_image_view.dart';
+import '../../../core/widgets/domain_url_linkifier.dart';
 import 'contacts_list_page.dart';
 import '../../user_profile/presentation/user_public_profile_page.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -1632,14 +1633,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   (!isMediaOnly && message.messageType == 'IMAGE'))
                 Linkify(
                   onOpen: (link) async {
-                    final url = Uri.parse(link.url);
-                    if (await canLaunchUrl(url)) {
-                      await launchUrl(url);
-                    } else {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Could not open link')),
-                        );
+                    String formattedUrl = link.url.trim();
+                    if (!formattedUrl.startsWith('http://') &&
+                        !formattedUrl.startsWith('https://') &&
+                        !formattedUrl.startsWith('mailto:') &&
+                        !formattedUrl.startsWith('tel:')) {
+                      formattedUrl = 'https://$formattedUrl';
+                    }
+                    final uri = Uri.tryParse(formattedUrl);
+                    if (uri != null) {
+                      try {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      } catch (_) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Could not open link')),
+                          );
+                        }
                       }
                     }
                   },
@@ -1648,11 +1658,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     color: isMe ? colorScheme.onPrimary : colorScheme.onSurface,
                   ),
                   linkStyle: TextStyle(
-                    color: isMe ? colorScheme.onPrimary : colorScheme.primary,
+                    color: isMe
+                        ? Colors.amberAccent[200]
+                        : (Theme.of(context).brightness == Brightness.dark
+                            ? Colors.tealAccent[400]
+                            : colorScheme.primary),
                     decoration: TextDecoration.underline,
+                    fontWeight: FontWeight.bold,
                   ),
                   options: const LinkifyOptions(humanize: false),
                   linkifiers: const [
+                    DomainUrlLinkifier(),
                     EmailLinkifier(),
                     UrlLinkifier(),
                     PhoneNumberLinkifier(),

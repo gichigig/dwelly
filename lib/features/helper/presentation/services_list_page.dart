@@ -107,8 +107,13 @@ const List<ServiceCategoryItem> kServiceCategoriesList = [
 
 class ServicesListPage extends StatefulWidget {
   final String? initialCategory;
+  final bool isEmbedded;
 
-  const ServicesListPage({super.key, this.initialCategory});
+  const ServicesListPage({
+    super.key,
+    this.initialCategory,
+    this.isEmbedded = false,
+  });
 
   @override
   State<ServicesListPage> createState() => _ServicesListPageState();
@@ -133,7 +138,7 @@ class _ServicesListPageState extends State<ServicesListPage> {
     setState(() {
       _isLoading = true;
       _error = null;
-      _visibleLimit = 10;
+      _providers = [];
     });
 
     try {
@@ -163,15 +168,10 @@ class _ServicesListPageState extends State<ServicesListPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Specialized Services'),
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          // Category Filter Bar
+    final content = Column(
+      children: [
+        // Category Filter Bar (only when standalone)
+        if (!widget.isEmbedded)
           Container(
             height: 60,
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -211,8 +211,8 @@ class _ServicesListPageState extends State<ServicesListPage> {
             ),
           ),
 
-          // County Filter
-          Padding(
+        // County Filter
+        Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: DropdownButtonFormField<String>(
               initialValue: _selectedCounty,
@@ -489,7 +489,22 @@ class _ServicesListPageState extends State<ServicesListPage> {
                   ),
           ),
         ],
+      );
+
+    if (widget.isEmbedded) {
+      return Container(
+        color: theme.colorScheme.surface,
+        child: content,
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Specialized Services'),
+        centerTitle: true,
+        elevation: 0,
       ),
+      body: content,
     );
   }
 }

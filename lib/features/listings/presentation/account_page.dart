@@ -20,9 +20,11 @@ import '../../../core/services/device_location_service.dart';
 import '../../../core/services/data_saver_service.dart';
 import '../../../core/services/premium_service.dart';
 import '../../../core/services/theme_service.dart';
+import '../../../core/services/user_preferences_service.dart';
 import '../../../core/data/kenya_locations.dart';
 import '../../../core/widgets/auth_bottom_sheets.dart';
 import '../../../core/widgets/auth_gate_card.dart';
+import '../../../core/widgets/dwelly_services_icon.dart';
 import '../../../core/widgets/full_screen_image_avatar.dart';
 import 'rental_alerts_page.dart';
 import 'house_search_help_page.dart';
@@ -102,6 +104,7 @@ class _AccountPageState extends State<AccountPage> {
   String _cacheSizeStr = 'Calculating...';
   int _totalCacheBytes = 0;
   bool _dataSaverEnabled = true;
+  bool _useTikTokStyle = false;
 
   @override
   void initState() {
@@ -109,6 +112,7 @@ class _AccountPageState extends State<AccountPage> {
     _loadLocalLocationFallback();
     _calculateCacheSize();
     _loadDataSaverPreference();
+    _loadTikTokStylePreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoOpenSecurityWizard();
     });
@@ -206,6 +210,18 @@ class _AccountPageState extends State<AccountPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _loadTikTokStylePreference() async {
+    final prefs = await UserPreferencesService.getInstance();
+    if (!mounted) return;
+    setState(() => _useTikTokStyle = prefs.useTikTokStyle);
+  }
+
+  Future<void> _toggleTikTokStyle(bool enabled) async {
+    setState(() => _useTikTokStyle = enabled);
+    final prefs = await UserPreferencesService.getInstance();
+    await prefs.setUseTikTokStyle(enabled);
   }
 
   Future<void> _maybeAutoOpenSecurityWizard() async {
@@ -342,7 +358,7 @@ class _AccountPageState extends State<AccountPage> {
 
   Widget _buildLoginView() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -363,6 +379,7 @@ class _AccountPageState extends State<AccountPage> {
           const SizedBox(height: 16),
           _buildCacheStorageItem(),
           _buildDataSaverToggleItem(),
+          _buildTikTokStyleToggleItem(),
         ],
       ),
     );
@@ -372,7 +389,7 @@ class _AccountPageState extends State<AccountPage> {
     final user = AuthService.currentUser!;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -547,15 +564,10 @@ class _AccountPageState extends State<AccountPage> {
 
           _buildMenuItem(
             icon: Icons.cleaning_services_rounded,
-            title: 'Services Tab',
+            title: 'Dwelly Home Services Hub',
             subtitle: 'Movers, gas delivery, water delivery, mama fua & more',
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const ServicesListPage(initialCategory: "All"),
-                ),
-              );
+              DwellyServicesQuickSheet.show(context);
             },
           ),
           _buildMenuItem(
@@ -666,6 +678,7 @@ class _AccountPageState extends State<AccountPage> {
             ),
           _buildCacheStorageItem(),
           _buildDataSaverToggleItem(),
+          _buildTikTokStyleToggleItem(),
           _buildMenuItem(
             icon: Icons.dark_mode_outlined,
             title: 'Appearance',
@@ -1184,6 +1197,28 @@ class _AccountPageState extends State<AccountPage> {
           await AuthService.updateUser(updatedUser);
           if (mounted) setState(() {});
         },
+      ),
+    );
+  }
+
+  Widget _buildTikTokStyleToggleItem() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: SwitchListTile.adaptive(
+        secondary: Icon(
+          Icons.view_carousel_outlined,
+          color: Theme.of(context).iconTheme.color ?? Colors.grey[700],
+        ),
+        title: const Text('TikTok Style Feed', style: TextStyle(fontSize: 16)),
+        subtitle: Text(
+          _useTikTokStyle
+              ? 'Swipe vertically to view rentals'
+              : 'Standard list view for rentals',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+        ),
+        value: _useTikTokStyle,
+        onChanged: _toggleTikTokStyle,
+        activeColor: Theme.of(context).primaryColor,
       ),
     );
   }
